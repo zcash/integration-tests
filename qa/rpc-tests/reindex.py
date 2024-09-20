@@ -26,11 +26,19 @@ class ReindexTest(BitcoinTestFramework):
         self.nodes.append(start_node(0, self.options.tmpdir))
 
     def reindex(self, justchainstate=False):
-        self.nodes[0].generate(3)
-        blockcount = self.nodes[0].getblockcount()
+        # When zebra reindexes, it will only do it up to the finalized chain height. 
+        # This happens after the first 100 blocks, so we need to generate 100 blocks
+        # for the reindex to be able to catch block 1.
+        finalized_height = 100
+
+        self.nodes[0].generate(finalized_height)
+        blockcount = self.nodes[0].getblockcount() - (finalized_height - 1)
+
         stop_node(self.nodes[0], 0)
         wait_bitcoinds()
-        self.nodes[0]=start_node(0, self.options.tmpdir, ["-debug", "-reindex-chainstate" if justchainstate else "-reindex", "-checkblockindex=1"])
+
+        self.nodes[0]=start_node(0, self.options.tmpdir)
+
         while self.nodes[0].getblockcount() < blockcount:
             time.sleep(0.1)
         assert_equal(self.nodes[0].getblockcount(), blockcount)

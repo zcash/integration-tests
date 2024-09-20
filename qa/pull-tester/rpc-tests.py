@@ -316,8 +316,8 @@ def run_tests(test_handler, test_list, src_dir, build_dir, exeext, jobs=1, enabl
         BOLD = ('\033[0m', '\033[1m')
 
     #Set env vars
-    if "ZCASHD" not in os.environ:
-        os.environ["ZCASHD"] = build_dir + '/src/zcashd' + exeext
+    if "CARGO_BIN_EXE_zebrad" not in os.environ:
+        os.environ["CARGO_BIN_EXE_zebrad"] = os.path.join("..", "target", "debug", "zebrad")
 
     tests_dir = src_dir + '/qa/rpc-tests/'
 
@@ -352,7 +352,9 @@ def run_tests(test_handler, test_list, src_dir, build_dir, exeext, jobs=1, enabl
 
             print('\n' + BOLD[1] + name + BOLD[0] + ":")
             print('' if passed else stdout + '\n', end='')
-            print('' if stderr == '' else 'stderr:\n' + stderr + '\n', end='')
+            # TODO: Zebrad always produce the welcome message in the stderr.
+            # Ignoring stderr output here until that is fixed.
+            #print('' if stderr == '' else 'stderr:\n' + stderr + '\n', end='')
             print("Pass: %s%s%s" % (BOLD[1], passed, BOLD[0]), end='')
             if deterministic:
                 print("\n", end='')
@@ -451,7 +453,8 @@ class RPCTestHandler:
                     log_out.seek(0), log_err.seek(0)
                     [stdout, stderr] = [l.read().decode('utf-8') for l in (log_out, log_err)]
                     log_out.close(), log_err.close()
-                    passed = stderr == "" and proc.returncode == 0
+                    # We can't check for an empty stderr in Zebra so we just check for the return code.
+                    passed = proc.returncode == 0
                     self.num_running -= 1
                     self.jobs.remove(j)
                     return name, stdout, stderr, passed, int(time.time() - time0)

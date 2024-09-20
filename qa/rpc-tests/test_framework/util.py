@@ -27,9 +27,7 @@ import re
 import errno
 
 from . import coverage
-from .authproxy import AuthServiceProxy, JSONRPCException
-
-ZCASHD_BINARY = os.path.join('src', 'zcashd')
+from .proxy import ServiceProxy, JSONRPCException
 
 LEGACY_DEFAULT_FEE = Decimal('0.00001')
 
@@ -53,9 +51,14 @@ PORT_MIN = 11000
 # The number of ports to "reserve" for p2p and rpc, each
 PORT_RANGE = 5000
 
-
 def zcashd_binary():
-    return os.getenv("ZCASHD", ZCASHD_BINARY)
+    return os.getenv("CARGO_BIN_EXE_zebrad", os.path.join("..", "target", "debug", "zebrad"))
+
+def zebrad_config(datadir):
+    base_location = os.path.join('qa', 'base_config.toml')
+    new_location = os.path.join(datadir, "config.toml")
+    shutil.copyfile(base_location, new_location)
+    return new_location
 
 class PortSeed:
     # Must be initialized with a unique integer for each process
@@ -84,7 +87,7 @@ def get_rpc_proxy(url, node_number, timeout=None):
     if timeout is not None:
         proxy_kwargs['timeout'] = timeout
 
-    proxy = AuthServiceProxy(url, **proxy_kwargs)
+    proxy = ServiceProxy(url, **proxy_kwargs)
     proxy.url = url  # store URL on proxy for info
 
     coverage_logfile = coverage.get_filename(
@@ -134,6 +137,7 @@ def sync_blocks(rpc_connections, wait=0.125, timeout=60, allow_different_tips=Fa
         time.sleep(wait)
         timeout -= wait
 
+    """ Zebra does not support the `fullyNotified` field in the `blockchaininfo` RPC
     # Now that the block counts are in sync, wait for the internal
     # notifications to finish
     while timeout > 0:
@@ -144,6 +148,8 @@ def sync_blocks(rpc_connections, wait=0.125, timeout=60, allow_different_tips=Fa
         timeout -= wait
 
     raise AssertionError("Block sync failed")
+    """
+    return True
 
 def sync_mempools(rpc_connections, wait=0.5, timeout=60):
     """
@@ -161,6 +167,7 @@ def sync_mempools(rpc_connections, wait=0.5, timeout=60):
         time.sleep(wait)
         timeout -= wait
 
+    """ Zebra does not support the `fullyNotified` field in the `getmempoolinfo` RPC
     # Now that the mempools are in sync, wait for the internal
     # notifications to finish
     while timeout > 0:
@@ -171,6 +178,8 @@ def sync_mempools(rpc_connections, wait=0.5, timeout=60):
         timeout -= wait
 
     raise AssertionError("Mempool sync failed")
+    """
+    return True
 
 bitcoind_processes = {}
 
@@ -179,18 +188,40 @@ def initialize_datadir(dirname, n, clock_offset=0):
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
     rpc_u, rpc_p = rpc_auth_pair(n)
+    config_rpc_port = rpc_port(n)
+    config_p2p_port = p2p_port(n)
+
     with open(os.path.join(datadir, "zcash.conf"), 'w', encoding='utf8') as f:
         f.write("regtest=1\n")
         f.write("showmetrics=0\n")
         f.write("rpcuser=" + rpc_u + "\n")
         f.write("rpcpassword=" + rpc_p + "\n")
-        f.write("port="+str(p2p_port(n))+"\n")
-        f.write("rpcport="+str(rpc_port(n))+"\n")
+        f.write("port="+str(config_p2p_port)+"\n")
+        f.write("rpcport="+str(config_rpc_port)+"\n")
         f.write("listenonion=0\n")
         if clock_offset != 0:
             f.write('clockoffset='+str(clock_offset)+'\n')
 
+    update_zebrad_conf(datadir, config_rpc_port, config_p2p_port)
+
     return datadir
+
+def update_zebrad_conf(datadir, rpc_port, p2p_port):
+    import toml
+
+    config_path = zebrad_config(datadir)
+
+    with open(config_path, 'r') as f:
+        config_file = toml.load(f)
+
+    config_file['rpc']['listen_addr'] = '127.0.0.1:'+str(rpc_port)
+    config_file['network']['listen_addr'] = '127.0.0.1:'+str(p2p_port)
+    config_file['state']['cache_dir'] = datadir
+
+    with open(config_path, 'w') as f:
+        toml.dump(config_file, f)
+
+    return config_path
 
 def rpc_auth_pair(n):
     return 'rpcuser💻' + str(n), 'rpcpass🔑' + str(n)
@@ -205,13 +236,17 @@ def rpc_url(i, rpchost=None):
             host, port = parts
         else:
             host = rpchost
-    return "http://%s:%s@%s:%d" % (rpc_u, rpc_p, host, int(port))
+    # For zebra, we just use a non-authenticated endpoint.
+    return "http://%s:%d" % (host, int(port))
+    # We might want to get back to authenticated endpoints after #8864:
+    #return "http://%s:%s@%s:%d" % (rpc_u, rpc_p, host, int(port))
 
 def wait_for_bitcoind_start(process, url, i):
     '''
     Wait for bitcoind to start. This means that RPC is accessible and fully initialized.
     Raise an exception if bitcoind exits during initialization.
     '''
+    time.sleep(1) # give zebrad a moment to start
     while True:
         if process.poll() is not None:
             raise Exception('%s node %d exited with status %i during initialization' % (zcashd_binary(), i, process.returncode))
@@ -260,14 +295,11 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         block_time = int(time.time()) - (200 * PRE_BLOSSOM_BLOCK_TARGET_SPACING)
         for i in range(MAX_NODES):
             datadir = initialize_datadir(cachedir, i)
-            args = [ zcashd_binary(), "-keypool=1", "-datadir="+datadir, "-discover=0" ]
-            args.extend([
-                '-nuparams=5ba81b19:1', # Overwinter
-                '-nuparams=76b809bb:1', # Sapling
-                '-mocktime=%d' % block_time
-            ])
-            if i > 0:
-                args.append("-connect=127.0.0.1:"+str(p2p_port(0)))
+
+            config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i))
+            binary = zcashd_binary()
+            args = [ binary, "-c="+config, "start" ]
+
             bitcoind_processes[i] = subprocess.Popen(args)
             if os.getenv("PYTHON_DEBUG", ""):
                 print("initialize_chain: %s started, waiting for RPC to come up" % (zcashd_binary(),))
@@ -294,7 +326,8 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         for i in range(2):
             for peer in range(4):
                 for j in range(25):
-                    set_node_times(rpcs, block_time)
+                    # Removed because zebrad does not has this RPC method:
+                    #set_node_times(rpcs, block_time)
                     rpcs[peer].generate(1)
                     block_time += PRE_BLOSSOM_BLOCK_TARGET_SPACING
                 # Must sync before next peer starts generating blocks
@@ -312,16 +345,18 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                 cache_conf_json = json.dumps(cache_config, indent=4)
                 cache_conf_file.write(cache_conf_json)
 
-            os.remove(node_file(cachedir, i, "debug.log"))
-            os.remove(node_file(cachedir, i, "db.log"))
-            os.remove(node_file(cachedir, i, "peers.dat"))
+            # Removed as zebrad do not created these files:
+            #os.remove(node_file(cachedir, i, "debug.log"))
+            #os.remove(node_file(cachedir, i, "db.log"))
+            #os.remove(node_file(cachedir, i, "peers.dat"))
+
 
     def init_from_cache():
         for i in range(num_nodes):
             from_dir = os.path.join(cachedir, "node"+str(i))
             to_dir = os.path.join(test_dir,  "node"+str(i))
             shutil.copytree(from_dir, to_dir)
-            with open(os.path.join(to_dir, 'regtest', 'cache_config.json'), "r", encoding="utf8") as cache_conf_file:
+            with open(os.path.join(to_dir, 'cache_config.json'), "r", encoding="utf8") as cache_conf_file:
                 cache_conf = json.load(cache_conf_file)
                 # obtain the clock offset as a negative number of seconds
                 offset = round(cache_conf['cache_time']) - round(time.time())
@@ -415,7 +450,7 @@ def persist_node_caches(tmpdir, cache_behavior, num_nodes):
     os.mkdir(cache_path)
 
     for i in range(num_nodes):
-        node_path = os.path.join(tmpdir, 'node' + str(i), 'regtest')
+        node_path = os.path.join(tmpdir, 'node' + str(i))
 
         # Clean up the files that we don't want to persist
         os.remove(os.path.join(node_path, 'debug.log'))
@@ -479,14 +514,14 @@ def start_node(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=
     """
     Start a bitcoind and return RPC connection to it
     """
+
     datadir = os.path.join(dirname, "node"+str(i))
     if binary is None:
         binary = zcashd_binary()
-    args = [ binary, "-datadir="+datadir, "-keypool=1", "-discover=0", "-rest" ]
-    args.extend([
-        '-nuparams=5ba81b19:1', # Overwinter
-        '-nuparams=76b809bb:1', # Sapling
-    ])
+
+    config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i))
+    args = [ binary, "-c="+config, "start" ]
+
     if extra_args is not None: args.extend(extra_args)
     bitcoind_processes[i] = subprocess.Popen(args, stderr=stderr)
     if os.getenv("PYTHON_DEBUG", ""):
@@ -537,7 +572,7 @@ def start_nodes(num_nodes, dirname, extra_args=None, rpchost=None, binary=None):
     return rpcs
 
 def node_file(dirname, n_node, filename):
-    return os.path.join(dirname, "node"+str(n_node), "regtest", filename)
+    return os.path.join(dirname, "node"+str(n_node), filename)
 
 def check_node(i):
     bitcoind_processes[i].poll()
