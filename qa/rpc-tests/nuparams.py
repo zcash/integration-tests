@@ -15,6 +15,7 @@ from test_framework.util import (
     HEARTWOOD_BRANCH_ID,
     CANOPY_BRANCH_ID,
     NU5_BRANCH_ID,
+    NU6_BRANCH_ID,
 )
 from decimal import Decimal
 
@@ -31,11 +32,8 @@ class NuparamsTest(BitcoinTestFramework):
         self.cache_behavior = 'clean'
 
     def setup_network(self, split=False):
-        args = [[
-            nuparams(BLOSSOM_BRANCH_ID, 3),
-            nuparams(CANOPY_BRANCH_ID, 5),
-            nuparams(NU5_BRANCH_ID, 7),
-        ] * self.num_nodes]
+        args = [[] * self.num_nodes]
+
         self.nodes = start_nodes(self.num_nodes, self.options.tmpdir, args)
         self.is_network_split = False
         self.sync_all()
@@ -44,6 +42,7 @@ class NuparamsTest(BitcoinTestFramework):
         node = self.nodes[0]
         # No blocks have been created, only the genesis block exists (height 0)
         bci = node.getblockchaininfo()
+        print(bci)
         assert_equal(bci['blocks'], 0)
         upgrades = bci['upgrades']
 
@@ -59,28 +58,33 @@ class NuparamsTest(BitcoinTestFramework):
 
         blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
         assert_equal(blossom['name'], 'Blossom')
-        assert_equal(blossom['activationheight'], 3)
+        assert_equal(blossom['activationheight'], 1)
         assert_equal(blossom['status'], 'pending')
 
         heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
         assert_equal(heartwood['name'], 'Heartwood')
-        assert_equal(heartwood['activationheight'], 5)
+        assert_equal(heartwood['activationheight'], 1)
         assert_equal(heartwood['status'], 'pending')
 
         canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
         assert_equal(canopy['name'], 'Canopy')
-        assert_equal(canopy['activationheight'], 5)
+        assert_equal(canopy['activationheight'], 1)
         assert_equal(canopy['status'], 'pending')
 
         nu5 = upgrades[nustr(NU5_BRANCH_ID)]
         assert_equal(nu5['name'], 'NU5')
-        assert_equal(nu5['activationheight'], 7)
+        assert_equal(nu5['activationheight'], 290)
         assert_equal(nu5['status'], 'pending')
 
-        # Initial subsidy at the genesis block is 12.5 ZEC
-        assert_equal(node.getblocksubsidy()["miner"], Decimal("12.5"))
+        nu6 = upgrades[nustr(NU6_BRANCH_ID)]
+        assert_equal(nu6['name'], 'NU6')
+        assert_equal(nu6['activationheight'], 291)
+        assert_equal(nu6['status'], 'pending')
 
-        # start_node() hardcodes Sapling and Overwinter to activate at height 1
+        # Zebra can't call `getblocksubsidy` before the first halving.
+
+        # Zebra regtest mode hardcodes Canopy, Heartwood, Blossom, Sapling and Overwinter
+        # to activate at height 1.
         node.generate(1)
 
         bci = node.getblockchaininfo()
@@ -99,111 +103,80 @@ class NuparamsTest(BitcoinTestFramework):
 
         blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
         assert_equal(blossom['name'], 'Blossom')
-        assert_equal(blossom['activationheight'], 3)
-        assert_equal(blossom['status'], 'pending')
-
-        heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
-        assert_equal(heartwood['name'], 'Heartwood')
-        assert_equal(heartwood['activationheight'], 5)
-        assert_equal(heartwood['status'], 'pending')
-
-        canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
-        assert_equal(canopy['name'], 'Canopy')
-        assert_equal(canopy['activationheight'], 5)
-        assert_equal(canopy['status'], 'pending')
-
-        nu5 = upgrades[nustr(NU5_BRANCH_ID)]
-        assert_equal(nu5['name'], 'NU5')
-        assert_equal(nu5['activationheight'], 7)
-        assert_equal(nu5['status'], 'pending')
-
-        # After the genesis block the founders' reward consumes 20% of the block
-        # subsidy, so the miner subsidy is 10 ZEC
-        assert_equal(node.getblocksubsidy()["miner"], Decimal("10"))
-
-        # Activate Blossom
-        node.generate(2)
-        bci = node.getblockchaininfo()
-        assert_equal(bci['blocks'], 3)
-        upgrades = bci['upgrades']
-
-        overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
-        assert_equal(overwinter['name'], 'Overwinter')
-        assert_equal(overwinter['activationheight'], 1)
-        assert_equal(overwinter['status'], 'active')
-
-        sapling = upgrades[nustr(SAPLING_BRANCH_ID)]
-        assert_equal(sapling['name'], 'Sapling')
-        assert_equal(sapling['activationheight'], 1)
-        assert_equal(sapling['status'], 'active')
-
-        blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
-        assert_equal(blossom['name'], 'Blossom')
-        assert_equal(blossom['activationheight'], 3)
+        assert_equal(blossom['activationheight'], 1)
         assert_equal(blossom['status'], 'active')
 
         heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
         assert_equal(heartwood['name'], 'Heartwood')
-        assert_equal(heartwood['activationheight'], 5)
-        assert_equal(heartwood['status'], 'pending')
-
-        canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
-        assert_equal(canopy['name'], 'Canopy')
-        assert_equal(canopy['activationheight'], 5)
-        assert_equal(canopy['status'], 'pending')
-
-        nu5 = upgrades[nustr(NU5_BRANCH_ID)]
-        assert_equal(nu5['name'], 'NU5')
-        assert_equal(nu5['activationheight'], 7)
-        assert_equal(nu5['status'], 'pending')
-
-        # Block subsidy halves at Blossom due to block time halving
-        assert_equal(node.getblocksubsidy()["miner"], Decimal("5"))
-
-        # Activate Heartwood & Canopy
-        node.generate(2)
-        bci = node.getblockchaininfo()
-        assert_equal(bci['blocks'], 5)
-        upgrades = bci['upgrades']
-
-        overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
-        assert_equal(overwinter['name'], 'Overwinter')
-        assert_equal(overwinter['activationheight'], 1)
-        assert_equal(overwinter['status'], 'active')
-
-        sapling = upgrades[nustr(SAPLING_BRANCH_ID)]
-        assert_equal(sapling['name'], 'Sapling')
-        assert_equal(sapling['activationheight'], 1)
-        assert_equal(sapling['status'], 'active')
-
-        blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
-        assert_equal(blossom['name'], 'Blossom')
-        assert_equal(blossom['activationheight'], 3)
-        assert_equal(blossom['status'], 'active')
-
-        heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
-        assert_equal(heartwood['name'], 'Heartwood')
-        assert_equal(heartwood['activationheight'], 5)
+        assert_equal(heartwood['activationheight'], 1)
         assert_equal(heartwood['status'], 'active')
 
         canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
         assert_equal(canopy['name'], 'Canopy')
-        assert_equal(canopy['activationheight'], 5)
+        assert_equal(canopy['activationheight'], 1)
         assert_equal(canopy['status'], 'active')
 
         nu5 = upgrades[nustr(NU5_BRANCH_ID)]
         assert_equal(nu5['name'], 'NU5')
-        assert_equal(nu5['activationheight'], 7)
+        assert_equal(nu5['activationheight'], 290)
         assert_equal(nu5['status'], 'pending')
+
+        nu6 = upgrades[nustr(NU6_BRANCH_ID)]
+        assert_equal(nu6['name'], 'NU6')
+        assert_equal(nu6['activationheight'], 291)
+        assert_equal(nu6['status'], 'pending')
+
+        # Zebra can't call `getblocksubsidy` before the first halving.
+
+        # Activate First Halving
+        node.generate(287)
+        bci = node.getblockchaininfo()
+        assert_equal(bci['blocks'], 288)
+        upgrades = bci['upgrades']
+
+        overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
+        assert_equal(overwinter['name'], 'Overwinter')
+        assert_equal(overwinter['activationheight'], 1)
+        assert_equal(overwinter['status'], 'active')
+
+        sapling = upgrades[nustr(SAPLING_BRANCH_ID)]
+        assert_equal(sapling['name'], 'Sapling')
+        assert_equal(sapling['activationheight'], 1)
+        assert_equal(sapling['status'], 'active')
+
+        blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
+        assert_equal(blossom['name'], 'Blossom')
+        assert_equal(blossom['activationheight'], 1)
+        assert_equal(blossom['status'], 'active')
+
+        heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
+        assert_equal(heartwood['name'], 'Heartwood')
+        assert_equal(heartwood['activationheight'], 1)
+        assert_equal(heartwood['status'], 'active')
+
+        canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
+        assert_equal(canopy['name'], 'Canopy')
+        assert_equal(canopy['activationheight'], 1)
+        assert_equal(canopy['status'], 'active')
+
+        nu5 = upgrades[nustr(NU5_BRANCH_ID)]
+        assert_equal(nu5['name'], 'NU5')
+        assert_equal(nu5['activationheight'], 290)
+        assert_equal(nu5['status'], 'pending')
+
+        nu6 = upgrades[nustr(NU6_BRANCH_ID)]
+        assert_equal(nu6['name'], 'NU6')
+        assert_equal(nu6['activationheight'], 291)
+        assert_equal(nu6['status'], 'pending')
 
         # The founders' reward ends at Canopy and there are no funding streams
-        # configured by default for regtest. On mainnet, the halving activated
-        # coincident with Canopy, but on regtest the two are independent.
-        assert_equal(node.getblocksubsidy()["miner"], Decimal("6.25"))
+        # configured by default for regtest.
+        assert_equal(node.getblocksubsidy()["miner"], Decimal("3.125"))
 
+        # Activate NU5
         node.generate(2)
         bci = node.getblockchaininfo()
-        assert_equal(bci['blocks'], 7)
+        assert_equal(bci['blocks'], 290)
         upgrades = bci['upgrades']
 
         overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
@@ -218,26 +191,76 @@ class NuparamsTest(BitcoinTestFramework):
 
         blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
         assert_equal(blossom['name'], 'Blossom')
-        assert_equal(blossom['activationheight'], 3)
+        assert_equal(blossom['activationheight'], 1)
         assert_equal(blossom['status'], 'active')
 
         heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
         assert_equal(heartwood['name'], 'Heartwood')
-        assert_equal(heartwood['activationheight'], 5)
+        assert_equal(heartwood['activationheight'], 1)
         assert_equal(heartwood['status'], 'active')
 
         canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
         assert_equal(canopy['name'], 'Canopy')
-        assert_equal(canopy['activationheight'], 5)
+        assert_equal(canopy['activationheight'], 1)
         assert_equal(canopy['status'], 'active')
 
         nu5 = upgrades[nustr(NU5_BRANCH_ID)]
         assert_equal(nu5['name'], 'NU5')
-        assert_equal(nu5['activationheight'], 7)
+        assert_equal(nu5['activationheight'], 290)
         assert_equal(nu5['status'], 'active')
 
+        nu6 = upgrades[nustr(NU6_BRANCH_ID)]
+        assert_equal(nu6['name'], 'NU6')
+        assert_equal(nu6['activationheight'], 291)
+        assert_equal(nu6['status'], 'pending')
+
         # Block subsidy remains the same after NU5
-        assert_equal(node.getblocksubsidy()["miner"], Decimal("6.25"))
+        assert_equal(node.getblocksubsidy()["miner"], Decimal("3.125"))
+
+        # Activate NU6
+        node.generate(1)
+        bci = node.getblockchaininfo()
+        assert_equal(bci['blocks'], 291)
+        upgrades = bci['upgrades']
+
+        overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
+        assert_equal(overwinter['name'], 'Overwinter')
+        assert_equal(overwinter['activationheight'], 1)
+        assert_equal(overwinter['status'], 'active')
+
+        sapling = upgrades[nustr(SAPLING_BRANCH_ID)]
+        assert_equal(sapling['name'], 'Sapling')
+        assert_equal(sapling['activationheight'], 1)
+        assert_equal(sapling['status'], 'active')
+
+        blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
+        assert_equal(blossom['name'], 'Blossom')
+        assert_equal(blossom['activationheight'], 1)
+        assert_equal(blossom['status'], 'active')
+
+        heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
+        assert_equal(heartwood['name'], 'Heartwood')
+        assert_equal(heartwood['activationheight'], 1)
+        assert_equal(heartwood['status'], 'active')
+
+        canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
+        assert_equal(canopy['name'], 'Canopy')
+        assert_equal(canopy['activationheight'], 1)
+        assert_equal(canopy['status'], 'active')
+
+        nu5 = upgrades[nustr(NU5_BRANCH_ID)]
+        assert_equal(nu5['name'], 'NU5')
+        assert_equal(nu5['activationheight'], 290)
+        assert_equal(nu5['status'], 'active')
+
+        nu6 = upgrades[nustr(NU6_BRANCH_ID)]
+        assert_equal(nu6['name'], 'NU6')
+        assert_equal(nu6['activationheight'], 291)
+        assert_equal(nu6['status'], 'active')
+
+        # Block subsidy remains the same after NU6 as there are not funding streams
+        # nor lockbox configured by default for regtest.
+        assert_equal(node.getblocksubsidy()["miner"], Decimal("3.125"))
 
 if __name__ == '__main__':
     NuparamsTest().main()
