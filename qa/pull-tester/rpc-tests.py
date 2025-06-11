@@ -154,6 +154,7 @@ BASE_SCRIPTS= [
     'show_help.py',
     'errors.py',
     'converttex.py',
+    'addnode.py',
 ]
 
 ZMQ_SCRIPTS = [
