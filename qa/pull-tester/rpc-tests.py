@@ -155,6 +155,7 @@ BASE_SCRIPTS= [
     'errors.py',
     'converttex.py',
     'addnode.py',
+    'feature_nu6.py',
 ]
 
 ZMQ_SCRIPTS = [
