@@ -157,6 +157,7 @@ BASE_SCRIPTS= [
     'converttex.py',
     'addnode.py',
     'feature_nu6.py',
+    'feature_backup_non_finalized_state.py',
 ]
 
 ZMQ_SCRIPTS = [
