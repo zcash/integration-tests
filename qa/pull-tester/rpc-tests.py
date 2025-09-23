@@ -113,7 +113,6 @@ BASE_SCRIPTS= [
     'signrawtransaction_offline.py',
     'key_import_export.py',
     'nodehandling.py',
-    'reindex.py',
     'addressindex.py',
     'spentindex.py',
     'timestampindex.py',
