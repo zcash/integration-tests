@@ -158,6 +158,7 @@ BASE_SCRIPTS= [
     'feature_nu6.py',
     'feature_backup_non_finalized_state.py',
     'getrawtransaction_sidechain.py',
+    'fix_block_commitments.py',
 ]
 
 ZMQ_SCRIPTS = [
