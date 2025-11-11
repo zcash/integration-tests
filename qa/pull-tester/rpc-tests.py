@@ -356,8 +356,7 @@ def run_tests(test_handler, test_list, src_dir, build_dir, exeext, jobs=1, enabl
 
             print('\n' + BOLD[1] + name + BOLD[0] + ":")
             print('' if passed else stdout + '\n', end='')
-            # TODO: Zebrad always produce the welcome message in the stderr.
-            # Ignoring stderr output here until that is fixed.
+            # TODO: Zebrad outputs the welcome message in stderr. Ignoring stderr output.
             #print('' if stderr == '' else 'stderr:\n' + stderr + '\n', end='')
             print("Pass: %s%s%s" % (BOLD[1], passed, BOLD[0]), end='')
             if deterministic:
@@ -457,7 +456,8 @@ class RPCTestHandler:
                     log_out.seek(0), log_err.seek(0)
                     [stdout, stderr] = [l.read().decode('utf-8') for l in (log_out, log_err)]
                     log_out.close(), log_err.close()
-                    # We can't check for an empty stderr in Zebra so we just check for the return code.
+                    # TODO: stderr is never empty in Zebra, check return code only.
+                    #passed = stderr == "" and proc.returncode == 0
                     passed = proc.returncode == 0
                     self.num_running -= 1
                     self.jobs.remove(j)
