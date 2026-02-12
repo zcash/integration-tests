@@ -579,4 +579,4 @@ jobs:
               sys.exit(1)
           EOF
           . ./venv/bin/activate
-          ZCASHD=$(pwd)/${{ format('src/zebrad{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py
+          CARGO_BIN_EXE_zebrad=$(pwd)/${{ format('src/zebrad{0}', matrix.file_ext) }} ZAINOD=$(pwd)/${{ format('src/zainod{0}', matrix.file_ext) }} ZALLET=$(pwd)/${{ format('src/zallet{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py

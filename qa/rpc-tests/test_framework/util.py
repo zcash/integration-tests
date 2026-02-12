@@ -58,7 +58,7 @@ def zcashd_binary():
     return os.getenv("CARGO_BIN_EXE_zebrad", os.path.join("..", "target", "debug", "zebrad"))
 
 def zallet_binary():
-    return os.path.join("..", "target", "debug", "zallet")
+    return os.getenv("ZALLET", os.path.join("..", "target", "debug", "zallet"))
 
 def zebrad_config(datadir):
     base_location = os.path.join('qa', 'base_config.toml')
@@ -67,7 +67,7 @@ def zebrad_config(datadir):
     return new_location
 
 def zaino_binary():
-    return os.path.join("..", "target", "debug", "zainod")
+    return os.getenv("ZAINOD", os.path.join("..", "target", "debug", "zainod"))
 
 def zainod_config(datadir):
     base_location = os.path.join('qa', 'zindexer.toml')
