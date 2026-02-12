@@ -23,27 +23,6 @@ jobs:
       - name: Install dependencies
         run: sudo python3 -m pip install yq
 
-      - name: Cargo patches
-        run: ./test/lint/lint-cargo-patches.sh
-        if: always()
-
-      - name: Include guards
-        run: ./test/lint/lint-include-guards.sh
-        if: always()
-
-      - name: Includes
-        run: ./test/lint/lint-includes.sh
-        if: always()
-
-      - name: Locale dependence
-        run: ./test/lint/lint-locale-dependence.sh
-        if: always()
-        continue-on-error: true # Temporary until we get this passing
-
-      - name: make dist
-        run: ./test/lint/lint-make-dist.sh
-        if: always()
-
       - name: Shebang
         run: ./test/lint/lint-shebang.sh
         if: always()
@@ -71,28 +50,9 @@ jobs:
         run: sudo python3 -m pip install pyflakes
 
       - name: Pyflakes
-        run: pyflakes qa src zcutil
+        run: pyflakes qa
         if: always()
 
       - name: UTF-8 encoding
         run: ./test/lint/lint-python-utf8-encoding.sh
         if: always()
-
-  rust-clippy:
-    name: Clippy (MSRV)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run clippy
-        uses: actions-rs/clippy-check@v1
-        with:
-          name: Clippy (MSRV)
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features --all-targets -- -D warnings
-
-  rustfmt:
-    name: Rustfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: cargo fmt -- --check

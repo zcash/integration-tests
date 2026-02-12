@@ -7,17 +7,13 @@ on:
     paths-ignore:
       # Workflows that have no effect on this workflow.
       - '.github/dependabot.yml'
-      - '.github/workflows/audits.yml'
       - '.github/workflows/book.yml'
       - '.github/workflows/ci-skip.yml'
       - '.github/workflows/lints.yml'
-      - '.github/workflows/release-docker-hub.yml'
       # Documentation.
-      - 'contrib/debian/copyright'
       - 'doc/**'
       - '**.md'
       - 'COPYING'
-      - 'INSTALL'
   push:
     branches: master
     # Any update here needs to be done for `pull_request` (see above), and
@@ -25,17 +21,13 @@ on:
     paths-ignore:
       # Workflows that have no effect on this workflow.
       - '.github/dependabot.yml'
-      - '.github/workflows/audits.yml'
       - '.github/workflows/book.yml'
       - '.github/workflows/ci-skip.yml'
       - '.github/workflows/lints.yml'
-      - '.github/workflows/release-docker-hub.yml'
       # Documentation.
-      - 'contrib/debian/copyright'
       - 'doc/**'
       - '**.md'
       - 'COPYING'
-      - 'INSTALL'
 
 permissions:
   contents: read
@@ -48,26 +40,26 @@ jobs:
       matrix:
         cfg:
           - data:
-            - name: Debian-bookworm
-              tier: 1
-              platform: Debian Bookworm
-              build_os: ubuntu-22.04-8cores
-              test_os: ubuntu-22.04
-              container: electriccoinco/debian-helper:bookworm
-              host: x86_64-pc-linux-gnu
+            # - name: Debian-bookworm
+            #   tier: 1
+            #   platform: Debian Bookworm
+            #   build_os: ubuntu-22.04
+            #   test_os: ubuntu-22.04
+            #   container: electriccoinco/debian-helper:bookworm
+            #   host: x86_64-pc-linux-gnu
 
-            - name: Debian-bullseye
-              tier: 1
-              platform: Debian bullseye
-              build_os: ubuntu-22.04-8cores
-              test_os: ubuntu-22.04
-              container: electriccoinco/debian-helper:bullseye
-              host: x86_64-pc-linux-gnu
+            # - name: Debian-bullseye
+            #   tier: 1
+            #   platform: Debian bullseye
+            #   build_os: ubuntu-22.04
+            #   test_os: ubuntu-22.04
+            #   container: electriccoinco/debian-helper:bullseye
+            #   host: x86_64-pc-linux-gnu
 
             - name: ubuntu-22.04
               tier: 1
               platform: Ubuntu 22.04
-              build_os: ubuntu-22.04-8cores
+              build_os: ubuntu-22.04
               test_os: ubuntu-22.04
               host: x86_64-pc-linux-gnu
 
@@ -94,7 +86,7 @@ jobs:
             - name: mingw32
               tier: 3
               platform: Windows (64-bit MinGW)
-              build_os: ubuntu-22.04-8cores
+              build_os: ubuntu-22.04
               test_os: windows-latest
               cross_deps: >
                 mingw-w64
@@ -104,7 +96,7 @@ jobs:
             - name: aarch64-linux
               tier: 3
               platform: ARM64 Linux
-              build_os: ubuntu-22.04-8cores
+              build_os: ubuntu-22.04
               cross_deps: >
                 g++-aarch64-linux-gnu
               host: aarch64-linux-gnu
@@ -204,8 +196,8 @@ jobs:
           mkdir zcash-params || echo ""
           curl -L -C - https://download.z.cash/downloads/sprout-groth16.params -o zcash-params/sprout-groth16.params
 
-  build:
-    name: Build tier ${{ matrix.tier }} platform ${{ matrix.platform }}
+  build-zebra:
+    name: Build zebrad on tier ${{ matrix.tier }} platform ${{ matrix.platform }}
     needs: setup
     runs-on: ${{ matrix.build_os }}
     container:
@@ -219,7 +211,14 @@ jobs:
         include: ${{ fromJson(needs.setup.outputs.build_matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Use ZcashFoundation/zebra current main
+        run: echo "ZEBRA_REF=refs/heads/main" >> $GITHUB_ENV
+
+      - name: Check out ZcashFoundation/zebra
+        uses: actions/checkout@v4
+        with:
+          repository: ZcashFoundation/zebra
+          ref: ${{ env.ZEBRA_REF }}
 
       - name: Install Homebrew build dependencies
         if: matrix.brew_deps != ''
@@ -235,14 +234,6 @@ jobs:
           sudo update-alternatives --set x86_64-w64-mingw32-gcc $(update-alternatives --query x86_64-w64-mingw32-gcc | grep Alternative | grep posix | cut -d' ' -f2)
           sudo update-alternatives --set x86_64-w64-mingw32-g++ $(update-alternatives --query x86_64-w64-mingw32-g++ | grep Alternative | grep posix | cut -d' ' -f2)
 
-      - name: Cache built dependencies
-        uses: actions/cache@v4
-        with:
-          path: depends/built
-          key: ${{ matrix.name }}-built-${{ hashFiles('depends/Makefile', 'depends/funcs.mk') }}-${{ hashFiles('depends/packages/*.mk', 'depends/patches/**/*') }}
-          restore-keys: |
-            ${{ matrix.name }}-built-${{ hashFiles('depends/Makefile', 'depends/funcs.mk') }}-
-
       - name: Prepare ccache timestamp
         id: ccache_cache_timestamp
         shell: bash
@@ -256,60 +247,19 @@ jobs:
           restore-keys: |
             ${{ matrix.name }}-ccache-
 
-      - name: Get the number of available processing cores
-        id: nproc
-        shell: bash
-        run: echo "count=$(nproc 2> /dev/null || sysctl -n hw.logicalcpu)" >> "$GITHUB_OUTPUT"
+      - name: Build zebrad
+        run: cargo build --release --bin zebrad
 
-      - name: Build zcashd
-        id: build
-        env:
-          HOST: ${{ matrix.host }}
-        run: >
-          ./zcutil/build.sh
-          -j"${{ steps.nproc.outputs.count }}"
-
-      - name: Upload zcashd and related executables (src)
+      - name: Upload zebrad
         uses: actions/upload-artifact@v4
         with:
-          name: zcashd-${{ matrix.name }}
+          name: zebrad-${{ matrix.name }}
           path: |
-              ${{ format('./src/zcashd{0}', matrix.file_ext) }}
-              ${{ format('./src/zcash-cli{0}', matrix.file_ext) }}
-              ${{ format('./src/zcashd-wallet-tool{0}', matrix.file_ext) }}
-              ${{ format('./src/zcash-tx{0}', matrix.file_ext) }}
-              ${{ format('./src/test/test_bitcoin{0}', matrix.file_ext) }}
-              ${{ format('./src/zcash-gtest{0}', matrix.file_ext) }}
-              ./src/test/buildenv.py
-              ${{ format('./src/bench/bench_bitcoin{0}', matrix.file_ext) }}
+              ${{ format('./target/release/zebrad{0}', matrix.file_ext) }}
 
-      - name: Upload src/secp256k1
-        uses: actions/upload-artifact@v4
-        with:
-          name: secp256k1-${{ matrix.name }}
-          path: ./src/secp256k1
-
-      - name: Upload src/univalue
-        uses: actions/upload-artifact@v4
-        with:
-          name: univalue-${{ matrix.name }}
-          path: ./src/univalue
-
-      - name: Upload depends/${{ matrix.host }}/native/bin as depends-native-bin artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: depends-native-bin-${{ matrix.name }}
-          path: ./depends/${{ matrix.host }}/native/bin
-
-      - name: Upload depends/${{ matrix.host }}/lib as depends-lib artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: depends-lib-${{ matrix.name }}
-          path: ./depends/${{ matrix.host }}/lib
-
-  bitrot:
-    name: Bitrot check tier ${{ matrix.tier }} platform ${{ matrix.platform }} flag '${{ matrix.configure_flag }}'
-    needs: [setup, build]
+  build-zaino:
+    name: Build zainod on tier ${{ matrix.tier }} platform ${{ matrix.platform }}
+    needs: setup
     runs-on: ${{ matrix.build_os }}
     container:
       image: ${{ matrix.container }}
@@ -319,15 +269,17 @@ jobs:
     continue-on-error: ${{ matrix.tier == 3 }}
     strategy:
       matrix:
-        name: ${{ fromJson(needs.setup.outputs.build_names) }}
-        configure_flag:
-          - '--with-libs'
-          - '--disable-wallet'
-          - '--disable-mining'
         include: ${{ fromJson(needs.setup.outputs.build_matrix) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Use zingolabs/zaino current main
+        run: echo "ZAINO_REF=refs/heads/dev" >> $GITHUB_ENV
+
+      - name: Check out zingolabs/zaino
+        uses: actions/checkout@v4
+        with:
+          repository: zingolabs/zaino
+          ref: ${{ env.ZAINO_REF }}
 
       - name: Install Homebrew build dependencies
         if: matrix.brew_deps != ''
@@ -343,13 +295,66 @@ jobs:
           sudo update-alternatives --set x86_64-w64-mingw32-gcc $(update-alternatives --query x86_64-w64-mingw32-gcc | grep Alternative | grep posix | cut -d' ' -f2)
           sudo update-alternatives --set x86_64-w64-mingw32-g++ $(update-alternatives --query x86_64-w64-mingw32-g++ | grep Alternative | grep posix | cut -d' ' -f2)
 
-      - name: Cache built dependencies
+      - name: Prepare ccache timestamp
+        id: ccache_cache_timestamp
+        shell: bash
+        run: echo "timestamp=$(date +'%Y-%m-%d-%H;%M;%S')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache ccache files
         uses: actions/cache@v4
         with:
-          path: depends/built
-          key: ${{ matrix.name }}-built-${{ hashFiles('depends/Makefile', 'depends/funcs.mk') }}-${{ hashFiles('depends/packages/*.mk', 'depends/patches/**/*') }}
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ccache' || '~/.cache/ccache' }}
+          key: ${{ matrix.name }}-ccache-${{ steps.ccache_cache_timestamp.outputs.timestamp }}
           restore-keys: |
-            ${{ matrix.name }}-built-${{ hashFiles('depends/Makefile', 'depends/funcs.mk') }}-
+            ${{ matrix.name }}-ccache-
+
+      - name: Build zainod
+        run: cargo build --release --bin zainod
+
+      - name: Upload zainod
+        uses: actions/upload-artifact@v4
+        with:
+          name: zainod-${{ matrix.name }}
+          path: |
+              ${{ format('./target/release/zainod{0}', matrix.file_ext) }}
+
+  build-zallet:
+    name: Build zallet on tier ${{ matrix.tier }} platform ${{ matrix.platform }}
+    needs: setup
+    runs-on: ${{ matrix.build_os }}
+    container:
+      image: ${{ matrix.container }}
+      env:
+        HOME: /root
+        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+    continue-on-error: ${{ matrix.tier == 3 }}
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.build_matrix) }}
+
+    steps:
+      - name: Use zcash/wallet current main
+        run: echo "ZALLET_REF=refs/heads/main" >> $GITHUB_ENV
+
+      - name: Check out zcash/wallet
+        uses: actions/checkout@v4
+        with:
+          repository: zcash/wallet
+          ref: ${{ env.ZALLET_REF }}
+
+      - name: Install Homebrew build dependencies
+        if: matrix.brew_deps != ''
+        run: brew install ${{ matrix.brew_deps }}
+
+      - name: Install cross-compilation build dependencies
+        if: matrix.cross_deps != ''
+        run: sudo apt update && sudo apt install ${{ matrix.cross_deps }}
+
+      - name: Configure MinGW to use POSIX variant
+        if: matrix.name == 'mingw32'
+        run: |
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc $(update-alternatives --query x86_64-w64-mingw32-gcc | grep Alternative | grep posix | cut -d' ' -f2)
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ $(update-alternatives --query x86_64-w64-mingw32-g++ | grep Alternative | grep posix | cut -d' ' -f2)
 
       - name: Prepare ccache timestamp
         id: ccache_cache_timestamp
@@ -364,270 +369,24 @@ jobs:
           restore-keys: |
             ${{ matrix.name }}-ccache-
 
-      - name: Get the number of available processing cores
-        id: nproc
-        shell: bash
-        run: echo "count=$(nproc 2> /dev/null || sysctl -n hw.logicalcpu)" >> "$GITHUB_OUTPUT"
+      - name: Build zallet
+        run: cargo build --release --bin zallet
 
-      - name: Build zcashd with the flag being checked
-        env:
-          CONFIGURE_FLAGS: "${{ matrix.configure_flag }}"
-          HOST: ${{ matrix.host }}
-        run: >
-          ./zcutil/build.sh
-          -j"${{ steps.nproc.outputs.count }}"
-
-  test-btest:
-    name: Boost.Test tier ${{ matrix.tier }} platform ${{ matrix.platform }}
-    needs: [setup, build]
-    runs-on: ${{ matrix.test_os }}
-    container:
-      image: ${{ matrix.container }}
-      env:
-        HOME: /root
-        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-    continue-on-error: ${{ matrix.tier != 1 }}
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.setup.outputs.test_matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download src artifact
-        uses: actions/download-artifact@v4
+      - name: Upload zallet
+        uses: actions/upload-artifact@v4
         with:
-          name: zcashd-${{ matrix.name }}
-          path: ./src
-
-      - name: Make artifact executable
-        if: runner.os != 'Windows'
-        run: chmod +x ${{ format('./src/test/test_bitcoin{0}', matrix.file_ext) }}
-
-      - name: Run Boost.Tests
-        run: ${{ format('./src/test/test_bitcoin{0}', matrix.file_ext) }} -p
-
-  test-gtest:
-    name: GoogleTest tier ${{ matrix.tier }} platform ${{ matrix.platform }} - shard ${{ matrix.shard_index }}
-    needs: [setup, build]
-    runs-on: ${{ matrix.test_os }}
-    container:
-      image: ${{ matrix.container }}
-      env:
-        HOME: /root
-        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-    continue-on-error: ${{ matrix.tier != 1 }}
-    strategy:
-      matrix:
-        name: ${{ fromJson(needs.setup.outputs.test_names) }}
-        shard_index: [0, 1]
-        include: ${{ fromJson(needs.setup.outputs.test_matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download src artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: zcashd-${{ matrix.name }}
-          path: ./src
-
-      - name: Make artifact executable
-        if: runner.os != 'Windows'
-        run: chmod +x ${{ format('./src/zcash-gtest{0}', matrix.file_ext) }}
-
-      - name: Cache Sprout parameters
-        uses: actions/cache@v4
-        with:
-          path: zcash-params
-          key: zcash-params
-          restore-keys: |
-            zcash-params
-
-      - name: Download Sprout parameters
-        # In case the cache of Sprout parameters step fails
-        shell: bash
-        run: |
-          mkdir zcash-params || echo ""
-          curl -L -C - https://download.z.cash/downloads/sprout-groth16.params -o zcash-params/sprout-groth16.params
-
-      - name: Setup zcash-params
-        shell: bash
-        run: |
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            mv zcash-params "$APPDATA/ZcashParams"
-          elif [ "${{ runner.os }}" == "macOS" ]; then
-            mv zcash-params "$HOME/Library/Application Support/ZcashParams"
-          elif [ "${{ runner.os }}" == "Linux" ]; then
-            mv zcash-params "$HOME/.zcash-params"
-          fi
-
-      - name: Run GoogleTests
-        env:
-          GTEST_TOTAL_SHARDS: 2
-          GTEST_SHARD_INDEX: ${{ matrix.shard_index }}
-        run: ${{ format('./src/zcash-gtest{0}', matrix.file_ext) }}
-
-  test-rust:
-    name: Rust test tier ${{ matrix.tier }} platform ${{ matrix.platform }}
-    needs: [setup, build]
-    runs-on: ${{ matrix.test_os }}
-    container:
-      image: ${{ matrix.container }}
-      env:
-        HOME: /root
-        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-    continue-on-error: ${{ matrix.tier != 1 }}
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.setup.outputs.test_matrix) }}
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run Rust tests
-        run: cargo test
-
-  # Not designed for Windows
-  test-secp256k1:
-    name: secp256k1 tier ${{ matrix.tier }} platform ${{ matrix.platform }}
-    needs: [setup, build]
-    runs-on: ${{ matrix.test_os }}
-    container:
-      image: ${{ matrix.container }}
-      env:
-        HOME: /root
-        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-    continue-on-error: ${{ matrix.tier != 1 }}
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.setup.outputs.unix_test_matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Homebrew build dependencies
-        if: matrix.brew_deps != ''
-        run: brew install ${{ matrix.brew_deps }}
-
-      - name: Download src/secp256k1 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: secp256k1-${{ matrix.name }}
-          path: ./src/secp256k1
-
-      - name: Run secp256k1 test
-        shell: bash
-        run: python3 ./qa/zcash/full_test_suite.py secp256k1
-        env:
-          HOST: ${{ matrix.host }}
-
-  # Not designed for Windows
-  test-univalue:
-    name: univalue tier ${{ matrix.tier }} platform ${{ matrix.platform }}
-    needs: [setup, build]
-    runs-on: ${{ matrix.test_os }}
-    container:
-      image: ${{ matrix.container }}
-      env:
-        HOME: /root
-        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-    continue-on-error: ${{ matrix.tier != 1 }}
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.setup.outputs.unix_test_matrix) }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Homebrew build dependencies
-        if: matrix.brew_deps != ''
-        run: brew install ${{ matrix.brew_deps }}
-
-      - name: Download native/bin artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: depends-native-bin-${{ matrix.name }}
-          path: ./depends/${{ matrix.host }}/
-
-      - name: Download src/univalue artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: univalue-${{ matrix.name }}
-          path: ./src/univalue
-
-      - name: Make artifact executable
-        if: runner.os != 'Windows'
-        run: chmod +x ./src/univalue/build-aux/install-sh
-
-      - name: Run univalue test
-        shell: bash
-        run: python3 ./qa/zcash/full_test_suite.py univalue
-        env:
-          HOST: ${{ matrix.host }}
-
-  # Not designed for Windows
-  test-util:
-    name: util-test tier ${{ matrix.tier }} platform ${{ matrix.platform }}
-    needs: [setup, build]
-    runs-on: ${{ matrix.test_os }}
-    container:
-      image: ${{ matrix.container }}
-      env:
-        HOME: /root
-        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-    continue-on-error: ${{ matrix.tier != 1 }}
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.setup.outputs.unix_test_matrix) }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download src artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: zcashd-${{ matrix.name }}
-          path: ./src
-
-      - name: Make artifact executable
-        if: runner.os != 'Windows'
-        run: chmod +x ${{ format('./src/zcash-tx{0}', matrix.file_ext) }}
-
-      - name: Run util-test test
-        shell: bash
-        run: python3 ./qa/zcash/full_test_suite.py util-test
-        env:
-          HOST: ${{ matrix.host }}
-
-  no-dot-so:
-    name: no-dot-so tier ${{ matrix.tier }} platform ${{ matrix.platform }}
-    needs: [setup, build]
-    runs-on: ${{ matrix.test_os }}
-    container:
-      image: ${{ matrix.container }}
-      env:
-        HOME: /root
-        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-    continue-on-error: ${{ matrix.tier != 1 }}
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.setup.outputs.test_matrix) }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download depends/${{ matrix.host }}/lib
-        uses: actions/download-artifact@v4
-        with:
-          name: depends-lib-${{ matrix.name }}
-          path: ./depends/${{ matrix.host }}/lib
-
-
-      - name: Run no-dot-so test
-        run: python3 ./qa/zcash/full_test_suite.py no-dot-so
-        env:
-          HOST: ${{ matrix.host }}
+          name: zallet-${{ matrix.name }}
+          path: |
+              ${{ format('./target/release/zallet{0}', matrix.file_ext) }}
 
   # Not working in Windows
   sec-hard:
     name: sec-hard tier ${{ matrix.tier }} platform ${{ matrix.platform }}
-    needs: [setup, build]
+    needs:
+      - setup
+      - build-zebra
+      - build-zaino
+      - build-zallet
     runs-on: ${{ matrix.test_os }}
     container:
       image: ${{ matrix.container }}
@@ -642,22 +401,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download src artifact
+      - name: Download zebrad artifact
         uses: actions/download-artifact@v4
         with:
-          name: zcashd-${{ matrix.name }}
+          name: zebrad-${{ matrix.name }}
+          path: ./src
+
+      - name: Download zainod artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: zainod-${{ matrix.name }}
+          path: ./src
+
+      - name: Download zallet artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: zallet-${{ matrix.name }}
           path: ./src
 
       - name: Make artifact executable
         if: runner.os != 'Windows'
         run: |
-          chmod +x ${{ format('./src/test/test_bitcoin{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/bench/bench_bitcoin{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zcashd{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zcash-cli{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zcash-gtest{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zcashd-wallet-tool{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zcash-tx{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./src/zebrad{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./src/zainod{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./src/zallet{0}', matrix.file_ext) }}
 
       - name: Run sec-hard test
         shell: bash
@@ -696,7 +463,12 @@ jobs:
 
   test-rpc:
     name: RPC tests tier ${{ matrix.tier }} platform ${{ matrix.platform }} ${{ matrix.shard }}
-    needs: [setup, build, rpc-depends]
+    needs:
+      - setup
+      - build-zebra
+      - build-zaino
+      - build-zallet
+      - rpc-depends
     runs-on: ${{ matrix.test_os }}
     container:
       image: ${{ matrix.container }}
@@ -727,17 +499,30 @@ jobs:
           . ./venv/bin/activate
           pip install zmq asyncio base58
 
-      - name: Download src artifact
+      - name: Download zebrad artifact
         uses: actions/download-artifact@v4
         with:
-          name: zcashd-${{ matrix.name }}
+          name: zebrad-${{ matrix.name }}
+          path: ./src
+
+      - name: Download zainod artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: zainod-${{ matrix.name }}
+          path: ./src
+
+      - name: Download zallet artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: zallet-${{ matrix.name }}
           path: ./src
 
       - name: Make artifact executable
         if: runner.os != 'Windows'
         run: |
-          chmod +x ${{ format('./src/zcashd{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zcash-cli{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./src/zebrad{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./src/zainod{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./src/zallet{0}', matrix.file_ext) }}
 
       - name: Get Sprout parameters
         uses: actions/cache@v4
@@ -794,4 +579,4 @@ jobs:
               sys.exit(1)
           EOF
           . ./venv/bin/activate
-          ZCASHD=$(pwd)/${{ format('src/zcashd{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py
+          ZCASHD=$(pwd)/${{ format('src/zebrad{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py

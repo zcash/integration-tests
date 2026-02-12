@@ -15,17 +15,13 @@ on:
     paths:
       # Workflows that have no effect on the CI workflow.
       - '.github/dependabot.yml'
-      - '.github/workflows/audits.yml'
       - '.github/workflows/book.yml'
       - '.github/workflows/ci-skip.yml'
       - '.github/workflows/lints.yml'
-      - '.github/workflows/release-docker-hub.yml'
       # Documentation.
-      - 'contrib/debian/copyright'
       - 'doc/**'
       - '**.md'
       - 'COPYING'
-      - 'INSTALL'
 
 permissions:
   contents: read
