@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2016 The Bitcoin Core developers
+# Copyright (c) 2018-2024 The Zcash developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -28,10 +29,11 @@ class MempoolPackagesTest(BitcoinTestFramework):
     def setup_network(self):
         base_args = [
             '-limitdescendantcount=%d' % (self.limitdescendantcount,),
-            '-minrelaytxfee=0',
             '-maxorphantx=%d' % (self.limitdescendantcount,),
             '-debug',
             '-allowdeprecated=getnewaddress',
+            '-allowdeprecated=createrawtransaction',
+            '-allowdeprecated=signrawtransaction',
         ]
         self.nodes = []
         self.nodes.append(start_node(0, self.options.tmpdir, base_args))
@@ -63,7 +65,7 @@ class MempoolPackagesTest(BitcoinTestFramework):
         vout = utxo[0]['vout']
         value = utxo[0]['amount']
 
-        fee = conventional_fee(2)
+        fee = conventional_fee(10)
         # 100 transactions off a confirmed tx should be fine
         chain = []
         for i in range(100):
@@ -195,6 +197,7 @@ class MempoolPackagesTest(BitcoinTestFramework):
         value = utxo[0]['amount']
         vout = utxo[0]['vout']
 
+        fee = conventional_fee(8)
         send_value = satoshi_round((value - fee)/2)
         inputs = [ {'txid' : txid, 'vout' : vout} ]
         outputs = {}

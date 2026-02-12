@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2014-2016 The Bitcoin Core developers
-# Copyright (c) 2017-2022 The Zcash developers
+# Copyright (c) 2017-2024 The Zcash developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
@@ -40,10 +40,12 @@ Options:
   -allowdeprecated=<feature>
        Explicitly allow the use of the specified deprecated feature. Multiple
        instances of this parameter are permitted; values for <feature> must be
-       selected from among {"none", "deprecationinfo_deprecationheight",
-       "gbt_oldhashes", "z_getbalance", "z_gettotalbalance", "addrtype",
-       "getnewaddress", "getrawchangeaddress", "legacy_privacy",
-       "wallettxvjoinsplit", "z_getnewaddress", "z_listaddresses"}
+       selected from among {"none", "createrawtransaction",
+       "fundrawtransaction", "getnetworkhashps", "keypoolrefill", "settxfee",
+       "signrawtransaction", "z_gettotalbalance", "addrtype",
+       "deprecationinfo_deprecationheight", "gbt_oldhashes", "getnewaddress",
+       "getrawchangeaddress", "legacy_privacy", "wallettxvjoinsplit",
+       "z_getbalance", "z_getnewaddress", "z_listaddresses"}
 
   -blocknotify=<cmd>
        Execute command when the best block changes (%s in cmd is replaced by
@@ -430,8 +432,8 @@ Debugging/Testing options:
        all debugging information. <category> can be: addrman, alert, bench,
        coindb, db, http, libevent, lock, mempool, mempoolrej, net,
        partitioncheck, pow, proxy, prune, rand, receiveunsafe, reindex, rpc,
-       selectcoins, tor, zmq, zrpc, zrpcunsafe (implies zrpc). For multiple
-       specific categories use -debug=<category> multiple times.
+       selectcoins, tor, valuepool, zmq, zrpc, zrpcunsafe (implies zrpc). For
+       multiple specific categories use -debug=<category> multiple times.
 
   -experimentalfeatures
        Enable use of experimental features
@@ -502,7 +504,7 @@ Node relay options:
 
   -txunpaidactionlimit=<n>
        Transactions with more than this number of unpaid actions will not be
-       accepted to the mempool or relayed (default: 50)
+       accepted to the mempool or relayed (default: 0)
 
 Block creation options:
 
@@ -511,7 +513,7 @@ Block creation options:
 
   -blockunpaidactionlimit=<n>
        Set the limit on unpaid actions that will be accepted in a block for
-       transactions paying less than the ZIP 317 fee (default: 50)
+       transactions paying less than the ZIP 317 fee (default: 0)
 
 |  -blockversion=<n>
 |       Override block version to test forking scenarios (default: 4)
