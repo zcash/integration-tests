@@ -22,22 +22,29 @@ OS X
 pip3 install pyzmq base58 toml
 ```
 
+Setup
+=====
+
+By default, binaries must exist in the `../src ` folder. All tests require the `zebrad`
+binary; most tests require the `zallet` binary; some tests require the `zainod` binary.
+
+Alternatively, you can set the binary paths with:
+```
+export ZEBRAD=/path/to/zebrad
+export ZAINOD=/path/to/zainod
+export ZALLET=/path/to/zallet
+```
+
 Running tests locally
 =====================
-
-Make sure `zebrad` binary exists in the `../target/debug/` folder or set the binary path with:
-```
-export CARGO_BIN_EXE_zebrad=/path/to/zebrad
-```
-
-For wallet tests, make sure `zallet` binary exists in the `../target/debug/` folder.
-You can build `zebrad` and `zallet` with the following command:
-
-    ZALLET=1 cargo build
 
 You can run any single test by calling
 
     ./qa/pull-tester/rpc-tests.py <testname1>
+
+Or you can run any combination of tests by calling
+
+    ./qa/pull-tester/rpc-tests.py <testname1> <testname2> <testname3> ...
 
 Run the regression test suite with
 

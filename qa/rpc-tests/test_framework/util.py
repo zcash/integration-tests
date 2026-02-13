@@ -55,10 +55,10 @@ PORT_MIN = 11000
 PORT_RANGE = 5000
 
 def zcashd_binary():
-    return os.getenv("CARGO_BIN_EXE_zebrad", os.path.join("..", "target", "debug", "zebrad"))
+    return os.getenv("ZEBRAD", os.path.join("src", "zebrad"))
 
 def zallet_binary():
-    return os.getenv("ZALLET", os.path.join("..", "target", "debug", "zallet"))
+    return os.getenv("ZALLET", os.path.join("src", "zallet"))
 
 def zebrad_config(datadir):
     base_location = os.path.join('qa', 'base_config.toml')
@@ -67,7 +67,7 @@ def zebrad_config(datadir):
     return new_location
 
 def zaino_binary():
-    return os.getenv("ZAINOD", os.path.join("..", "target", "debug", "zainod"))
+    return os.getenv("ZAINOD", os.path.join("src", "zainod"))
 
 def zainod_config(datadir):
     base_location = os.path.join('qa', 'zindexer.toml')

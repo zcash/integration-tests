@@ -322,8 +322,12 @@ def run_tests(test_handler, test_list, src_dir, build_dir, exeext, jobs=1, enabl
         BOLD = ('\033[0m', '\033[1m')
 
     #Set env vars
-    if "CARGO_BIN_EXE_zebrad" not in os.environ:
-        os.environ["CARGO_BIN_EXE_zebrad"] = os.path.join("..", "target", "debug", "zebrad")
+    if "ZEBRAD" not in os.environ:
+        os.environ["ZEBRAD"] = os.path.join(build_dir, "src", "zebrad" + exeext)
+    if "ZAINOD" not in os.environ:
+        os.environ["ZAINOD"] = os.path.join(build_dir, "src", "zainod" + exeext)
+    if "ZALLET" not in os.environ:
+        os.environ["ZALLET"] = os.path.join(build_dir, "src", "zallet" + exeext)
 
     tests_dir = src_dir + '/qa/rpc-tests/'
 
