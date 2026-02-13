@@ -21,13 +21,14 @@ class PoolsTest(BitcoinTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 1
+        self.num_wallets = 0
         self.cache_behavior = 'clean'
 
-    def setup_network(self):
+    def setup_nodes(self):
         # Add test pre and post NU6 funding streams to the node.
         args = ZebraExtraArgs(funding_streams=[pre_nu6_funding_streams(), post_nu6_funding_streams()]),
 
-        self.nodes = start_nodes(self.num_nodes, self.options.tmpdir, extra_args=args)
+        return start_nodes(self.num_nodes, self.options.tmpdir, extra_args=args)
 
     def run_test(self):
 

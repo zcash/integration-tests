@@ -18,6 +18,7 @@ class OnetimeLockboxDisbursementTest(BitcoinTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 1
+        self.num_wallets = 0
         self.cache_behavior = 'clean'
 
     def start_node_with(self, index, extra_args=[]):
@@ -30,9 +31,8 @@ class OnetimeLockboxDisbursementTest(BitcoinTestFramework):
 
         return start_node(index, self.options.tmpdir, args)
 
-    def setup_network(self, split=False):
-        self.nodes = []
-        self.nodes.append(self.start_node_with(0))
+    def setup_nodes(self):
+        return [self.start_node_with(0)]
 
     def run_test(self):
 

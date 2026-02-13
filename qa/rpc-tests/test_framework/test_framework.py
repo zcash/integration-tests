@@ -12,20 +12,25 @@ import os
 import sys
 import shutil
 import tempfile
+import time
 import traceback
 
 from .proxy import JSONRPCException
 from .util import (
-    stop_wallets,
-    stop_zainos,
     zcashd_binary,
     initialize_chain,
     start_nodes,
+    start_wallets,
+    start_zainos,
     connect_nodes_bi,
     sync_blocks,
     sync_mempools,
     stop_nodes,
+    stop_wallets,
+    stop_zainos,
     wait_bitcoinds,
+    wait_zainods,
+    wait_zallets,
     enable_coverage,
     check_json_precision,
     PortSeed,
@@ -36,8 +41,11 @@ class BitcoinTestFramework(object):
 
     def __init__(self):
         self.num_nodes = 4
+        self.num_indexers = 0
+        self.num_wallets = 4
         self.cache_behavior = 'current'
         self.nodes = None
+        self.zainos = None
         self.wallets = None
 
     def run_test(self):
@@ -53,32 +61,58 @@ class BitcoinTestFramework(object):
     def setup_nodes(self):
         return start_nodes(self.num_nodes, self.options.tmpdir)
 
+    def prepare_chain(self):
+        if self.num_indexers > 0:
+            # Zaino need at least 100 blocks to start
+            if self.nodes[0].getblockcount() < 100:
+                self.nodes[0].generate(100)
+        elif self.num_wallets > 0:
+            # Zallet needs a block to start
+            if self.nodes[0].getblockcount() < 1:
+                self.nodes[0].generate(1)
+
+    def setup_indexers(self):
+        return start_zainos(self.num_indexers, self.options.tmpdir)
+
+    def setup_wallets(self):
+        return start_wallets(self.num_wallets, self.options.tmpdir)
+
     def setup_network(self, split = False, do_mempool_sync = True):
         self.nodes = self.setup_nodes()
 
         # Connect the nodes as a "chain".  This allows us
         # to split the network between nodes 1 and 2 to get
         # two halves that can work on competing chains.
-        connect_nodes_bi(self.nodes, 0, 1)
 
         # If we joined network halves, connect the nodes from the joint
         # on outward.  This ensures that chains are properly reorganised.
+        if not split and len(self.nodes) >= 3:
+            connect_nodes_bi(self.nodes, 1, 2)
+            sync_blocks(self.nodes[1:3])
+            if do_mempool_sync:
+                sync_mempools(self.nodes[1:3])
+
+        if len(self.nodes) >= 2:
+            connect_nodes_bi(self.nodes, 0, 1)
         if len(self.nodes) >= 4:
             connect_nodes_bi(self.nodes, 2, 3)
-            if not split:
-                connect_nodes_bi(self.nodes, 1, 2)
-                sync_blocks(self.nodes[1:3])
-                if do_mempool_sync:
-                    sync_mempools(self.nodes[1:3])
 
         self.is_network_split = split
+        self.prepare_chain()
         self.sync_all(do_mempool_sync)
+
+        self.zainos = self.setup_indexers()
+        self.wallets = self.setup_wallets()
 
     def split_network(self):
         """
         Split the network of four nodes into nodes 0/1 and 2/3.
         """
         assert not self.is_network_split
+        stop_wallets(self.wallets)
+        wait_zallets()
+        stop_zainos(self.zainos)
+        wait_zainods()
         stop_nodes(self.nodes)
         wait_bitcoinds()
         self.setup_network(True)
@@ -95,11 +129,21 @@ class BitcoinTestFramework(object):
             if do_mempool_sync:
                 sync_mempools(self.nodes)
 
+        # TODO: Sync wallets inside `sync_blocks`
+        # TODO: Use `getwalletstatus` in all sync issues
+        # https://github.com/zcash/wallet/issues/316
+        if self.num_wallets > 0:
+            time.sleep(2)
+
     def join_network(self):
         """
         Join the (previously split) network halves together.
         """
         assert self.is_network_split
+        stop_wallets(self.wallets)
+        wait_zallets()
+        stop_zainos(self.zainos)
+        wait_zainods()
         stop_nodes(self.nodes)
         wait_bitcoinds()
         self.setup_network(False, False)
@@ -162,26 +206,20 @@ class BitcoinTestFramework(object):
         except KeyboardInterrupt as e:
             print("Exiting after " + repr(e))
 
-        print("Stopping wallets")
-        try:
-            if self.wallets:
-                stop_wallets(self.wallets)
-        except Exception as e:
-            print("Ignoring error while stopping wallets: ", repr(e))
-
-        print("Stopping indexers")
-        try:
-            if self.zainos:
-                stop_zainos(self.zainos)
-        except Exception as e:
-            print("Ignoring error while stopping zainos: ", repr(e))
-
         if not self.options.noshutdown:
+            print("Stopping wallets")
+            stop_wallets(self.wallets)
+            wait_zallets()
+
+            print("Stopping indexers")
+            stop_zainos(self.zainos)
+            wait_zainods()
+
             print("Stopping nodes")
             stop_nodes(self.nodes)
             wait_bitcoinds()
         else:
-            print("Note: bitcoinds were not stopped and may still be running")
+            print("Note: zebrads, zainods, and zallets were not stopped and may still be running")
 
         if not self.options.nocleanup and not self.options.noshutdown:
             print("Cleaning up")

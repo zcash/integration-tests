@@ -12,21 +12,15 @@ class AddNodeTest (BitcoinTestFramework):
         super().__init__()
         self.cache_behavior = 'clean'
         self.num_nodes = 3
+        self.num_wallets = 0
 
-    def setup_network(self, split=False):
-        args = [None, None, None]
-        self.nodes = start_nodes(self.num_nodes , self.options.tmpdir, extra_args=args)
-
+    def run_test(self):
         # connect all the nodes to each other
-        connect_nodes_bi(self.nodes,0,1)
-        connect_nodes_bi(self.nodes,1,2)
         connect_nodes_bi(self.nodes,0,2)
-        self.is_network_split=split
 
         self.nodes[0].generate(1)
         self.sync_all(False)
 
-    def run_test(self):
         print("Mining blocks...")
 
         # Mine a block from node0

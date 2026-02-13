@@ -13,16 +13,8 @@ class IndexerTest (BitcoinTestFramework):
         super().__init__()
         self.cache_behavior = 'clean'
         self.num_nodes = 1
-
-    def setup_network(self, split=False):
-        args = [None]
-        self.nodes = start_nodes(self.num_nodes, self.options.tmpdir, args)
-
-        # Zaino need at least 100 blocks to start
-        self.nodes[0].generate(100)
-
-        args = [None]
-        self.zainos = start_zainos(1, self.options.tmpdir)
+        self.num_indexers = 1
+        self.num_wallets = 0
 
     def run_test(self):
         assert_equal(self.zainos[0].getblockcount(), 100)

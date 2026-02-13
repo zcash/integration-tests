@@ -13,11 +13,8 @@ class BackupNonFinalized(BitcoinTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 1
+        self.num_wallets = 0
         self.cache_behavior = 'clean'
-
-    def setup_network(self):
-        # Start a node with default configuration
-        self.nodes = start_nodes(self.num_nodes, self.options.tmpdir, [None])
 
     def run_test(self):
         self.nodes[0].generate(10)

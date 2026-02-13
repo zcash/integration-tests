@@ -29,14 +29,8 @@ class NuparamsTest(BitcoinTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 1
+        self.num_wallets = 0
         self.cache_behavior = 'clean'
-
-    def setup_network(self, split=False):
-        args = [None]
-
-        self.nodes = start_nodes(self.num_nodes, self.options.tmpdir, args)
-        self.is_network_split = False
-        self.sync_all()
 
     def run_test(self):
         node = self.nodes[0]

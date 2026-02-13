@@ -18,19 +18,7 @@ class WalletTest (BitcoinTestFramework):
         super().__init__()
         self.cache_behavior = 'clean'
         self.num_nodes = 1
-
-    def setup_network(self, split=False):
-        args = [None]
-        self.nodes = start_nodes(self.num_nodes, self.options.tmpdir, args)
-
-        # Zallet needs a block to start
-        self.nodes[0].generate(1)
-
-        self.wallets = start_wallets(self.num_nodes, self.options.tmpdir)
-
-        # TODO: Use `getwalletstatus` in all sync issues
-        # https://github.com/zcash/wallet/issues/316
-        time.sleep(2)
+        self.num_wallets = 1
 
     def run_test(self):
         # Generate a new account

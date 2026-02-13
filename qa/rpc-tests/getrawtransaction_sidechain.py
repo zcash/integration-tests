@@ -16,13 +16,8 @@ class GetRawTransactionSideChainTest(BitcoinTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 1
+        self.num_wallets = 0
         self.cache_behavior = 'clean'
-
-    def setup_nodes(self):
-        return start_nodes(self.num_nodes, self.options.tmpdir)
-
-    def setup_network(self, split=False, do_mempool_sync=True):
-        self.nodes = self.setup_nodes()
 
     def run_test(self):
         n = self.nodes[0]

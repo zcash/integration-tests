@@ -919,7 +919,17 @@ def stop_wallets(wallets):
             wallet.stop()
         except http.client.CannotSendRequest as e:
             print("WARN: Unable to stop wallet: " + repr(e))
+        except BrokenPipeError as e:
+            print("WARN: Wallet already stopped: " + repr(e))
+        except ConnectionRefusedError as e:
+            print("WARN: Wallet already stopped: " + repr(e))
     del wallets[:] # Emptying array closes connections as a side effect
+
+def wait_zallets():
+    # Wait for all zallets to cleanly exit
+    for zallet in list(zallet_processes.values()):
+        zallet.wait()
+    zallet_processes.clear()
 
 def zallet_config(datadir):
     base_location = os.path.join('qa', 'zallet-datadir')
@@ -963,7 +973,7 @@ def rpc_url_wallet(i, rpchost=None):
 
 # Zaino utilities
 
-zaino_processes = {}
+zainod_processes = {}
 
 def start_zainos(num_nodes, dirname, extra_args=None, rpchost=None, binary=None):
     """
@@ -995,13 +1005,13 @@ def start_zaino(i, dirname, extra_args=None, rpchost=None, timewait=None, binary
 
     args = [ binary, "-c="+config ]
 
-    zaino_processes[i] = subprocess.Popen(args, stderr=stderr)
+    zainod_processes[i] = subprocess.Popen(args, stderr=stderr)
     if os.getenv("PYTHON_DEBUG", ""):
         print("start_node: zainod started, waiting for RPC to come up")
     url = rpc_zaino_url(i, rpchost)
-    wait_for_zainod_start(zaino_processes[i], url, i)
+    wait_for_zainod_start(zainod_processes[i], url, i)
     if os.getenv("PYTHON_DEBUG", ""):
-        print("start_node: RPC successfully started for node {} with pid {}".format(i, zaino_processes[i].pid))
+        print("start_node: RPC successfully started for node {} with pid {}".format(i, zainod_processes[i].pid))
     proxy = get_rpc_proxy(url, i, timeout=timewait)
 
     if COVERAGE_DIR:
@@ -1050,18 +1060,20 @@ def update_zainod_conf(datadir, rpc_port, p2p_port, indexer_port, zaino_rpc_port
     return config_path
 
 def stop_zainos(zainos):
-    # Wait for all zainod processes to exit and clear the process table
-    for proc in list(zaino_processes.values()):
+    # TODO: Add a `stop` RPC method to zainod
+    del zainos[:] # Emptying array closes connections as a side effect
+
+def wait_zainods():
+    # Wait for all zainods to cleanly exit
+    for zainod in list(zainod_processes.values()):
         # TODO: Add a `stop` RPC method to zainod
         try:
-            proc.terminate()
-            proc.wait()
+            zainod.terminate()
+            zainod.wait()
         except Exception:
             try:
-                proc.kill()
+                zainod.kill()
             except Exception:
                 pass
         continue
-    zaino_processes.clear()
-
-    del zainos[:] # Emptying array closes connections as a side effect
+    zainod_processes.clear()
