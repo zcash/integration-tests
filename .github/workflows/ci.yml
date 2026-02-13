@@ -47,6 +47,7 @@ jobs:
             #   test_os: ubuntu-22.04
             #   container: electriccoinco/debian-helper:bookworm
             #   host: x86_64-pc-linux-gnu
+            #   rust_target: x86_64-unknown-linux-gnu
 
             # - name: Debian-bullseye
             #   tier: 1
@@ -55,6 +56,7 @@ jobs:
             #   test_os: ubuntu-22.04
             #   container: electriccoinco/debian-helper:bullseye
             #   host: x86_64-pc-linux-gnu
+            #   rust_target: x86_64-unknown-linux-gnu
 
             - name: ubuntu-22.04
               tier: 1
@@ -62,6 +64,7 @@ jobs:
               build_os: ubuntu-22.04
               test_os: ubuntu-22.04
               host: x86_64-pc-linux-gnu
+              rust_target: x86_64-unknown-linux-gnu
 
             - name: ubuntu-24.04
               tier: 3
@@ -69,6 +72,7 @@ jobs:
               build_os: ubuntu-24.04
               test_os: ubuntu-24.04
               host: x86_64-pc-linux-gnu
+              rust_target: x86_64-unknown-linux-gnu
 
             # - name: macos-12
             #   tier: 3
@@ -82,6 +86,7 @@ jobs:
             #     libtool
             #     pkgconfig
             #   host: x86_64-apple-darwin
+            #   rust_target: x86_64-apple-darwin
 
             - name: mingw32
               tier: 3
@@ -91,6 +96,7 @@ jobs:
               cross_deps: >
                 mingw-w64
               host: x86_64-w64-mingw32
+              rust_target: x86_64-pc-windows-gnu
               file_ext: ".exe"
 
             - name: aarch64-linux
@@ -100,6 +106,7 @@ jobs:
               cross_deps: >
                 g++-aarch64-linux-gnu
               host: aarch64-linux-gnu
+              rust_target: aarch64-unknown-linux-gnu
 
     outputs:
       build_matrix: ${{ steps.set-matrices.outputs.build_matrix }}
@@ -247,15 +254,25 @@ jobs:
           restore-keys: |
             ${{ matrix.name }}-ccache-
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.rust_target }}
+
       - name: Build zebrad
-        run: cargo build --release --bin zebrad
+        env:
+          HOST: ${{ matrix.host }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
+        run: cargo build --release --target ${{ matrix.rust_target }} --bin zebrad
 
       - name: Upload zebrad
         uses: actions/upload-artifact@v4
         with:
           name: zebrad-${{ matrix.name }}
           path: |
-              ${{ format('./target/release/zebrad{0}', matrix.file_ext) }}
+              ${{ format('./target/{0}/release/zebrad{1}', matrix.rust_target, matrix.file_ext) }}
 
   build-zaino:
     name: Build zainod on tier ${{ matrix.tier }} platform ${{ matrix.platform }}
@@ -308,15 +325,25 @@ jobs:
           restore-keys: |
             ${{ matrix.name }}-ccache-
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.rust_target }}
+
       - name: Build zainod
-        run: cargo build --release --bin zainod
+        env:
+          HOST: ${{ matrix.host }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
+        run: cargo build --release --target ${{ matrix.rust_target }} --bin zainod
 
       - name: Upload zainod
         uses: actions/upload-artifact@v4
         with:
           name: zainod-${{ matrix.name }}
           path: |
-              ${{ format('./target/release/zainod{0}', matrix.file_ext) }}
+              ${{ format('./target/{0}/release/zainod{1}', matrix.rust_target, matrix.file_ext) }}
 
   build-zallet:
     name: Build zallet on tier ${{ matrix.tier }} platform ${{ matrix.platform }}
@@ -369,15 +396,25 @@ jobs:
           restore-keys: |
             ${{ matrix.name }}-ccache-
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.rust_target }}
+
       - name: Build zallet
-        run: cargo build --release --bin zallet
+        env:
+          HOST: ${{ matrix.host }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
+        run: cargo build --release --target ${{ matrix.rust_target }} --bin zallet
 
       - name: Upload zallet
         uses: actions/upload-artifact@v4
         with:
           name: zallet-${{ matrix.name }}
           path: |
-              ${{ format('./target/release/zallet{0}', matrix.file_ext) }}
+              ${{ format('./target/{0}/release/zallet{1}', matrix.rust_target, matrix.file_ext) }}
 
   # Not working in Windows
   sec-hard:
