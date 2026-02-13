@@ -123,7 +123,7 @@ jobs:
       rpc_test_shards_matrix: ${{ steps.set-rpc-tests.outputs.rpc_test_shards_matrix }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Configure the build and test matrices. Notes:
       # - The `*_names` lists of platforms are combined with job-specific lists to build
@@ -245,7 +245,7 @@ jobs:
         run: echo "ZEBRA_REF=refs/heads/main" >> $GITHUB_ENV
 
       - name: Check out ZcashFoundation/zebra
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ZcashFoundation/zebra
           ref: ${{ env.ZEBRA_REF }}
@@ -348,7 +348,7 @@ jobs:
         run: echo "ZAINO_REF=refs/heads/dev" >> $GITHUB_ENV
 
       - name: Check out zingolabs/zaino
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: zingolabs/zaino
           ref: ${{ env.ZAINO_REF }}
@@ -455,7 +455,7 @@ jobs:
         run: echo "ZALLET_REF=refs/heads/main" >> $GITHUB_ENV
 
       - name: Check out zcash/wallet
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: zcash/wallet
           ref: ${{ env.ZALLET_REF }}
@@ -559,7 +559,7 @@ jobs:
             -f description="In progress"
             -f context="Integration tests / sec-hard tier ${{ matrix.tier }} platform ${{ matrix.platform }}"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download zebrad artifact
         uses: actions/download-artifact@v4
@@ -676,7 +676,7 @@ jobs:
             -f description="In progress"
             -f context="Integration tests / RPC tests tier ${{ matrix.tier }} platform ${{ matrix.platform }} ${{ matrix.shard }}"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Cache Python dependencies for RPC tests
         uses: actions/cache@v4
