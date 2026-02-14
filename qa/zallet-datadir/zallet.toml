@@ -14,7 +14,6 @@ regtest_nuparams = [
 ]
 
 [database]
-wallet = "data.sqlite"
 
 [external]
 
@@ -29,10 +28,8 @@ as_of_version = "0.0.0"
 validator_address = "127.0.0.1:0"
 validator_user = ".."
 validator_password = ".."
-db_path = "zaino"
 
 [keystore]
-encryption_identity = "identity.txt"
 
 [note_management]
 

@@ -57,6 +57,9 @@ PORT_RANGE = 5000
 def zcashd_binary():
     return os.getenv("ZEBRAD", os.path.join("src", "zebrad"))
 
+def zaino_binary():
+    return os.getenv("ZAINOD", os.path.join("src", "zainod"))
+
 def zallet_binary():
     return os.getenv("ZALLET", os.path.join("src", "zallet"))
 
@@ -66,8 +69,11 @@ def zebrad_config(datadir):
     shutil.copyfile(base_location, new_location)
     return new_location
 
-def zaino_binary():
-    return os.getenv("ZAINOD", os.path.join("src", "zainod"))
+def zallet_config(datadir):
+    base_location = os.path.join('qa', 'zallet-datadir')
+    if not os.path.exists(datadir):
+        shutil.copytree(base_location, datadir)
+    return os.path.join(datadir, "zallet.toml")
 
 def zainod_config(datadir):
     base_location = os.path.join('qa', 'zindexer.toml')
@@ -854,11 +860,8 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
     """
 
     datadir = os.path.join(dirname, "wallet"+str(i))
-    wallet_datadir = os.path.join(dirname, "wallet_data"+str(i))
-    prepare = False
-    if not os.path.exists(wallet_datadir):
-        prepare = True
-        os.mkdir(wallet_datadir)
+    wallet_db = os.path.join(datadir, "wallet.db")
+    prepare = not os.path.exists(wallet_db)
 
     if binary is None:
         binary = zallet_binary()
@@ -870,16 +873,16 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
 
     # We prepare the wallet if it is new
     if prepare:
-        args = [ binary, "-c="+config, "-d="+wallet_datadir, "init-wallet-encryption" ]
+        args = [ binary, "-c="+config, "-d="+datadir, "init-wallet-encryption" ]
         process = subprocess.Popen(args, stderr=stderr)
         process.wait()
 
-        args = [ binary, "-c="+config, "-d="+wallet_datadir, "generate-mnemonic" ]
+        args = [ binary, "-c="+config, "-d="+datadir, "generate-mnemonic" ]
         process = subprocess.Popen(args, stderr=stderr)
         process.wait()
 
     # Start the wallet
-    args = [ binary, "-c="+config, "-d="+wallet_datadir, "start" ]
+    args = [ binary, "-c="+config, "-d="+datadir, "start" ]
 
     if extra_args is not None: args.extend(extra_args)
     zallet_processes[i] = subprocess.Popen(args, stderr=stderr)
@@ -904,10 +907,6 @@ def update_zallet_conf(datadir, validator_port, zallet_port):
     config_file['rpc']['bind'][0] = '127.0.0.1:'+str(zallet_port)
     config_file['indexer']['validator_address'] = '127.0.0.1:'+str(validator_port)
 
-    config_file['database']['wallet'] = os.path.join(datadir, 'datadir/data.sqlite')
-    config_file['indexer']['db_path'] = os.path.join(datadir, 'datadir/zaino')
-    config_file['keystore']['encryption_identity'] = os.path.join(datadir, 'datadir/identity.txt')
-
     with open(config_path, 'w') as f:
         toml.dump(config_file, f)
 
@@ -930,14 +929,6 @@ def wait_zallets():
     for zallet in list(zallet_processes.values()):
         zallet.wait()
     zallet_processes.clear()
-
-def zallet_config(datadir):
-    base_location = os.path.join('qa', 'zallet-datadir')
-    new_location = os.path.join(datadir, "datadir")
-    if not os.path.exists(new_location):
-        shutil.copytree(base_location, new_location)
-    config = new_location + "/zallet.toml"
-    return config
 
 def wait_for_wallet_start(process, url, i):
     '''
