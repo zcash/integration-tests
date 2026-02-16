@@ -223,7 +223,7 @@ jobs:
       - name: Generate app token
         if: github.event.action == 'zallet-interop-request'
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.ZALLET_APP_ID }}
           private-key: ${{ secrets.ZALLET_APP_PRIVATE_KEY }}
@@ -326,7 +326,7 @@ jobs:
       - name: Generate app token
         if: github.event.action == 'zallet-interop-request'
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.ZALLET_APP_ID }}
           private-key: ${{ secrets.ZALLET_APP_PRIVATE_KEY }}
@@ -429,7 +429,7 @@ jobs:
       - name: Generate app token
         if: github.event.action == 'zallet-interop-request'
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.ZALLET_APP_ID }}
           private-key: ${{ secrets.ZALLET_APP_PRIVATE_KEY }}
@@ -541,7 +541,7 @@ jobs:
       - name: Generate app token
         if: github.event.action == 'zallet-interop-request'
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.ZALLET_APP_ID }}
           private-key: ${{ secrets.ZALLET_APP_PRIVATE_KEY }}
@@ -658,7 +658,7 @@ jobs:
       - name: Generate app token
         if: github.event.action == 'zallet-interop-request'
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.ZALLET_APP_ID }}
           private-key: ${{ secrets.ZALLET_APP_PRIVATE_KEY }}
