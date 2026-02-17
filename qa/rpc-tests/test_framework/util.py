@@ -66,7 +66,8 @@ def zallet_binary():
 def zebrad_config(datadir):
     base_location = os.path.join('qa', 'base_config.toml')
     new_location = os.path.join(datadir, "config.toml")
-    shutil.copyfile(base_location, new_location)
+    if not os.path.exists(new_location):
+        shutil.copyfile(base_location, new_location)
     return new_location
 
 def zallet_config(datadir):
@@ -79,7 +80,8 @@ def zainod_config(datadir):
     base_location = os.path.join('qa', 'zindexer.toml')
     new_location = os.path.join(datadir, "zaino_config.toml")
     os.makedirs(datadir, exist_ok=True)
-    shutil.copyfile(base_location, new_location)
+    if not os.path.exists(new_location):
+        shutil.copyfile(base_location, new_location)
     return new_location
 
 class PortSeed:
@@ -192,7 +194,7 @@ def sync_mempools(rpc_connections, wait=0.5, timeout=60):
 bitcoind_processes = {}
 
 def initialize_datadir(dirname, n, clock_offset=0):
-    datadir = os.path.join(dirname, "node"+str(n))
+    datadir = node_dir(dirname, n)
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
     rpc_u, rpc_p = rpc_auth_pair(n)
@@ -298,17 +300,43 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
     def rebuild_cache():
         #find and delete old cache directories if any exist
         for i in range(MAX_NODES):
-            if os.path.isdir(os.path.join(cachedir,"node"+str(i))):
-                shutil.rmtree(os.path.join(cachedir,"node"+str(i)))
+            node_i_dir = node_dir(cachedir, i)
+            if os.path.isdir(node_i_dir):
+                shutil.rmtree(node_i_dir)
+            wallet_i_dir = wallet_dir(cachedir, i)
+            if os.path.isdir(wallet_i_dir):
+                shutil.rmtree(wallet_i_dir)
+
+        # Create zallets and generate miner addresses:
+        zallet = zallet_binary()
+        miner_addresses = {}
+        for i in range(MAX_NODES):
+            datadir = wallet_dir(cachedir, i)
+            update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i))
+
+            args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
+            process = subprocess.Popen(args)
+            process.wait()
+
+            args = [ zallet, "-d="+datadir, "generate-mnemonic" ]
+            process = subprocess.Popen(args)
+            process.wait()
+
+            args = [ zallet, "-d="+datadir, "regtest", "generate-account-and-miner-address" ]
+            process = subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
+            (miner_address, _) = process.communicate()
+
+            miner_addresses[i] = miner_address
 
         # Create cache directories, run bitcoinds:
         block_time = int(time.time()) - (200 * PRE_BLOSSOM_BLOCK_TARGET_SPACING)
         for i in range(MAX_NODES):
             datadir = initialize_datadir(cachedir, i)
 
-            config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i))
-            binary = zcashd_binary()
-            args = [ binary, "-c="+config, "start" ]
+            config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i), ZebraExtraArgs(
+                miner_address=miner_addresses[i],
+            ))
+            args = [ zcashd_binary(), "-c="+config, "start" ]
 
             bitcoind_processes[i] = subprocess.Popen(args)
             if os.getenv("PYTHON_DEBUG", ""):
@@ -335,15 +363,68 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         # before the current time.
         for i in range(2):
             for peer in range(4):
+                # Connect the other nodes to the mining peer.
+                for i in range(0, MAX_NODES):
+                    if i != peer:
+                        connect_nodes_bi(rpcs, i, peer)
+                # Mine the blocks
                 for j in range(25):
                     rpcs[peer].generate(1)
                     block_time += PRE_BLOSSOM_BLOCK_TARGET_SPACING
                 # Must sync before next peer starts generating blocks
                 sync_blocks(rpcs)
+                # Shut down and restart every zebrad node.
+                # This works around a zebrad problem where it won't broadcast
+                # received blocks to other connected nodes, and is a workaround
+                # for zebrad not supporting `addnode remove`.
+                stop_nodes(rpcs)
+                wait_bitcoinds()
+                for i in range(MAX_NODES):
+                    config = zebrad_config(node_dir(cachedir, i))
+                    args = [ zcashd_binary(), "-c="+config, "start" ]
+                    bitcoind_processes[i] = subprocess.Popen(args)
+                    if os.getenv("PYTHON_DEBUG", ""):
+                        print("initialize_chain: %s started, waiting for RPC to come up" % (zcashd_binary(),))
+                    wait_for_bitcoind_start(bitcoind_processes[i], rpc_url(i), i)
+                    if os.getenv("PYTHON_DEBUG", ""):
+                        print("initialize_chain: RPC successfully started")
+                for i in range(MAX_NODES):
+                    try:
+                        rpcs.append(get_rpc_proxy(rpc_url(i), i))
+                    except:
+                        sys.stderr.write("Error connecting to "+rpc_url(i)+"\n")
+                        sys.exit(1)
         # Check that local time isn't going backwards
         assert_greater_than(time.time() + 1, block_time)
 
+        # Run zallets:
+        for i in range(MAX_NODES):
+            datadir = wallet_dir(cachedir, i)
+            args = [ zallet, "-d="+datadir, "start" ]
+
+            zallet_processes[i] = subprocess.Popen(args)
+            if os.getenv("PYTHON_DEBUG", ""):
+                print("initialize_chain: wallet started, waiting for RPC to come up")
+            wait_for_wallet_start(zallet_processes[i], rpc_url_wallet(i), i)
+            if os.getenv("PYTHON_DEBUG", ""):
+                print("initialize_chain: RPC successfully started for wallet {} with pid {}".format(i, zallet_processes[i].pid))
+
+        wallets = []
+        for i in range(MAX_NODES):
+            try:
+                wallets.append(get_rpc_auth_proxy(rpc_url_wallet(i), i))
+            except:
+                sys.stderr.write("Error connecting to "+rpc_url_wallet(i)+"\n")
+                sys.exit(1)
+
+        # Wait for zallets to synchronize with the nodes
+        # TODO: Use `getwalletstatus` in all sync issues
+        # https://github.com/zcash/wallet/issues/316
+        time.sleep(10)
+
         # Shut them down, and clean up cache directories:
+        stop_wallets(wallets)
+        wait_zallets()
         stop_nodes(rpcs)
         wait_bitcoinds()
         for i in range(MAX_NODES):
@@ -355,10 +436,15 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
 
     def init_from_cache():
         for i in range(num_nodes):
-            from_dir = os.path.join(cachedir, "node"+str(i))
-            to_dir = os.path.join(test_dir,  "node"+str(i))
+            from_dir = node_dir(cachedir, i)
+            to_dir = node_dir(test_dir, i)
             shutil.copytree(from_dir, to_dir)
-            with open(os.path.join(to_dir, 'regtest', 'cache_config.json'), "r", encoding="utf8") as cache_conf_file:
+
+            from_wallet_dir = wallet_dir(cachedir, i)
+            to_wallet_dir = wallet_dir(test_dir, i)
+            shutil.copytree(from_wallet_dir, to_wallet_dir)
+
+            with open(node_file(test_dir, i, 'cache_config.json'), "r", encoding="utf8") as cache_conf_file:
                 cache_conf = json.load(cache_conf_file)
                 # obtain the clock offset as a negative number of seconds
                 offset = round(cache_conf['cache_time']) - round(time.time())
@@ -404,7 +490,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
 
     def cache_rebuild_required():
         for i in range(MAX_NODES):
-            node_path = os.path.join(cachedir, 'node'+str(i))
+            node_path = node_dir(cachedir, i)
             if os.path.isdir(node_path):
                 if not os.path.isfile(node_file(cachedir, i, 'cache_config.json')):
                     return True
@@ -516,7 +602,7 @@ def start_node(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=
     """
     Start a bitcoind and return RPC connection to it
     """
-    datadir = os.path.join(dirname, "node"+str(i))
+    datadir = node_dir(dirname, i)
     if binary is None:
         binary = zcashd_binary()
 
@@ -574,8 +660,14 @@ def start_nodes(num_nodes, dirname, extra_args=None, rpchost=None, binary=None):
         raise
     return rpcs
 
+def node_dir(dirname, n_node):
+    return os.path.join(dirname, "node"+str(n_node))
+
 def node_file(dirname, n_node, filename):
-    return os.path.join(dirname, "node"+str(n_node), "regtest", filename)
+    return os.path.join(node_dir(dirname, n_node), filename)
+
+def wallet_dir(dirname, n_wallet):
+    return os.path.join(dirname, "wallet"+str(n_wallet))
 
 def check_node(i):
     bitcoind_processes[i].poll()
@@ -859,7 +951,7 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
     Start a Zallet wallet and return RPC connection to it
     """
 
-    datadir = os.path.join(dirname, "wallet"+str(i))
+    datadir = wallet_dir(dirname, i)
     wallet_db = os.path.join(datadir, "wallet.db")
     prepare = not os.path.exists(wallet_db)
 
