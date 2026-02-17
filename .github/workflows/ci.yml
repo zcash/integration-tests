@@ -291,7 +291,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.rust_target }} --bin zebrad
 
       - name: Upload zebrad
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: zebrad-${{ matrix.name }}
           path: |
@@ -394,7 +394,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.rust_target }} --bin zainod
 
       - name: Upload zainod
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: zainod-${{ matrix.name }}
           path: |
@@ -501,7 +501,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.rust_target }} --bin zallet
 
       - name: Upload zallet
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: zallet-${{ matrix.name }}
           path: |
