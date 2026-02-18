@@ -6,7 +6,6 @@
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
-    start_nodes,
 )
 
 
@@ -19,13 +18,10 @@ class ConvertTEXTest(BitcoinTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 1
-
-    def setup_network(self, split=False):
-        self.nodes = start_nodes(self.num_nodes, self.options.tmpdir)
-        self.is_network_split = False
+        self.num_wallets = 1
 
     def run_test(self):
-        node = self.nodes[0]
+        wallet = self.wallets[0]
 
         # From https://github.com/zcash-hackworks/zcash-test-vectors/blob/master/zcash_test_vectors/transparent/zip_0320.py
         # ["t_addr, tex_addr"],
@@ -48,7 +44,7 @@ class ConvertTEXTest(BitcoinTestFramework):
         ];
 
         for tv in test_vectors:
-            tex = node.z_converttex(tv[0])
+            tex = wallet.z_converttex(tv[0])
             assert_equal(tex, tv[1])
 
 if __name__ == '__main__':

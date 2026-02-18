@@ -15,10 +15,7 @@ class SignRawTransactionsTest(BitcoinTestFramework):
         super().__init__()
         self.cache_behavior = 'clean'
         self.num_nodes = 1
-
-    def setup_network(self, split=False):
-        self.nodes = start_nodes(self.num_nodes, self.options.tmpdir)
-        self.is_network_split = False
+        self.num_wallets = 1
 
     def successful_signing_test(self):
         """Creates and signs a valid raw transaction with one input.
@@ -38,8 +35,8 @@ class SignRawTransactionsTest(BitcoinTestFramework):
         outputs = {'tmJXomn8fhYy3AFqDEteifjHRMUdKtBuTGM': 0.1}
 
         # Also test setting an expiry height of 0.
-        rawTx = self.nodes[0].createrawtransaction(inputs, outputs, 0, 0)
-        rawTxSigned = self.nodes[0].signrawtransaction(rawTx, inputs, privKeys)
+        rawTx = self.wallets[0].createrawtransaction(inputs, outputs, 0, 0)
+        rawTxSigned = self.wallets[0].signrawtransaction(rawTx, inputs, privKeys)
 
         # 1) The transaction has a complete set of signatures
         assert 'complete' in rawTxSigned
@@ -79,8 +76,8 @@ class SignRawTransactionsTest(BitcoinTestFramework):
 
         outputs = {'tmJXomn8fhYy3AFqDEteifjHRMUdKtBuTGM': 0.1}
 
-        rawTx = self.nodes[0].createrawtransaction(inputs, outputs)
-        rawTxSigned = self.nodes[0].signrawtransaction(rawTx, scripts, privKeys)
+        rawTx = self.wallets[0].createrawtransaction(inputs, outputs)
+        rawTxSigned = self.wallets[0].signrawtransaction(rawTx, scripts, privKeys)
 
         # 3) The transaction has no complete set of signatures
         assert 'complete' in rawTxSigned

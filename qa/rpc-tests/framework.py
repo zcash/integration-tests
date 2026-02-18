@@ -16,19 +16,12 @@ class FrameworkTest (BitcoinTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 2
+        self.num_wallets = 0
         self.cache_behavior = 'clean'
 
     def start_node_with(self, index, extra_args=[]):
         args = []
         return start_node(index, self.options.tmpdir, args + extra_args)
-
-    def setup_network(self, split=False):
-        self.nodes = []
-        self.nodes.append(self.start_node_with(0))
-        self.nodes.append(self.start_node_with(1))
-        connect_nodes(self.nodes[1], 0)
-        self.is_network_split=False
-        self.sync_all()
 
     def run_test (self):
 

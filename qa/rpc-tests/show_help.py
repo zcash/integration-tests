@@ -610,6 +610,8 @@ class ShowHelpTest(BitcoinTestFramework):
 
     def setup_network(self):
         self.nodes = []
+        self.zainos = []
+        self.wallets = []
 
     def show_help(self, expected, extra_args):
         with tempfile.SpooledTemporaryFile(max_size=2**16) as log_stdout:

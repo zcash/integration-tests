@@ -20,6 +20,7 @@ class HTTPBasicsTest (BitcoinTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 1
+        self.num_wallets = 0
 
     def setup_chain(self):
         super().setup_chain()
@@ -29,9 +30,6 @@ class HTTPBasicsTest (BitcoinTestFramework):
         with open(os.path.join(self.options.tmpdir+"/node0", "zcash.conf"), 'a', encoding='utf8') as f:
             f.write(rpcauth+"\n")
             f.write(rpcauth2+"\n")
-
-    def setup_network(self):
-        self.nodes = self.setup_nodes()
 
     def run_test(self):
 

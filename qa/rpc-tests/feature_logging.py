@@ -14,6 +14,7 @@ from test_framework.test_framework import BitcoinTestFramework
 class LoggingTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
+        self.num_wallets = 0
         self.cache_behavior = 'clean'
 
     def run_test(self):

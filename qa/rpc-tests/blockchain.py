@@ -14,8 +14,6 @@ import decimal
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
-    start_nodes,
-    connect_nodes_bi,
 )
 
 class BlockchainTest(BitcoinTestFramework):
@@ -29,12 +27,7 @@ class BlockchainTest(BitcoinTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 2
-
-    def setup_network(self, split=False):
-        self.nodes = start_nodes(self.num_nodes, self.options.tmpdir)
-        connect_nodes_bi(self.nodes, 0, 1)
-        self.is_network_split = False
-        self.sync_all()
+        self.num_wallets = 0
 
     def run_test(self):
         node = self.nodes[0]
