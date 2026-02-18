@@ -26,7 +26,10 @@ class PoolsTest(BitcoinTestFramework):
 
     def setup_nodes(self):
         # Add test pre and post NU6 funding streams to the node.
-        args = ZebraArgs(funding_streams=[pre_nu6_funding_streams(), post_nu6_funding_streams()]),
+        args = [ZebraArgs(
+            activation_heights={"NU5": 7, "NU6": 9},
+            funding_streams=[pre_nu6_funding_streams(), post_nu6_funding_streams()],
+        )]
 
         return start_nodes(self.num_nodes, self.options.tmpdir, extra_args=args)
 
@@ -101,7 +104,8 @@ class PoolsTest(BitcoinTestFramework):
         value_pools_from_getblock = self.nodes[0].getblock('1')['valuePools']
         (transparent_pool, sapling_pool, sprout_pool, orchard_pool, deferred_pool) = get_value_pools(value_pools_from_getblock)
 
-        assert_equal(transparent_pool['chainValue'], Decimal('6.25'))
+        subsidy_per_block = Decimal('6.25')
+        assert_equal(transparent_pool['chainValue'], subsidy_per_block)
         assert_equal(sprout_pool['chainValue'], Decimal('0'))
         assert_equal(sapling_pool['chainValue'], Decimal('0'))
         assert_equal(orchard_pool['chainValue'], Decimal('0'))
@@ -124,14 +128,14 @@ class PoolsTest(BitcoinTestFramework):
         assert_equal(nu5['status'], 'pending')
         assert_equal(nu6['status'], 'pending')
 
-        print("Activating NU5 at Block 290")
-        self.nodes[0].generate(289)
+        print("Activating NU5 at Block 7")
+        self.nodes[0].generate(6)
 
         # Check that the only value pool with value is still the transparent and nothing else
-        value_pools_from_getblock = self.nodes[0].getblock('290')['valuePools']
+        value_pools_from_getblock = self.nodes[0].getblock('7')['valuePools']
         (transparent_pool, sapling_pool, sprout_pool, orchard_pool, deferred_pool) = get_value_pools(value_pools_from_getblock)
 
-        assert_equal(transparent_pool['chainValue'], Decimal('1800'))
+        assert_equal(transparent_pool['chainValue'], 7 * subsidy_per_block)
         assert_equal(sprout_pool['chainValue'], Decimal('0'))
         assert_equal(sapling_pool['chainValue'], Decimal('0'))
         assert_equal(orchard_pool['chainValue'], Decimal('0'))
@@ -155,25 +159,27 @@ class PoolsTest(BitcoinTestFramework):
         assert_equal(nu6['status'], 'pending')
     
         # Check we have fundingstream rewards but no lockbox rewards yet
+        fs_outputs = Decimal('1.25')
         block_subsidy = self.nodes[0].getblocksubsidy()
-        assert_equal(block_subsidy['miner'], Decimal('2.5'))
+        assert_equal(block_subsidy['miner'], subsidy_per_block - fs_outputs)
         assert_equal(block_subsidy['founders'], Decimal('0'))
-        assert_equal(block_subsidy['fundingstreamstotal'], Decimal('0.625'))
+        assert_equal(block_subsidy['fundingstreamstotal'], fs_outputs)
         assert_equal(block_subsidy['lockboxtotal'], Decimal('0'))
-        assert_equal(block_subsidy['totalblocksubsidy'], Decimal('3.125'))
+        assert_equal(block_subsidy['totalblocksubsidy'], subsidy_per_block)
 
         print("Activating NU6")
-        self.nodes[0].generate(1)
+        self.nodes[0].generate(2)
 
         # Check the deferred pool has value now
-        value_pools_from_getblock = self.nodes[0].getblock('291')['valuePools']
+        value_pools_from_getblock = self.nodes[0].getblock('9')['valuePools']
         (transparent_pool, sapling_pool, sprout_pool, orchard_pool, deferred_pool) = get_value_pools(value_pools_from_getblock)
 
-        assert_equal(transparent_pool['chainValue'], Decimal('1802.75'))
+        deferred_value = Decimal('0.75')
+        assert_equal(transparent_pool['chainValue'], 9 * subsidy_per_block - deferred_value)
         assert_equal(sprout_pool['chainValue'], Decimal('0'))
         assert_equal(sapling_pool['chainValue'], Decimal('0'))
         assert_equal(orchard_pool['chainValue'], Decimal('0'))
-        assert_equal(deferred_pool['chainValue'], Decimal('0.375'))
+        assert_equal(deferred_pool['chainValue'], deferred_value)
 
         getblockchaininfo = self.nodes[0].getblockchaininfo()
         value_pools_from_getblockchaininfo = getblockchaininfo['valuePools']
@@ -193,25 +199,26 @@ class PoolsTest(BitcoinTestFramework):
         assert_equal(nu6['status'], 'active')
 
         # Check that we have fundingstreams and lockbox rewards
+        fs_outputs = Decimal('0.5')
         block_subsidy = self.nodes[0].getblocksubsidy()
-        assert_equal(block_subsidy['miner'], Decimal('2.5'))
+        assert_equal(block_subsidy['miner'], subsidy_per_block - fs_outputs - deferred_value)
         assert_equal(block_subsidy['founders'], Decimal('0'))
-        assert_equal(block_subsidy['fundingstreamstotal'], Decimal('0.25'))
-        assert_equal(block_subsidy['lockboxtotal'], Decimal('0.375'))
-        assert_equal(block_subsidy['totalblocksubsidy'], Decimal('3.125'))
+        assert_equal(block_subsidy['fundingstreamstotal'], fs_outputs)
+        assert_equal(block_subsidy['lockboxtotal'], deferred_value)
+        assert_equal(block_subsidy['totalblocksubsidy'], subsidy_per_block)
 
-        print("Pass NU6 by one block, tip now at Block 292, inside the range of the lockbox rewards")
+        print("Pass NU6 by one block, tip now at Block 10, inside the range of the lockbox rewards")
         self.nodes[0].generate(1)
 
         # Check the deferred pool has more value now
-        value_pools_from_getblock = self.nodes[0].getblock('292')['valuePools']
+        value_pools_from_getblock = self.nodes[0].getblock('10')['valuePools']
         (transparent_pool, sapling_pool, sprout_pool, orchard_pool, deferred_pool) = get_value_pools(value_pools_from_getblock)
 
-        assert_equal(transparent_pool['chainValue'], Decimal('1805.5'))
+        assert_equal(transparent_pool['chainValue'], 10 * subsidy_per_block - 2 * deferred_value)
         assert_equal(sprout_pool['chainValue'], Decimal('0'))
         assert_equal(sapling_pool['chainValue'], Decimal('0'))
         assert_equal(orchard_pool['chainValue'], Decimal('0'))
-        assert_equal(deferred_pool['chainValue'], Decimal('0.75'))
+        assert_equal(deferred_pool['chainValue'], 2 * deferred_value)
 
         getblockchaininfo = self.nodes[0].getblockchaininfo()
         value_pools_from_getblockchaininfo = getblockchaininfo['valuePools']
@@ -219,18 +226,18 @@ class PoolsTest(BitcoinTestFramework):
 
         assert_value_pools_equals(value_pools_from_getblock, value_pools_from_getblockchaininfo)
 
-        print("Pass the range of the lockbox, tip now at Block 294")
+        print("Pass the range of the lockbox, tip now at Block 12")
         self.nodes[0].generate(2)
 
         # Check the final deferred pool remains the same (locked until NU6.1)
-        value_pools_from_getblock = self.nodes[0].getblock('294')['valuePools']
+        value_pools_from_getblock = self.nodes[0].getblock('12')['valuePools']
         (transparent_pool, sapling_pool, sprout_pool, orchard_pool, deferred_pool) = get_value_pools(value_pools_from_getblock)
 
-        assert_equal(transparent_pool['chainValue'], Decimal('1811.75'))
+        assert_equal(transparent_pool['chainValue'], 12 * subsidy_per_block - 2 * deferred_value)
         assert_equal(sprout_pool['chainValue'], Decimal('0'))
         assert_equal(sapling_pool['chainValue'], Decimal('0'))
         assert_equal(orchard_pool['chainValue'], Decimal('0'))
-        assert_equal(deferred_pool['chainValue'], Decimal('0.75'))
+        assert_equal(deferred_pool['chainValue'], 2 * deferred_value)
 
         getblockchaininfo = self.nodes[0].getblockchaininfo()
         value_pools_from_getblockchaininfo = getblockchaininfo['valuePools']
@@ -240,11 +247,11 @@ class PoolsTest(BitcoinTestFramework):
 
         # Check there are no fundingstreams or lockbox rewards after the range
         block_subsidy = self.nodes[0].getblocksubsidy()
-        assert_equal(block_subsidy['miner'], Decimal('3.125'))
+        assert_equal(block_subsidy['miner'], subsidy_per_block)
         assert_equal(block_subsidy['founders'], Decimal('0'))
         assert_equal(block_subsidy['fundingstreamstotal'], Decimal('0'))
         assert_equal(block_subsidy['lockboxtotal'], Decimal('0'))
-        assert_equal(block_subsidy['totalblocksubsidy'], Decimal('3.125'))
+        assert_equal(block_subsidy['totalblocksubsidy'], subsidy_per_block)
         
 def pre_nu6_funding_streams() : return {
     'recipients': [
@@ -265,8 +272,8 @@ def pre_nu6_funding_streams() : return {
         },
     ],
     'height_range': {
-        'start': 290,
-        'end': 291
+        'start': 7,
+        'end': 9
     }
 }
 
@@ -284,8 +291,8 @@ def post_nu6_funding_streams() : return {
         }
     ],
     'height_range': {
-        'start': 291,
-        'end': 293
+        'start': 9,
+        'end': 11
     }
 }
 

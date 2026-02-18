@@ -9,7 +9,7 @@ from typing import Any
 @dataclass
 class ZebraArgs:
     miner_address: str = "tmSRd1r8gs77Ja67Fw1JcdoXytxsyrLTPJm"
-    activation_heights: dict[str, int] = field(default_factory=lambda: {"NU5": 290, "NU6": 291})
+    activation_heights: dict[str, int] = field(default_factory=dict)
     funding_streams: list[dict[str, Any]] = field(default_factory=list)
     lockbox_disbursements: list[dict[str, Any]] = field(default_factory=list)
 
