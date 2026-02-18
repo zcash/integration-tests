@@ -6,7 +6,7 @@
 from decimal import Decimal
 
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.config import ZebraExtraArgs
+from test_framework.config import ZebraArgs
 from test_framework.util import (
     assert_equal,
     start_node,
@@ -21,15 +21,13 @@ class OnetimeLockboxDisbursementTest(BitcoinTestFramework):
         self.num_wallets = 0
         self.cache_behavior = 'clean'
 
-    def start_node_with(self, index, extra_args=[]):
-
-        args = ZebraExtraArgs(
+    def start_node_with(self, index, extra_args=None):
+        args = ZebraArgs(
             activation_heights={"NU5": 2, "NU6": 4, "NU6.1": 8},
             funding_streams=[pre_nu_6_1_funding_streams(), post_nu_6_1_funding_streams()],
             lockbox_disbursements=[{'address': 't26ovBdKAJLtrvBsE2QGF4nqBkEuptuPFZz', 'amount': Decimal('200_000_000')}]
         )
-
-        return start_node(index, self.options.tmpdir, args)
+        return start_node(index, self.options.tmpdir, args + extra_args)
 
     def setup_nodes(self):
         return [self.start_node_with(0)]

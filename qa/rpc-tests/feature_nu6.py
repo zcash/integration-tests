@@ -5,7 +5,7 @@
 
 from decimal import Decimal
 
-from test_framework.config import ZebraExtraArgs
+from test_framework.config import ZebraArgs
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, start_nodes
@@ -26,7 +26,7 @@ class PoolsTest(BitcoinTestFramework):
 
     def setup_nodes(self):
         # Add test pre and post NU6 funding streams to the node.
-        args = ZebraExtraArgs(funding_streams=[pre_nu6_funding_streams(), post_nu6_funding_streams()]),
+        args = ZebraArgs(funding_streams=[pre_nu6_funding_streams(), post_nu6_funding_streams()]),
 
         return start_nodes(self.num_nodes, self.options.tmpdir, extra_args=args)
 

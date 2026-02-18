@@ -31,7 +31,7 @@ from . import coverage
 from .proxy import ServiceProxy, JSONRPCException
 from .authproxy import AuthServiceProxy
 
-from test_framework.config import ZainoConfig, ZebraConfig, ZebraExtraArgs
+from test_framework.config import ZainoConfig, ZebraConfig, ZebraArgs
 
 COVERAGE_DIR = None
 PRE_BLOSSOM_BLOCK_TARGET_SPACING = 150
@@ -216,9 +216,8 @@ def update_zebrad_conf(datadir, rpc_port, p2p_port, indexer_port, extra_args=Non
         network_listen_address='127.0.0.1:'+str(p2p_port),
         rpc_listen_address='127.0.0.1:'+str(rpc_port),
         indexer_listen_address='127.0.0.1:'+str(indexer_port),
-        data_dir=datadir)
-
-    zebra_config.extra_args = extra_args or ZebraExtraArgs()
+        data_dir=datadir,
+        extra_args=extra_args)
 
     config_file = zebra_config.update(config_file)
 
@@ -333,7 +332,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         for i in range(MAX_NODES):
             datadir = initialize_datadir(cachedir, i)
 
-            config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i), ZebraExtraArgs(
+            config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i), ZebraArgs(
                 miner_address=miner_addresses[i],
             ))
             args = [ zcashd_binary(), "-c="+config, "start" ]
@@ -605,11 +604,7 @@ def start_node(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=
     datadir = node_dir(dirname, i)
     if binary is None:
         binary = zcashd_binary()
-
-    if extra_args is not None:
-        config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i), extra_args)
-    else:
-        config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i))
+    config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i), extra_args)
     args = [ binary, "-c="+config, "start" ]
 
     bitcoind_processes[i] = subprocess.Popen(args, stderr=stderr)
@@ -1080,12 +1075,7 @@ def start_zaino(i, dirname, extra_args=None, rpchost=None, timewait=None, binary
     datadir = os.path.join(dirname, "zaino"+str(i))
     if binary is None:
         binary = zaino_binary()
-
-    if extra_args is not None:
-        config = update_zainod_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i), zaino_rpc_port(i), zaino_grpc_port(i), extra_args)
-    else:
-        config = update_zainod_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i), zaino_rpc_port(i), zaino_grpc_port(i))
-
+    config = update_zainod_conf(datadir, rpc_port(i), indexer_rpc_port(i), zaino_rpc_port(i), zaino_grpc_port(i), extra_args)
     args = [ binary, "-c="+config ]
 
     zainod_processes[i] = subprocess.Popen(args, stderr=stderr)
@@ -1122,7 +1112,7 @@ def wait_for_zainod_start(process, url, i):
                 raise # unknown JSON RPC exception
         time.sleep(0.25)
 
-def update_zainod_conf(datadir, rpc_port, p2p_port, indexer_port, zaino_rpc_port, zaino_grpc_port, extra_args=None):
+def update_zainod_conf(datadir, rpc_port, indexer_port, zaino_rpc_port, zaino_grpc_port, extra_args=None):
     config_path = zainod_config(datadir)
 
     with open(config_path, 'r') as f:

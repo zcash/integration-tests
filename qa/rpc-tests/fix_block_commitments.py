@@ -6,7 +6,7 @@
 from decimal import Decimal
 
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.config import ZebraExtraArgs
+from test_framework.config import ZebraArgs
 from test_framework.util import (
     assert_true,
     assert_equal,
@@ -37,13 +37,13 @@ class BlockCommitmentsTest(BitcoinTestFramework):
         nodes = []
 
         # At node 0, Heartwood and NU5 activate in the same block.
-        args = ZebraExtraArgs(
+        args = ZebraArgs(
             activation_heights={"Heartwood": 1, "NU5": 1}
         )
         nodes.append(self.start_node_with(0, args))
 
         # At node 1, Heartwood and NU5 activate in different blocks.
-        args = ZebraExtraArgs(
+        args = ZebraArgs(
             activation_heights={"Heartwood": 1, "NU5": 2}
         )
         nodes.append(self.start_node_with(1, args))
