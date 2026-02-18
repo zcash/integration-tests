@@ -126,7 +126,9 @@ class ServiceProxy():
                                'params': args,
                                'id': ServiceProxy.__id_count}, default=EncodeDecimal)
         response = self._request('POST', self.__url.path, postdata)
-        if 'result' not in response:
+        if 'error' in response and response['error'] is not None:
+            raise JSONRPCException(response['error'])
+        elif 'result' not in response:
             raise JSONRPCException({
                 'code': -343, 'message': 'missing JSON-RPC result'})
         else:
