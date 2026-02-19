@@ -154,6 +154,11 @@ BASE_SCRIPTS= [
     'show_help.py',
     'errors.py',
     'converttex.py',
+]
+
+# Add new scripts to this list instead of BASE_SCRIPTS, so they are grouped separately
+# in CI. This will eventually be merged into BASE_SCRIPTS once everything is working.
+NEW_SCRIPTS= [
     'addnode.py',
     'feature_nu6.py',
     'feature_backup_non_finalized_state.py',
@@ -189,7 +194,7 @@ EXTENDED_SCRIPTS = [
     'wallet_db_flush.py',
 ]
 
-ALL_SCRIPTS = SERIAL_SCRIPTS + FLAKY_SCRIPTS + BASE_SCRIPTS + ZMQ_SCRIPTS + EXTENDED_SCRIPTS
+ALL_SCRIPTS = SERIAL_SCRIPTS + FLAKY_SCRIPTS + BASE_SCRIPTS + NEW_SCRIPTS + ZMQ_SCRIPTS + EXTENDED_SCRIPTS
 
 def main():
     # Parse arguments and pass through unrecognised args
@@ -258,7 +263,7 @@ def main():
     else:
         # No individual tests have been specified. Run base tests, and
         # optionally ZMQ tests and extended tests.
-        test_list = SERIAL_SCRIPTS + FLAKY_SCRIPTS + BASE_SCRIPTS
+        test_list = SERIAL_SCRIPTS + FLAKY_SCRIPTS + BASE_SCRIPTS + NEW_SCRIPTS
         if enable_zmq:
             test_list += ZMQ_SCRIPTS
         if args.extended:

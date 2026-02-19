@@ -160,12 +160,21 @@ jobs:
           src_dir = os.environ["SRC_DIR"]
           SHARDS = 10
 
+          # While we are getting the existing tests to pass, ensure that new tests
+          # are in separate shards from existing tests (so we can keep them passing).
+          num_old_tests = len(rpc_tests.BASE_SCRIPTS + rpc_tests.ZMQ_SCRIPTS)
+          num_new_tests = len(rpc_tests.NEW_SCRIPTS)
+          old_shards = (num_old_tests * SHARDS) // (num_old_tests + num_new_tests)
+          new_shards = SHARDS - old_shards
+
           # These tests are ordered longest-test-first, to favor running tests in
           # parallel with the regular test runner. For chunking purposes, assign
           # tests to shards in round-robin order.
           test_shards = {}
           for i, test in enumerate(rpc_tests.BASE_SCRIPTS + rpc_tests.ZMQ_SCRIPTS):
-              test_shards.setdefault(i % SHARDS, []).append(test)
+              test_shards.setdefault(i % old_shards, []).append(test)
+          for i, test in enumerate(rpc_tests.NEW_SCRIPTS):
+              test_shards.setdefault(old_shards + (i % new_shards), []).append(test)
 
           test_list = []
           for i, tests in test_shards.items():
