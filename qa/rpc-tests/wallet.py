@@ -49,7 +49,15 @@ class WalletTest (BitcoinTestFramework):
             wallet_balance['transparent'] == '6.25000000' or
             wallet_balance['transparent'] == '12.50000000')
 
+        print("Mining blocks...")
+        self.nodes[0].generate(2)
+        self.sync_all()
+
         """
+        walletinfo = self.wallets[0].getwalletinfo()
+        assert_equal(Decimal(walletinfo['immature_balance']), Decimal('40'))
+        assert_equal(Decimal(walletinfo['balance']), Decimal('0'))
+
         blockchaininfo = self.nodes[0].getblockchaininfo()
         assert_equal(blockchaininfo['estimatedheight'], 4)
 
