@@ -269,7 +269,12 @@ def wait_for_bitcoind_start(process, url, i):
             if e.errno != errno.ECONNREFUSED: # Port not yet open?
                 raise # unknown IO error
         except JSONRPCException as e: # Initialization phase
-            if e.error['code'] != -343: # RPC in warmup?
+            if not (
+                # RPC in warmup?
+                e.error['code'] == -343 or
+                # zebrad race condition
+                (e.error['code'] == -1 and e.error['message'] == 'No blocks in state')
+            ):
                 raise # unknown JSON RPC exception
         time.sleep(0.25)
 
