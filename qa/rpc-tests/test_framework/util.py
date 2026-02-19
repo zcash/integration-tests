@@ -209,7 +209,7 @@ def initialize_datadir(dirname, n, clock_offset=0):
 def update_zebrad_conf(datadir, rpc_port, p2p_port, indexer_port, extra_args=None):
     config_path = zebrad_config(datadir)
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r", encoding="utf8") as f:
         config_file = toml.load(f)
 
     zebra_config = ZebraConfig(
@@ -221,7 +221,7 @@ def update_zebrad_conf(datadir, rpc_port, p2p_port, indexer_port, extra_args=Non
 
     config_file = zebra_config.update(config_file)
 
-    with open(config_path, 'w') as f:
+    with open(config_path, "w", encoding="utf8") as f:
         toml.dump(config_file, f)
 
     return config_path
@@ -988,13 +988,13 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
 def update_zallet_conf(datadir, validator_port, zallet_port):
     config_path = zallet_config(datadir)
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r", encoding="utf8") as f:
         config_file = toml.load(f)
 
     config_file['rpc']['bind'][0] = '127.0.0.1:'+str(zallet_port)
     config_file['indexer']['validator_address'] = '127.0.0.1:'+str(validator_port)
 
-    with open(config_path, 'w') as f:
+    with open(config_path, "w", encoding="utf8") as f:
         toml.dump(config_file, f)
 
     return config_path
@@ -1115,7 +1115,7 @@ def wait_for_zainod_start(process, url, i):
 def update_zainod_conf(datadir, rpc_port, indexer_port, zaino_rpc_port, zaino_grpc_port, extra_args=None):
     config_path = zainod_config(datadir)
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r", encoding="utf8") as f:
         config_file = toml.load(f)
 
     zaino_config = ZainoConfig(
@@ -1127,7 +1127,7 @@ def update_zainod_conf(datadir, rpc_port, indexer_port, zaino_rpc_port, zaino_gr
 
     config_file = zaino_config.update(config_file)
 
-    with open(config_path, 'w') as f:
+    with open(config_path, "w", encoding="utf8") as f:
         toml.dump(config_file, f)
 
     return config_path
