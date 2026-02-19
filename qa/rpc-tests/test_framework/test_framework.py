@@ -15,10 +15,12 @@ import tempfile
 import time
 import traceback
 
+from .config import ZebraArgs
 from .proxy import JSONRPCException
 from .util import (
     zcashd_binary,
     initialize_chain,
+    prepare_wallets_for_mining,
     start_nodes,
     start_wallets,
     start_zainos,
@@ -47,6 +49,7 @@ class BitcoinTestFramework(object):
         self.nodes = None
         self.zainos = None
         self.wallets = None
+        self.miner_addresses = None
 
     def run_test(self):
         raise NotImplementedError
@@ -58,8 +61,16 @@ class BitcoinTestFramework(object):
         print("Initializing test directory "+self.options.tmpdir)
         initialize_chain(self.options.tmpdir, self.num_nodes, self.options.cachedir, self.cache_behavior)
 
+    def prepare_wallets(self):
+        if self.num_wallets > 0:
+            self.miner_addresses = prepare_wallets_for_mining(self.num_wallets, self.options.tmpdir)
+
     def setup_nodes(self):
-        return start_nodes(self.num_nodes, self.options.tmpdir)
+        if self.miner_addresses is None:
+            args = None
+        else:
+            args = [ZebraArgs(miner_address=addr) for addr in self.miner_addresses]
+        return start_nodes(self.num_nodes, self.options.tmpdir, args)
 
     def prepare_chain(self):
         if self.num_indexers > 0:
@@ -78,6 +89,7 @@ class BitcoinTestFramework(object):
         return start_wallets(self.num_wallets, self.options.tmpdir)
 
     def setup_network(self, split = False, do_mempool_sync = True):
+        self.prepare_wallets()
         self.nodes = self.setup_nodes()
 
         # Connect the nodes as a "chain".  This allows us

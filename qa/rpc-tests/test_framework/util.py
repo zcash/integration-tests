@@ -926,6 +926,37 @@ def get_rpc_auth_proxy(url, node_number, timeout=None):
 
     return coverage.AuthServiceProxyWrapper(proxy, coverage_logfile)
 
+def prepare_wallets_for_mining(num_wallets, dirname, binary=None):
+    """
+    Creates the datadir for multiple wallets, sets up their first account, and
+    returns a transparent address for each of them to use for mining.
+    """
+    if binary is None: binary = [ zallet_binary() for _ in range(num_wallets) ]
+    miner_addresses = []
+    for i in range(num_wallets):
+        datadir = wallet_dir(dirname, i)
+        if os.path.exists(os.path.join(datadir, "wallet.db")):
+            raise Exception('Wallet %d already exists, cannot prepare it for mining' % i)
+
+        zallet = binary[i]
+
+        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i))
+
+        args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
+        process = subprocess.Popen(args)
+        process.wait()
+
+        args = [ zallet, "-d="+datadir, "generate-mnemonic" ]
+        process = subprocess.Popen(args)
+        process.wait()
+
+        args = [ zallet, "-d="+datadir, "regtest", "generate-account-and-miner-address" ]
+        process = subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
+        (miner_address, _) = process.communicate()
+
+        miner_addresses.append(miner_address)
+    return miner_addresses
+
 def start_wallets(num_wallets, dirname, extra_args=None, rpchost=None, binary=None):
     """
     Start multiple wallets, return RPC connections to them
