@@ -18,6 +18,6 @@ indexer_listen_addr = "127.0.0.1:0"
 [state]
 cache_dir = ""
 
-[network.testnet_parameters.activation_heights]
-NU5 = 290
-NU6 = 291
+[network.testnet_parameters]
+funding_streams = []
+lockbox_disbursements = []

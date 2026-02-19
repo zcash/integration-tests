@@ -64,20 +64,20 @@ def zallet_binary():
     return os.getenv("ZALLET", os.path.join("src", "zallet"))
 
 def zebrad_config(datadir):
-    base_location = os.path.join('qa', 'base_config.toml')
+    base_location = os.path.join('qa', 'defaults', 'zebrad', 'config.toml')
     new_location = os.path.join(datadir, "config.toml")
     if not os.path.exists(new_location):
         shutil.copyfile(base_location, new_location)
     return new_location
 
 def zallet_config(datadir):
-    base_location = os.path.join('qa', 'zallet-datadir')
+    base_location = os.path.join('qa', 'defaults', 'zallet')
     if not os.path.exists(datadir):
         shutil.copytree(base_location, datadir)
     return os.path.join(datadir, "zallet.toml")
 
 def zainod_config(datadir):
-    base_location = os.path.join('qa', 'zindexer.toml')
+    base_location = os.path.join('qa', 'defaults', 'zainod', 'zaino_config.toml')
     new_location = os.path.join(datadir, "zaino_config.toml")
     os.makedirs(datadir, exist_ok=True)
     if not os.path.exists(new_location):
@@ -987,20 +987,20 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
     validator_port = rpc_port(i)
     zallet_port = wallet_rpc_port(i)
 
-    config = update_zallet_conf(datadir, validator_port, zallet_port)
+    update_zallet_conf(datadir, validator_port, zallet_port)
 
     # We prepare the wallet if it is new
     if prepare:
-        args = [ binary, "-c="+config, "-d="+datadir, "init-wallet-encryption" ]
+        args = [ binary, "-d="+datadir, "init-wallet-encryption" ]
         process = subprocess.Popen(args, stderr=stderr)
         process.wait()
 
-        args = [ binary, "-c="+config, "-d="+datadir, "generate-mnemonic" ]
+        args = [ binary, "-d="+datadir, "generate-mnemonic" ]
         process = subprocess.Popen(args, stderr=stderr)
         process.wait()
 
     # Start the wallet
-    args = [ binary, "-c="+config, "-d="+datadir, "start" ]
+    args = [ binary, "-d="+datadir, "start" ]
 
     if extra_args is not None: args.extend(extra_args)
     zallet_processes[i] = subprocess.Popen(args, stderr=stderr)
