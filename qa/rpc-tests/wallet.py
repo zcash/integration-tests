@@ -4,7 +4,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from decimal import Decimal
+#from decimal import Decimal
 import time
 
 from test_framework.test_framework import BitcoinTestFramework

@@ -8,7 +8,7 @@
 #
 
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import start_nodes, assert_equal
+from test_framework.util import assert_equal
 from test_framework.proxy import JSONRPCException
 
 

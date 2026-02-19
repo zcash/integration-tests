@@ -4,7 +4,7 @@
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal, start_nodes, start_zainos
+from test_framework.util import assert_equal
 
 # Test that we can call the indexer RPCs.
 class IndexerTest (BitcoinTestFramework):

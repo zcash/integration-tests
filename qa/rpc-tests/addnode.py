@@ -4,7 +4,7 @@
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal, start_nodes, connect_nodes_bi
+from test_framework.util import assert_equal, connect_nodes_bi
 
 class AddNodeTest (BitcoinTestFramework):
 
