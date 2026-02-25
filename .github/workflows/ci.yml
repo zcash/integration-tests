@@ -518,19 +518,19 @@ jobs:
           job-name: 'sec-hard tier ${{ matrix.tier }} platform ${{ matrix.platform }}'
 
       - name: Download zebrad artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: zebrad-${{ matrix.name }}
           path: ./src
 
       - name: Download zainod artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: zainod-${{ matrix.name }}
           path: ./src
 
       - name: Download zallet artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: zallet-${{ matrix.name }}
           path: ./src
@@ -628,19 +628,19 @@ jobs:
           pip install zmq asyncio base58
 
       - name: Download zebrad artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: zebrad-${{ matrix.name }}
           path: ./src
 
       - name: Download zainod artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: zainod-${{ matrix.name }}
           path: ./src
 
       - name: Download zallet artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: zallet-${{ matrix.name }}
           path: ./src
