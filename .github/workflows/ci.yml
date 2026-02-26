@@ -248,7 +248,10 @@ jobs:
 
       - name: Use specified ZcashFoundation/zebra commit
         if: github.event.action == 'zebra-interop-request'
-        run: echo "ZEBRA_REF=${{ github.event.client_payload.sha }}" >> $GITHUB_ENV
+        shell: sh
+        env:
+          SHA: ${{ github.event.client_payload.sha }}
+        run: echo "ZEBRA_REF=${SHA}" >> $GITHUB_ENV
       - name: Use ZcashFoundation/zebra current main
         if: github.event.action != 'zebra-interop-request'
         run: echo "ZEBRA_REF=refs/heads/main" >> $GITHUB_ENV
@@ -446,7 +449,10 @@ jobs:
 
       - name: Use specified zcash/wallet commit
         if: github.event.action == 'zallet-interop-request'
-        run: echo "ZALLET_REF=${{ github.event.client_payload.sha }}" >> $GITHUB_ENV
+        shell: sh
+        env:
+          SHA: ${{ github.event.client_payload.sha }}
+        run: echo "ZALLET_REF=${SHA}" >> $GITHUB_ENV
       - name: Use zcash/wallet current main
         if: github.event.action != 'zallet-interop-request'
         run: echo "ZALLET_REF=refs/heads/main" >> $GITHUB_ENV
