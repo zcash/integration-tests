@@ -1,6 +1,12 @@
 name: 'Start interop'
 description: 'Generates interop token and creates pending status'
 inputs:
+  zebra-app-id:
+    description: 'Zebra GitHub App ID'
+    required: true
+  zebra-private-key:
+    description: 'Zebra GitHub App private key'
+    required: true
   zallet-app-id:
     description: 'Zallet GitHub App ID'
     required: true
@@ -11,12 +17,39 @@ inputs:
     description: 'Name of the job to report to the requesting repository'
     required: true
 outputs:
+  zebra-app-token:
+    description: 'Access token for updating the Zebra pending status'
+    value: ${{ steps.zebra-app-token.outputs.token }}
   zallet-app-token:
     description: 'Access token for updating the Zallet pending status'
     value: ${{ steps.zallet-app-token.outputs.token }}
 runs:
   using: 'composite'
   steps:
+    - name: Generate ZcashFoundation/zebra app token
+      if: github.event.action == 'zebra-interop-request'
+      id: zebra-app-token
+      uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+      with:
+        app-id: ${{ inputs.zebra-app-id }}
+        private-key: ${{ inputs.zebra-private-key }}
+        owner: ZcashFoundation
+        repositories: zebra
+
+    - name: Create ZcashFoundation/zebra status
+      if: github.event.action == 'zebra-interop-request'
+      shell: sh
+      env:
+        GH_TOKEN: ${{ steps.zebra-app-token.outputs.token }}
+        SHA: ${{ github.event.client_payload.sha }}
+        JOB_NAME: ${{ inputs.job-name }}
+      run: >
+        gh api "repos/ZcashFoundation/zebra/statuses/${SHA}"
+        --field state=pending
+        --field target_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        --field description="In progress"
+        --field context="Integration tests / ${JOB_NAME}"
+
     - name: Generate zcash/wallet app token
       if: github.event.action == 'zallet-interop-request'
       id: zallet-app-token
