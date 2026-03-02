@@ -95,7 +95,6 @@ class BitcoinTestFramework(object):
         # Connect the nodes as a "chain".  This allows us
         # to split the network between nodes 1 and 2 to get
         # two halves that can work on competing chains.
-
         # If we joined network halves, connect the nodes from the joint
         # on outward.  This ensures that chains are properly reorganised.
         if not split and len(self.nodes) >= 3:
