@@ -466,8 +466,9 @@ class RPCTestHandler:
                     log_out.seek(0), log_err.seek(0)
                     [stdout, stderr] = [l.read().decode('utf-8') for l in (log_out, log_err)]
                     log_out.close(), log_err.close()
-                    # TODO: stderr is never empty in Zebra, check return code only.
-                    #passed = stderr == "" and proc.returncode == 0
+                    # Zebra uses stderr for welcome messages, panics, etc., so we
+                    # cannot use stderr emptiness as a success indicator.
+                    # See https://github.com/ZcashFoundation/zebra/issues/10316
                     passed = proc.returncode == 0
                     self.num_running -= 1
                     self.jobs.remove(j)
