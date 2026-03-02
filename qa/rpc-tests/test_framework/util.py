@@ -381,6 +381,9 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                 # This works around a zebrad problem where it won't broadcast
                 # received blocks to other connected nodes, and is a workaround
                 # for zebrad not supporting `addnode remove`.
+                # TODO: Remove this workaround once either of the following is resolved:
+                # - https://github.com/ZcashFoundation/zebra/issues/10329
+                # - https://github.com/ZcashFoundation/zebra/issues/10332
                 stop_nodes(rpcs)
                 wait_bitcoinds()
                 for i in range(MAX_NODES):
