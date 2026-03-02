@@ -704,6 +704,7 @@ def wait_bitcoinds():
 
 def connect_nodes(from_connection, node_num):
     ip_port = "127.0.0.1:"+str(p2p_port(node_num))
+    # TODO: Replace `add` with `onetry` if zebrad implements it.
     from_connection.addnode(ip_port, "add")
     # poll until version handshake complete to avoid race conditions
     # with transaction relaying
