@@ -208,6 +208,7 @@ def main():
     parser.add_argument('--deterministic', '-d', action='store_true', help='make the output a bit closer to deterministic in order to compare runs.')
     parser.add_argument('--exclude', '-x', help='specify a comma-separated-list of scripts to exclude. Do not include the .py extension in the name.')
     parser.add_argument('--extended', action='store_true', help='run the extended test suite in addition to the basic tests')
+    parser.add_argument('--new-only', action='store_true', help='run only the NEW_SCRIPTS tests')
     parser.add_argument('--force', '-f', action='store_true', help='run tests even on platforms where they are disabled by default (e.g. windows).')
     parser.add_argument('--help', '-h', '-?', action='store_true', help='print help text and exit')
     parser.add_argument('--jobs', '-j', type=int, default=4, help='how many test scripts to run in parallel. Default=4.')
@@ -260,6 +261,8 @@ def main():
         print("Running individually selected tests: ")
         for t in test_list:
             print("\t" + t)
+    elif args.new_only:
+        test_list = NEW_SCRIPTS
     else:
         # No individual tests have been specified. Run base tests, and
         # optionally ZMQ tests and extended tests.
