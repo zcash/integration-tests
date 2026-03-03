@@ -217,7 +217,7 @@ def update_zebrad_conf(datadir, rpc_port, p2p_port, indexer_port, extra_args=Non
         rpc_listen_address='127.0.0.1:'+str(rpc_port),
         indexer_listen_address='127.0.0.1:'+str(indexer_port),
         data_dir=datadir,
-        extra_args=extra_args)
+        extra_args=extra_args if isinstance(extra_args, ZebraArgs) else None)
 
     config_file = zebra_config.update(config_file)
 
