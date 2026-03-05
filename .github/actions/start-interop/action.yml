@@ -13,6 +13,12 @@ inputs:
   zallet-private-key:
     description: 'Zallet GitHub App private key'
     required: true
+  zaino-app-id:
+    description: 'Zaino GitHub App ID'
+    required: true
+  zaino-private-key:
+    description: 'Zaino GitHub App private key'
+    required: true
   job-name:
     description: 'Name of the job to report to the requesting repository'
     required: true
@@ -23,6 +29,9 @@ outputs:
   zallet-app-token:
     description: 'Access token for updating the Zallet pending status'
     value: ${{ steps.zallet-app-token.outputs.token }}
+  zaino-app-token:
+    description: 'Access token for updating the Zaino pending status'
+    value: ${{ steps.zaino-app-token.outputs.token }}
 runs:
   using: 'composite'
   steps:
@@ -69,6 +78,30 @@ runs:
         JOB_NAME: ${{ inputs.job-name }}
       run: >
         gh api "repos/zcash/wallet/statuses/${SHA}"
+        --field state=pending
+        --field target_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        --field description="In progress"
+        --field context="Integration tests / ${JOB_NAME}"
+
+    - name: Generate zingolabs/zaino app token
+      if: github.event.action == 'zaino-interop-request'
+      id: zaino-app-token
+      uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+      with:
+        app-id: ${{ inputs.zaino-app-id }}
+        private-key: ${{ inputs.zaino-private-key }}
+        owner: zingolabs
+        repositories: zaino
+
+    - name: Create zingolabs/zaino status
+      if: github.event.action == 'zaino-interop-request'
+      shell: sh
+      env:
+        GH_TOKEN: ${{ steps.zaino-app-token.outputs.token }}
+        SHA: ${{ github.event.client_payload.sha }}
+        JOB_NAME: ${{ inputs.job-name }}
+      run: >
+        gh api "repos/zingolabs/zaino/statuses/${SHA}"
         --field state=pending
         --field target_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         --field description="In progress"
