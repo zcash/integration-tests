@@ -32,6 +32,7 @@ on:
     types:
       - zebra-interop-request
       - zallet-interop-request
+      - zaino-interop-request
 
 permissions:
   contents: read
