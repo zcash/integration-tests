@@ -253,6 +253,7 @@ jobs:
         env:
           SHA: ${{ github.event.client_payload.sha }}
         run: echo "ZEBRA_REF=${SHA}" >> $GITHUB_ENV
+
       - name: Use ZcashFoundation/zebra current main
         if: github.event.action != 'zebra-interop-request'
         run: echo "ZEBRA_REF=refs/heads/main" >> $GITHUB_ENV
@@ -349,9 +350,19 @@ jobs:
           zebra-private-key: ${{ secrets.ZEBRA_APP_PRIVATE_KEY }}
           zallet-app-id: ${{ secrets.ZALLET_APP_ID }}
           zallet-private-key: ${{ secrets.ZALLET_APP_PRIVATE_KEY }}
+          zaino-app-id: ${{ secrets.ZAINO_APP_ID }}
+          zaino-private-key: ${{ secrets.ZAINO_APP_PRIVATE_KEY }}
           job-name: 'Build zainod on tier ${{ matrix.tier }} platform ${{ matrix.platform }}'
 
+      - name: Use specified zingolabs/zaino commit
+        if: github.event.action == 'zaino-interop-request'
+        shell: sh
+        env:
+          SHA: ${{ github.event.client_payload.sha }}
+        run: echo "ZAINO_REF=${SHA}" >> $GITHUB_ENV
+
       - name: Use zingolabs/zaino current main
+        if: github.event.action != 'zaino-interop-request'
         run: echo "ZAINO_REF=refs/heads/dev" >> $GITHUB_ENV
 
       - name: Check out zingolabs/zaino
@@ -414,6 +425,7 @@ jobs:
       - uses: ./integration-tests/.github/actions/finish-interop
         if: always()
         with:
+          zaino-app-token: ${{ steps.start-interop.outputs.zaino-app-token }}
           zebra-app-token: ${{ steps.start-interop.outputs.zebra-app-token }}
           zallet-app-token: ${{ steps.start-interop.outputs.zallet-app-token }}
           job-name: 'Build zainod on tier ${{ matrix.tier }} platform ${{ matrix.platform }}'
@@ -442,6 +454,8 @@ jobs:
       - id: start-interop
         uses: ./integration-tests/.github/actions/start-interop
         with:
+          zaino-app-id: ${{ secrets.ZAINO_APP_ID }}
+          zaino-private-key: ${{ secrets.ZAINO_APP_PRIVATE_KEY }}
           zebra-app-id: ${{ secrets.ZEBRA_APP_ID }}
           zebra-private-key: ${{ secrets.ZEBRA_APP_PRIVATE_KEY }}
           zallet-app-id: ${{ secrets.ZALLET_APP_ID }}
@@ -518,6 +532,7 @@ jobs:
       - uses: ./integration-tests/.github/actions/finish-interop
         if: always()
         with:
+          zaino-app-token: ${{ steps.start-interop.outputs.zaino-app-token }}
           zebra-app-token: ${{ steps.start-interop.outputs.zebra-app-token }}
           zallet-app-token: ${{ steps.start-interop.outputs.zallet-app-token }}
           job-name: 'Build zallet on tier ${{ matrix.tier }} platform ${{ matrix.platform }}'
@@ -547,6 +562,8 @@ jobs:
       - id: start-interop
         uses: ./.github/actions/start-interop
         with:
+          zaino-app-id: ${{ secrets.ZAINO_APP_ID }}
+          zaino-private-key: ${{ secrets.ZAINO_APP_PRIVATE_KEY }}
           zebra-app-id: ${{ secrets.ZEBRA_APP_ID }}
           zebra-private-key: ${{ secrets.ZEBRA_APP_PRIVATE_KEY }}
           zallet-app-id: ${{ secrets.ZALLET_APP_ID }}
@@ -587,6 +604,7 @@ jobs:
       - uses: ./.github/actions/finish-interop
         if: always()
         with:
+          zaino-app-token: ${{ steps.start-interop.outputs.zaino-app-token }}
           zebra-app-token: ${{ steps.start-interop.outputs.zebra-app-token }}
           zallet-app-token: ${{ steps.start-interop.outputs.zallet-app-token }}
           job-name: 'sec-hard tier ${{ matrix.tier }} platform ${{ matrix.platform }}'
@@ -752,6 +770,7 @@ jobs:
       - uses: ./.github/actions/finish-interop
         if: always()
         with:
+          zaino-app-token: ${{ steps.start-interop.outputs.zaino-app-token }}
           zebra-app-token: ${{ steps.start-interop.outputs.zebra-app-token }}
           zallet-app-token: ${{ steps.start-interop.outputs.zallet-app-token }}
           job-name: 'RPC tests tier ${{ matrix.tier }} platform ${{ matrix.platform }} ${{ matrix.shard }}'
