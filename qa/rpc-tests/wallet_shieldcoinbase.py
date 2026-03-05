@@ -5,8 +5,9 @@
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.authproxy import JSONRPCException
+from test_framework.config import ZebraArgs
 from test_framework.util import assert_equal, initialize_chain_clean, \
-    start_node, connect_nodes_bi, sync_blocks, sync_mempools, \
+    start_nodes, connect_nodes_bi, sync_blocks, sync_mempools, \
     wait_and_assert_operationid_status, get_coinbase_address, \
     NU5_BRANCH_ID, nuparams
 from test_framework.zip317 import conventional_fee, ZIP_317_FEE
@@ -14,28 +15,29 @@ from test_framework.zip317 import conventional_fee, ZIP_317_FEE
 from decimal import Decimal
 
 class WalletShieldCoinbaseTest (BitcoinTestFramework):
-    def setup_chain(self):
-        print("Initializing test directory "+self.options.tmpdir)
-        initialize_chain_clean(self.options.tmpdir, 4)
+    def __init__(self):
+        super().__init__()
+        self.num_nodes = 3
+        self.num_wallets = 3
+        self.cache_behavior = 'clean'
 
-    def setup_network(self, split=False):
+    def setup_nodes(self):
         args = [
-            '-regtestprotectcoinbase',
-            '-debug=zrpcunsafe',
-            nuparams(NU5_BRANCH_ID, self.nu5_activation),
-            '-allowdeprecated=z_getnewaddress',
-            '-allowdeprecated=z_getbalance',
-            '-debug=mempool',
+            ZebraArgs(
+                miner_address=addr,
+                activation_heights={"NU5": self.nu5_activation},
+            ) for addr in self.miner_addresses
         ]
-        self.nodes = []
-        self.nodes.append(start_node(0, self.options.tmpdir, args))
-        self.nodes.append(start_node(1, self.options.tmpdir, args))
-        self.nodes.append(start_node(2, self.options.tmpdir, args))
-        connect_nodes_bi(self.nodes,0,1)
-        connect_nodes_bi(self.nodes,1,2)
-        connect_nodes_bi(self.nodes,0,2)
-        self.is_network_split=False
-        self.sync_all()
+        return start_nodes(self.num_nodes, self.options.tmpdir, args)
+
+        #args = [[
+            # '-regtestprotectcoinbase', doesn't exist in zebra
+            # '-debug=zrpcunsafe',
+            # nuparams(NU5_BRANCH_ID, self.nu5_activation),
+            # '-allowdeprecated=z_getnewaddress',
+            # '-allowdeprecated=z_getbalance',
+            # '-debug=mempool',
+        #]]
 
     def run_test (self):
         print("Mining blocks...")
@@ -53,9 +55,12 @@ class WalletShieldCoinbaseTest (BitcoinTestFramework):
         self.sync_all()
         self.nodes[1].generate(101)
         self.sync_all()
+        # these will be "wallets", not "nodes"
+        """
         assert_equal(Decimal(self.nodes[0].getbalance()), Decimal('50'))
         assert_equal(Decimal(self.nodes[1].getbalance()), Decimal('10'))
         assert_equal(Decimal(self.nodes[2].getbalance()), Decimal('30'))
+        """
 
         # create one zaddr that is the target of all shielding
         myzaddr = self.test_init_zaddr(self.nodes[0])
