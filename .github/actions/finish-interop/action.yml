@@ -7,36 +7,36 @@ inputs:
   zallet-app-token:
     description: 'Access token for updating the Zallet pending status'
     required: true
+  zaino-app-token:
+    description: 'Access token for updating the Zaino pending status'
+    required: true
   job-name:
     description: 'Name of the job to report to the requesting repository'
     required: true
 runs:
   using: 'composite'
   steps:
-    - name: Update ZcashFoundation/zebra status with result
-      if: always() && github.event.action == 'zebra-interop-request'
+    - name: Update requesting repo status with result
+      if: always()
       shell: sh
       env:
-        GH_TOKEN: ${{ inputs.zebra-app-token }}
+        ZEBRA_TOKEN: ${{ inputs.zebra-app-token }}
+        ZALLET_TOKEN: ${{ inputs.zallet-app-token }}
+        ZAINO_TOKEN: ${{ inputs.zaino-app-token }}
+        ACTION: ${{ github.event.action }}
         SHA: ${{ github.event.client_payload.sha }}
         JOB_NAME: ${{ inputs.job-name }}
-      run: >
-        gh api "repos/ZcashFoundation/zebra/statuses/${SHA}"
-        --field state="${{ case(job.status == 'cancelled', 'error', job.status) }}"
-        --field target_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        --field description="Finished"
-        --field context="Integration tests / ${JOB_NAME}"
-
-    - name: Update zcash/wallet status with result
-      if: always() && github.event.action == 'zallet-interop-request'
-      shell: sh
-      env:
-        GH_TOKEN: ${{ inputs.zallet-app-token }}
-        SHA: ${{ github.event.client_payload.sha }}
-        JOB_NAME: ${{ inputs.job-name }}
-      run: >
-        gh api "repos/zcash/wallet/statuses/${SHA}"
-        --field state="${{ case(job.status == 'cancelled', 'error', job.status) }}"
-        --field target_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        --field description="Finished"
-        --field context="Integration tests / ${JOB_NAME}"
+        STATUS: ${{ case(job.status == 'cancelled', 'error', job.status) }}
+        TARGET_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        case "${ACTION}" in
+          zebra-interop-request)  repo="ZcashFoundation/zebra"; token="${ZEBRA_TOKEN}" ;;
+          zallet-interop-request) repo="zcash/wallet";          token="${ZALLET_TOKEN}" ;;
+          zaino-interop-request)  repo="zingolabs/zaino";       token="${ZAINO_TOKEN}" ;;
+          *) echo "Unknown action: ${ACTION}"; exit 0 ;;
+        esac
+        GH_TOKEN="${token}" gh api "repos/${repo}/statuses/${SHA}" \
+          --field state="${STATUS}" \
+          --field target_url="${TARGET_URL}" \
+          --field description="Finished" \
+          --field context="Integration tests / ${JOB_NAME}"
