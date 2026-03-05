@@ -241,6 +241,8 @@ jobs:
       - id: start-interop
         uses: ./integration-tests/.github/actions/start-interop
         with:
+          zaino-app-id: ${{ secrets.ZAINO_APP_ID }}
+          zaino-private-key: ${{ secrets.ZAINO_APP_PRIVATE_KEY }}
           zebra-app-id: ${{ secrets.ZEBRA_APP_ID }}
           zebra-private-key: ${{ secrets.ZEBRA_APP_PRIVATE_KEY }}
           zallet-app-id: ${{ secrets.ZALLET_APP_ID }}
@@ -318,6 +320,7 @@ jobs:
       - uses: ./integration-tests/.github/actions/finish-interop
         if: always()
         with:
+          zaino-app-token: ${{ steps.start-interop.outputs.zaino-app-token }}
           zebra-app-token: ${{ steps.start-interop.outputs.zebra-app-token }}
           zallet-app-token: ${{ steps.start-interop.outputs.zallet-app-token }}
           job-name: 'Build zebrad on tier ${{ matrix.tier }} platform ${{ matrix.platform }}'
@@ -666,6 +669,8 @@ jobs:
       - id: start-interop
         uses: ./.github/actions/start-interop
         with:
+          zaino-app-id: ${{ secrets.ZAINO_APP_ID }}
+          zaino-private-key: ${{ secrets.ZAINO_APP_PRIVATE_KEY }}
           zebra-app-id: ${{ secrets.ZEBRA_APP_ID }}
           zebra-private-key: ${{ secrets.ZEBRA_APP_PRIVATE_KEY }}
           zallet-app-id: ${{ secrets.ZALLET_APP_ID }}
