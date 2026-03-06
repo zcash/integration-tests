@@ -25,7 +25,7 @@ pip3 install pyzmq base58 toml
 Setup
 =====
 
-By default, binaries must exist in the `../src ` folder. All tests require the `zebrad`
+By default, binaries must exist in the `../bin` directory. All tests require the `zebrad`
 binary; most tests require the `zallet` binary; some tests require the `zainod` binary.
 
 Alternatively, you can set the binary paths with:
@@ -61,8 +61,8 @@ Possible options, which apply to each individual test run:
   -h, --help            show this help message and exit
   --nocleanup           Leave zcashds and test.* datadir on exit or error
   --noshutdown          Don't stop zcashds after the test execution
-  --srcdir=SRCDIR       Source directory containing zcashd/zcash-cli
-                        (default: ../../src)
+  --bindir=BINDIR       Directory containing zallet/zainod/zebrad
+                        (default: ../../bin)
   --tmpdir=TMPDIR       Root directory for datadirs
   --tracerpc            Print out all RPC calls as they are made
   --coveragedir=COVERAGEDIR

@@ -668,26 +668,26 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: zebrad-${{ matrix.name }}
-          path: ./src
+          path: ./bin
 
       - name: Download zainod artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: zainod-${{ matrix.name }}
-          path: ./src
+          path: ./bin
 
       - name: Download zallet artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: zallet-${{ matrix.name }}
-          path: ./src
+          path: ./bin
 
       - name: Make artifact executable
         if: runner.os != 'Windows'
         run: |
-          chmod +x ${{ format('./src/zebrad{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zainod{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zallet{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./bin/zebrad{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./bin/zainod{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./bin/zallet{0}', matrix.file_ext) }}
 
       - name: Run sec-hard test
         shell: bash
@@ -802,26 +802,26 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: zebrad-${{ matrix.name }}
-          path: ./src
+          path: ./bin
 
       - name: Download zainod artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: zainod-${{ matrix.name }}
-          path: ./src
+          path: ./bin
 
       - name: Download zallet artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: zallet-${{ matrix.name }}
-          path: ./src
+          path: ./bin
 
       - name: Make artifact executable
         if: runner.os != 'Windows'
         run: |
-          chmod +x ${{ format('./src/zebrad{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zainod{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zallet{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./bin/zebrad{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./bin/zainod{0}', matrix.file_ext) }}
+          chmod +x ${{ format('./bin/zallet{0}', matrix.file_ext) }}
 
       - name: Get Sprout parameters
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
@@ -878,7 +878,7 @@ jobs:
               sys.exit(1)
           EOF
           . ./venv/bin/activate
-          ZEBRAD=$(pwd)/${{ format('src/zebrad{0}', matrix.file_ext) }} ZAINOD=$(pwd)/${{ format('src/zainod{0}', matrix.file_ext) }} ZALLET=$(pwd)/${{ format('src/zallet{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py
+          ZEBRAD=$(pwd)/${{ format('bin/zebrad{0}', matrix.file_ext) }} ZAINOD=$(pwd)/${{ format('bin/zainod{0}', matrix.file_ext) }} ZALLET=$(pwd)/${{ format('bin/zallet{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py
 
       - uses: ./.github/actions/finish-interop
         if: always()
