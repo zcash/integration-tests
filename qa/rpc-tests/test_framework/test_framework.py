@@ -166,8 +166,8 @@ class BitcoinTestFramework(object):
                           help="Leave bitcoinds and test.* datadir on exit or error")
         parser.add_option("--noshutdown", dest="noshutdown", default=False, action="store_true",
                           help="Don't stop bitcoinds after the test execution")
-        parser.add_option("--srcdir", dest="srcdir", default="../../src",
-                          help="Source directory containing bitcoind/bitcoin-cli (default: %default)")
+        parser.add_option("--bindir", dest="bindir", default="../../bin",
+                          help="Directory containing zebrad/zainod/zallet (default: %default)")
         parser.add_option("--cachedir", dest="cachedir", default=os.path.normpath(os.path.dirname(os.path.realpath(__file__))+"/../../cache"),
                           help="Directory for caching pregenerated datadirs")
         parser.add_option("--tmpdir", dest="tmpdir", default=tempfile.mkdtemp(prefix="test"),
@@ -191,7 +191,7 @@ class BitcoinTestFramework(object):
 
         PortSeed.n = self.options.port_seed
 
-        os.environ['PATH'] = self.options.srcdir+":"+os.environ['PATH']
+        os.environ['PATH'] = self.options.bindir+":"+os.environ['PATH']
 
         check_json_precision()
 
