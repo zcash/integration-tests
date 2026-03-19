@@ -1109,7 +1109,10 @@ def start_zainos(num_nodes, dirname, extra_args=None, rpchost=None, binary=None)
             json_rpcs.append(proxy)
             grpcs.append(stub)
     except: # If one node failed to start, stop the others
-        stop_zainos(json_rpcs)
+        if json_rpcs is not None:
+            del json_rpcs[:]
+        if grpcs is not None:
+            del grpcs[:]
         raise
     return (json_rpcs, grpcs)
 
@@ -1179,10 +1182,6 @@ def update_zainod_conf(datadir, rpc_port, indexer_port, zaino_rpc_port, zaino_gr
         toml.dump(config_file, f)
 
     return config_path
-
-def stop_zainos(zainos):
-    # TODO: Add a `stop` RPC method to zainod
-    del zainos[:] # Emptying array closes connections as a side effect
 
 def wait_zainods():
     # Wait for all zainods to cleanly exit

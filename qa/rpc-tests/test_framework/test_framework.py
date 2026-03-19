@@ -29,7 +29,6 @@ from .util import (
     sync_mempools,
     stop_nodes,
     stop_wallets,
-    stop_zainos,
     wait_bitcoinds,
     wait_zainods,
     wait_zallets,
@@ -89,6 +88,12 @@ class BitcoinTestFramework(object):
     def setup_wallets(self):
         return start_wallets(self.num_wallets, self.options.tmpdir)
 
+    def stop_zainos(self):
+        if self.zainod_json_services is not None:
+            del self.zainod_json_services[:]
+        if self.zainod_grpc_services is not None:
+            del self.zainod_grpc_services[:]
+
     def setup_network(self, split = False, do_mempool_sync = True):
         self.prepare_wallets()
         self.nodes = self.setup_nodes()
@@ -123,7 +128,7 @@ class BitcoinTestFramework(object):
         assert not self.is_network_split
         stop_wallets(self.wallets)
         wait_zallets()
-        stop_zainos(self.zainod_json_services)
+        self.stop_zainos()
         wait_zainods()
         stop_nodes(self.nodes)
         wait_bitcoinds()
@@ -154,7 +159,7 @@ class BitcoinTestFramework(object):
         assert self.is_network_split
         stop_wallets(self.wallets)
         wait_zallets()
-        stop_zainos(self.zainod_json_services)
+        self.stop_zainos()
         wait_zainods()
         stop_nodes(self.nodes)
         wait_bitcoinds()
@@ -224,7 +229,7 @@ class BitcoinTestFramework(object):
             wait_zallets()
 
             print("Stopping indexers")
-            stop_zainos(self.zainod_json_services)
+            self.stop_zainos()
             wait_zainods()
 
             print("Stopping nodes")
