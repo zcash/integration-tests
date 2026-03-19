@@ -47,8 +47,8 @@ class BitcoinTestFramework(object):
         self.num_wallets = 4
         self.cache_behavior = 'current'
         self.nodes = None
-        self.zainos = None
-        self.zaino_stubs = None
+        self.zainod_json_services = None
+        self.zainod_grpc_services = None
         self.wallets = None
         self.miner_addresses = None
 
@@ -84,9 +84,7 @@ class BitcoinTestFramework(object):
                 self.nodes[0].generate(1)
 
     def setup_indexers(self):
-        (zainos, zaino_stubs) = start_zainos(self.num_indexers, self.options.tmpdir)
-        self.zaino_stubs = zaino_stubs
-        return zainos
+        (self.zainod_json_services, self.zainod_grpc_services) = start_zainos(self.num_indexers, self.options.tmpdir)
 
     def setup_wallets(self):
         return start_wallets(self.num_wallets, self.options.tmpdir)
@@ -115,7 +113,7 @@ class BitcoinTestFramework(object):
         self.prepare_chain()
         self.sync_all(do_mempool_sync)
 
-        self.zainos = self.setup_indexers()
+        self.setup_indexers()
         self.wallets = self.setup_wallets()
 
     def split_network(self):
@@ -125,7 +123,7 @@ class BitcoinTestFramework(object):
         assert not self.is_network_split
         stop_wallets(self.wallets)
         wait_zallets()
-        stop_zainos(self.zainos)
+        stop_zainos(self.zainod_json_services)
         wait_zainods()
         stop_nodes(self.nodes)
         wait_bitcoinds()
@@ -156,7 +154,7 @@ class BitcoinTestFramework(object):
         assert self.is_network_split
         stop_wallets(self.wallets)
         wait_zallets()
-        stop_zainos(self.zainos)
+        stop_zainos(self.zainod_json_services)
         wait_zainods()
         stop_nodes(self.nodes)
         wait_bitcoinds()
@@ -226,7 +224,7 @@ class BitcoinTestFramework(object):
             wait_zallets()
 
             print("Stopping indexers")
-            stop_zainos(self.zainos)
+            stop_zainos(self.zainod_json_services)
             wait_zainods()
 
             print("Stopping nodes")

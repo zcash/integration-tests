@@ -1101,17 +1101,17 @@ def start_zainos(num_nodes, dirname, extra_args=None, rpchost=None, binary=None)
     """
     if extra_args is None: extra_args = [ None for _ in range(num_nodes) ]
     if binary is None: binary = [ None for _ in range(num_nodes) ]
-    rpcs = []
-    stubs = []
+    json_rpcs = []
+    grpcs = []
     try:
         for i in range(num_nodes):
             (proxy, stub) = start_zaino(i, dirname, extra_args[i], rpchost, binary=binary[i])
-            rpcs.append(proxy)
-            stubs.append(stub)
+            json_rpcs.append(proxy)
+            grpcs.append(stub)
     except: # If one node failed to start, stop the others
-        stop_zainos(rpcs)
+        stop_zainos(json_rpcs)
         raise
-    return (rpcs, stubs)
+    return (json_rpcs, grpcs)
 
 def start_zaino(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=None, stderr=None):
     """

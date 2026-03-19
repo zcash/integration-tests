@@ -18,11 +18,11 @@ class IndexerTest (BitcoinTestFramework):
         self.num_wallets = 0
 
     def run_test(self):
-        assert_equal(self.zainos[0].getblockcount(), 100)
+        assert_equal(self.zainod_json_services[0].getblockcount(), 100)
         assert_equal(self.nodes[0].getblockcount(), 100)
 
         # Test gRPC GetLightdInfo
-        info = self.zaino_stubs[0].GetLightdInfo(service_pb2.Empty())
+        info = self.zainod_grpc_services[0].GetLightdInfo(service_pb2.Empty())
         assert_equal(info.blockHeight, 100)
 
 if __name__ == '__main__':
