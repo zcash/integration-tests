@@ -84,7 +84,7 @@ class BitcoinTestFramework(object):
                 self.nodes[0].generate(1)
 
     def setup_indexers(self):
-        (self.zainod_json_services, self.zainod_grpc_services) = start_zainos(self.num_indexers, self.options.tmpdir)
+        return start_zainos(self.num_indexers, self.options.tmpdir)
 
     def setup_wallets(self):
         return start_wallets(self.num_wallets, self.options.tmpdir)
@@ -113,7 +113,7 @@ class BitcoinTestFramework(object):
         self.prepare_chain()
         self.sync_all(do_mempool_sync)
 
-        self.setup_indexers()
+        self.zainod_json_services, self.zainod_grpc_services = self.setup_indexers()
         self.wallets = self.setup_wallets()
 
     def split_network(self):

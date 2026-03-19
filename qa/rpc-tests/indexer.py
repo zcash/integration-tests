@@ -23,6 +23,7 @@ class IndexerTest (BitcoinTestFramework):
 
         # Test gRPC GetLightdInfo
         info = self.zainod_grpc_services[0].GetLightdInfo(service_pb2.Empty())
+        print(info)
         assert_equal(info.blockHeight, 100)
 
 if __name__ == '__main__':
