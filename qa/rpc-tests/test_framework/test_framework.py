@@ -48,6 +48,7 @@ class BitcoinTestFramework(object):
         self.cache_behavior = 'current'
         self.nodes = None
         self.zainos = None
+        self.zaino_stubs = None
         self.wallets = None
         self.miner_addresses = None
 
@@ -83,7 +84,9 @@ class BitcoinTestFramework(object):
                 self.nodes[0].generate(1)
 
     def setup_indexers(self):
-        return start_zainos(self.num_indexers, self.options.tmpdir)
+        (zainos, zaino_stubs) = start_zainos(self.num_indexers, self.options.tmpdir)
+        self.zaino_stubs = zaino_stubs
+        return zainos
 
     def setup_wallets(self):
         return start_wallets(self.num_wallets, self.options.tmpdir)

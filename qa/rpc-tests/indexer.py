@@ -5,6 +5,7 @@
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal
+from test_framework.proto import service_pb2
 
 # Test that we can call the indexer RPCs.
 class IndexerTest (BitcoinTestFramework):
@@ -19,6 +20,10 @@ class IndexerTest (BitcoinTestFramework):
     def run_test(self):
         assert_equal(self.zainos[0].getblockcount(), 100)
         assert_equal(self.nodes[0].getblockcount(), 100)
+
+        # Test gRPC GetLightdInfo
+        info = self.zaino_stubs[0].GetLightdInfo(service_pb2.Empty())
+        assert_equal(info.blockHeight, 100)
 
 if __name__ == '__main__':
     IndexerTest ().main ()
