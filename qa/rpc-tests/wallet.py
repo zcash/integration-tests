@@ -7,8 +7,9 @@
 #from decimal import Decimal
 import time
 
+from test_framework.config import ZebraArgs
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal, assert_true
+from test_framework.util import assert_equal, assert_true, start_nodes
 
 # Test that we can create a wallet and use an address from it to mine blocks.
 class WalletTest (BitcoinTestFramework):
@@ -18,6 +19,21 @@ class WalletTest (BitcoinTestFramework):
         self.cache_behavior = 'clean'
         self.num_nodes = 1
         self.num_wallets = 1
+
+    def setup_nodes(self):
+        # Zallet requires NU5 activation height to be available.
+        args = [ZebraArgs(
+            miner_address=addr,
+            activation_heights={
+                "Overwinter": 1,
+                "Sapling": 1,
+                "Blossom": 1,
+                "Heartwood": 1,
+                "Canopy": 1,
+                "NU5": 1,
+            },
+        ) for addr in self.miner_addresses]
+        return start_nodes(self.num_nodes, self.options.tmpdir, args)
 
     def run_test(self):
         transparent_address = self.miner_addresses[0]
