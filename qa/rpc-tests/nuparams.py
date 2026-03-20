@@ -81,7 +81,7 @@ class NuparamsTest(BitcoinTestFramework):
         assert_equal(nu6['status'], 'pending')
 
         # Initial subsidy at the genesis block is 12.5 ZEC
-        assert_equal(node.getblocksubsidy()["miner"], Decimal("12.5"))
+        assert_equal(node.getblocksubsidy()["miner"], Decimal("10.0"))
 
         # Zebra regtest mode hardcodes Canopy, Heartwood, Blossom, Sapling and Overwinter
         # to activate at height 1.

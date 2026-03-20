@@ -9,7 +9,6 @@ regtest_nuparams = [
     "2bb40e60:1", # Blossom
     "f5b9230b:1", # Heartwood
     "e9ff75a6:1", # Canopy
-    "c2d6d0b4:1", # NU5
 ]
 
 [database]
