@@ -15,11 +15,15 @@ import tempfile
 import time
 import traceback
 
+import toml
+
 from .config import ZebraArgs
 from .proxy import JSONRPCException
 from .util import (
+    NU5_BRANCH_ID,
     zcashd_binary,
     initialize_chain,
+    nustr,
     prepare_wallets_for_mining,
     start_nodes,
     start_wallets,
@@ -33,6 +37,8 @@ from .util import (
     wait_bitcoinds,
     wait_zainods,
     wait_zallets,
+    wallet_dir,
+    zallet_config,
     enable_coverage,
     check_json_precision,
     PortSeed,
@@ -242,6 +248,36 @@ class BitcoinTestFramework(object):
         else:
             print("Failed")
             sys.exit(1)
+
+
+class NU5ActiveTestFramework(BitcoinTestFramework):
+    """BitcoinTestFramework subclass that activates NU5 for Zallet tests."""
+
+    def setup_nodes(self):
+        if self.miner_addresses is None:
+            args = [ZebraArgs(activation_heights={"NU5": 1})] * self.num_nodes
+        else:
+            args = [
+                ZebraArgs(miner_address=addr, activation_heights={"NU5": 1})
+                for addr in self.miner_addresses
+            ]
+        return start_nodes(self.num_nodes, self.options.tmpdir, args)
+
+    def _add_nu5_to_wallet_configs(self):
+        nu5_param = "%s:1" % nustr(NU5_BRANCH_ID)
+        for i in range(self.num_wallets):
+            config_path = zallet_config(wallet_dir(self.options.tmpdir, i))
+            with open(config_path, "r", encoding="utf8") as f:
+                config = toml.load(f)
+            params = config['consensus']['regtest_nuparams']
+            if nu5_param not in params:
+                params.append(nu5_param)
+            with open(config_path, "w", encoding="utf8") as f:
+                toml.dump(config, f)
+
+    def prepare_wallets(self):
+        self._add_nu5_to_wallet_configs()
+        super().prepare_wallets()
 
 
 # Test framework for doing p2p comparison testing, which sets up some bitcoind

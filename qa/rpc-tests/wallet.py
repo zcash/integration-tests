@@ -7,11 +7,15 @@
 #from decimal import Decimal
 import time
 
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal, assert_true
+from test_framework.test_framework import NU5ActiveTestFramework
+from test_framework.util import (
+    assert_equal,
+    assert_true,
+)
+
 
 # Test that we can create a wallet and use an address from it to mine blocks.
-class WalletTest (BitcoinTestFramework):
+class WalletTest (NU5ActiveTestFramework):
 
     def __init__(self):
         super().__init__()
