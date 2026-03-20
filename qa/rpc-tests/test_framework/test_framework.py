@@ -218,17 +218,20 @@ class BitcoinTestFramework(object):
             print("Exiting after " + repr(e))
 
         if not self.options.noshutdown:
-            print("Stopping wallets")
-            stop_wallets(self.wallets)
-            wait_zallets()
+            if self.wallets is not None:
+                print("Stopping wallets")
+                stop_wallets(self.wallets)
+                wait_zallets()
 
-            print("Stopping indexers")
-            stop_zainos(self.zainos)
-            wait_zainods()
+            if self.zainos is not None:
+                print("Stopping indexers")
+                stop_zainos(self.zainos)
+                wait_zainods()
 
-            print("Stopping nodes")
-            stop_nodes(self.nodes)
-            wait_bitcoinds()
+            if self.nodes is not None:
+                print("Stopping nodes")
+                stop_nodes(self.nodes)
+                wait_bitcoinds()
         else:
             print("Note: zebrads, zainods, and zallets were not stopped and may still be running")
 
