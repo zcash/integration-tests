@@ -13,3 +13,4 @@ src/*
 
 poetry.lock
 .venv
+venv/*
