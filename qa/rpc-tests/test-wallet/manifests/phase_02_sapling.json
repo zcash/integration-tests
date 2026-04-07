@@ -1,0 +1,313 @@
+{
+  "phase": 2,
+  "network_upgrade": "sapling",
+  "network_upgrade_name": "Sapling",
+  "zcashd_version": "2.0.1",
+  "zcashd_commit": "/MagicBean:2.0.1/",
+  "activation_height": 350,
+  "phase_start_height": 350,
+  "phase_end_height": 499,
+  "timestamp": "2026-04-10T19:24:00.663655+00:00",
+  "nuparams": {
+    "5ba81b19": 200,
+    "76b809bb": 350
+  },
+  "addresses": {
+    "transparent": [
+      {
+        "address": "tmJ6op7aXEMmzZaPc3wMQVugxo3E9LAgorY",
+        "type": "p2pkh"
+      },
+      {
+        "address": "tmWtPU6VcEz27ZkU1BBXkQUZgr99Ez6Hgpf",
+        "type": "p2pkh"
+      }
+    ],
+    "sprout": [
+      {
+        "address": "ztftJyethfmXj7CSn2WkfFmtJ9tiTMAHaz1PURieoFLWAiJRN1iXGyMUmTNaJwPh7oPtNYa5w482vY2KqKKebh5cz2ScMB7",
+        "type": "sprout"
+      },
+      {
+        "address": "ztWSNzPXbkCkavU6A9ZWKKdnAzgJHL4x7zMhsdir4xBTi3VgvvFetnfkqec4KPNj9ggesWCEpXKdDawzavT6rbEJMj6RHBn",
+        "type": "sprout"
+      }
+    ],
+    "sapling": [
+      {
+        "address": "zregtestsapling19pqgjtztwpl0yazaxrjqm78g48kzvastuh5s3z6qn6d3c3f8t8u025e7850hq7u5ny7as3cvtct",
+        "type": "sapling"
+      },
+      {
+        "address": "zregtestsapling1qyj8r6l5mh2xpuvvn37vjk74s28slr8ymwh4z2327y5rr7vw02z8m5kznx8lmhf88k8tcq44s0a",
+        "type": "sapling"
+      }
+    ],
+    "orchard": [],
+    "unified": []
+  },
+  "external_addresses": {
+    "transparent": [
+      {
+        "address": "tmSRWfb2raEF8UmCdqTidHdZiuug4dFNvRD",
+        "type": "p2pkh"
+      }
+    ],
+    "sprout": [
+      {
+        "address": "ztnkGdVC9JYmJUUqQaULVR63a5KW1h1chh1h6shfsXpRH7QXgvudHaCHpVVxKhvmC6ZPboXR53Ub7Wmu553wuFjEkzHPCzj",
+        "type": "sprout"
+      }
+    ],
+    "sapling": [
+      {
+        "address": "zregtestsapling1guzdxw9znp8vgaj2sefprcv80sz3y6le0glsee8vfyjgphlgl50ac7jwgjhtuh3thwl4xkttusx",
+        "type": "sapling"
+      }
+    ],
+    "orchard": [],
+    "unified": []
+  },
+  "viewing_keys": {
+    "sprout": [
+      {
+        "address": "ztftJyethfmXj7CSn2WkfFmtJ9tiTMAHaz1PURieoFLWAiJRN1iXGyMUmTNaJwPh7oPtNYa5w482vY2KqKKebh5cz2ScMB7",
+        "viewing_key": "ZiVtfEnYuqJk1xkmhaKFQMZAhaMQYZ7DcKadSBWyrGGnrS4syMzoBQL9RXbvUwdLNkoJBFkoGt3tFZzKVJ3KCeNB6MxCofQZr"
+      },
+      {
+        "address": "ztWSNzPXbkCkavU6A9ZWKKdnAzgJHL4x7zMhsdir4xBTi3VgvvFetnfkqec4KPNj9ggesWCEpXKdDawzavT6rbEJMj6RHBn",
+        "viewing_key": "ZiVtVnrZeUCpTBcayDhNT7DEZUEFL8wCWz7dnVvBrTYVhPcAcTF8V8RAPttC2kezhwWeN56FE7LdVvapjFgtRsoaorCTGmj3i"
+      }
+    ],
+    "sapling": [],
+    "orchard": []
+  },
+  "transactions": [
+    {
+      "txid": "17ef38c2e65fde6be999ab4c4fdabb5197fa996777031d733a69447c6f5d4f33",
+      "mined_height": 450,
+      "type": "z_shieldcoinbase",
+      "from_pool": "transparent",
+      "to_pool": "sprout",
+      "from_address": "*",
+      "to_address": "ztftJyethfmXj7CSn2WkfFmtJ9tiTMAHaz1PURieoFLWAiJRN1iXGyMUmTNaJwPh7oPtNYa5w482vY2KqKKebh5cz2ScMB7",
+      "amount_zec": "106.25",
+      "fee_zec": "0.0001",
+      "description": "Shield 20 coinbase UTXOs to sprout"
+    },
+    {
+      "txid": "9aa61ca30b038082f4c5111247bb1ea6cdbb70ed125471ce45a2343e3c260fe5",
+      "mined_height": 451,
+      "type": "z_shieldcoinbase",
+      "from_pool": "transparent",
+      "to_pool": "sapling",
+      "from_address": "*",
+      "to_address": "zregtestsapling19pqgjtztwpl0yazaxrjqm78g48kzvastuh5s3z6qn6d3c3f8t8u025e7850hq7u5ny7as3cvtct",
+      "amount_zec": "110.62510226",
+      "fee_zec": "0.0001",
+      "description": "Shield 20 coinbase UTXOs to sapling"
+    },
+    {
+      "txid": "0d44b2476f4a18bb6eaa6363eba7eb04223fbd885a124dca5e9bf6b224b231c4",
+      "mined_height": 457,
+      "type": "sendtoaddress",
+      "from_pool": "transparent",
+      "to_pool": "transparent",
+      "from_address": "tmJ6op7aXEMmzZaPc3wMQVugxo3E9LAgorY",
+      "to_address": "tmWtPU6VcEz27ZkU1BBXkQUZgr99Ez6Hgpf",
+      "amount_zec": "4.0",
+      "fee_zec": "0.0001",
+      "description": "transparent -> transparent: 4.0 ZEC"
+    },
+    {
+      "txid": "246f23119d4c3cf8e1c8f179ce862ea61530444d2e1436da272eee4dc0009117",
+      "mined_height": 458,
+      "type": "z_sendmany",
+      "from_pool": "sprout",
+      "to_pool": "sprout",
+      "from_address": "ztftJyethfmXj7CSn2WkfFmtJ9tiTMAHaz1PURieoFLWAiJRN1iXGyMUmTNaJwPh7oPtNYa5w482vY2KqKKebh5cz2ScMB7",
+      "to_address": "ztWSNzPXbkCkavU6A9ZWKKdnAzgJHL4x7zMhsdir4xBTi3VgvvFetnfkqec4KPNj9ggesWCEpXKdDawzavT6rbEJMj6RHBn",
+      "amount_zec": "2.0",
+      "fee_zec": "0.0001",
+      "description": "sprout -> sprout: 2.0 ZEC"
+    },
+    {
+      "txid": "42cdd7480a520a1763df8742b5ea72ce591c42805dfa1c6faf3d11569217bfa5",
+      "mined_height": 459,
+      "type": "z_sendmany",
+      "from_pool": "sapling",
+      "to_pool": "sapling",
+      "from_address": "zregtestsapling19pqgjtztwpl0yazaxrjqm78g48kzvastuh5s3z6qn6d3c3f8t8u025e7850hq7u5ny7as3cvtct",
+      "to_address": "zregtestsapling1qyj8r6l5mh2xpuvvn37vjk74s28slr8ymwh4z2327y5rr7vw02z8m5kznx8lmhf88k8tcq44s0a",
+      "amount_zec": "2.0",
+      "fee_zec": "0.0001",
+      "description": "sapling -> sapling: 2.0 ZEC"
+    },
+    {
+      "txid": "64033dc0a986c708c5eb23a3133b02e55f6e5438b2d82a17a51ba181344204d4",
+      "mined_height": 462,
+      "type": "z_sendmany",
+      "from_pool": "transparent",
+      "to_pool": "sapling",
+      "from_address": "tmJ6op7aXEMmzZaPc3wMQVugxo3E9LAgorY",
+      "to_address": "zregtestsapling19pqgjtztwpl0yazaxrjqm78g48kzvastuh5s3z6qn6d3c3f8t8u025e7850hq7u5ny7as3cvtct",
+      "amount_zec": "1.6",
+      "fee_zec": "0.0001",
+      "description": "transparent -> sapling: 1.6 ZEC"
+    },
+    {
+      "txid": "995a4a7b06bc604c401165bb55ca06fecf16e7a72a12ceb186373ecc42742366",
+      "mined_height": 463,
+      "type": "z_sendmany",
+      "from_pool": "sprout",
+      "to_pool": "transparent",
+      "from_address": "ztftJyethfmXj7CSn2WkfFmtJ9tiTMAHaz1PURieoFLWAiJRN1iXGyMUmTNaJwPh7oPtNYa5w482vY2KqKKebh5cz2ScMB7",
+      "to_address": "tmJ6op7aXEMmzZaPc3wMQVugxo3E9LAgorY",
+      "amount_zec": "1.6",
+      "fee_zec": "0.0001",
+      "description": "sprout -> transparent: 1.6 ZEC"
+    },
+    {
+      "txid": "cabbb8ab552d5d7bba72d4a47af608479f8ba536cf3518982d5ee32a21a40637",
+      "mined_height": 464,
+      "type": "z_sendmany",
+      "from_pool": "sprout",
+      "to_pool": "transparent",
+      "from_address": "ztftJyethfmXj7CSn2WkfFmtJ9tiTMAHaz1PURieoFLWAiJRN1iXGyMUmTNaJwPh7oPtNYa5w482vY2KqKKebh5cz2ScMB7",
+      "to_address": "tmJ6op7aXEMmzZaPc3wMQVugxo3E9LAgorY",
+      "amount_zec": "1.6",
+      "fee_zec": "0.0001",
+      "description": "sprout -> transparent: 1.6 ZEC"
+    },
+    {
+      "txid": "e90c256ec2c3e2713b8fffb59da8e523378d3ddb6b4563731ec81963ff80ac61",
+      "mined_height": 465,
+      "type": "z_sendmany",
+      "from_pool": "transparent",
+      "to_pool": "sapling",
+      "from_address": "tmJ6op7aXEMmzZaPc3wMQVugxo3E9LAgorY",
+      "to_address": "zregtestsapling19pqgjtztwpl0yazaxrjqm78g48kzvastuh5s3z6qn6d3c3f8t8u025e7850hq7u5ny7as3cvtct",
+      "amount_zec": "1.28",
+      "fee_zec": "0.0001",
+      "description": "transparent -> sapling: 1.28 ZEC"
+    },
+    {
+      "txid": "e96b181b5215be4c94f8990cb1b1ada92ca21866183cd5341a2c642717397b64",
+      "mined_height": 466,
+      "type": "z_sendmany",
+      "from_pool": "sapling",
+      "to_pool": "transparent",
+      "from_address": "zregtestsapling19pqgjtztwpl0yazaxrjqm78g48kzvastuh5s3z6qn6d3c3f8t8u025e7850hq7u5ny7as3cvtct",
+      "to_address": "tmJ6op7aXEMmzZaPc3wMQVugxo3E9LAgorY",
+      "amount_zec": "1.6",
+      "fee_zec": "0.0001",
+      "description": "sapling -> transparent: 1.6 ZEC"
+    },
+    {
+      "txid": "4be8c67ccdd2844fe1f26f419eb1f7dc4bd800faccedc0e91a694b0960ba450f",
+      "mined_height": 467,
+      "type": "z_sendmany",
+      "from_pool": "sapling",
+      "to_pool": "transparent",
+      "from_address": "zregtestsapling19pqgjtztwpl0yazaxrjqm78g48kzvastuh5s3z6qn6d3c3f8t8u025e7850hq7u5ny7as3cvtct",
+      "to_address": "tmJ6op7aXEMmzZaPc3wMQVugxo3E9LAgorY",
+      "amount_zec": "1.6",
+      "fee_zec": "0.0001",
+      "description": "sapling -> transparent: 1.6 ZEC"
+    },
+    {
+      "txid": "25a5a64abe950a486f00f0b6d64d401118d93d018e1111161a7d7a7dd73fbb78",
+      "mined_height": 468,
+      "type": "z_sendmany",
+      "from_pool": "transparent",
+      "to_pool": "sprout",
+      "from_address": "tmJ6op7aXEMmzZaPc3wMQVugxo3E9LAgorY",
+      "to_address": "ztftJyethfmXj7CSn2WkfFmtJ9tiTMAHaz1PURieoFLWAiJRN1iXGyMUmTNaJwPh7oPtNYa5w482vY2KqKKebh5cz2ScMB7",
+      "amount_zec": "1.28",
+      "fee_zec": "0.0001",
+      "description": "transparent -> sprout: 1.28 ZEC"
+    },
+    {
+      "txid": "8efb63a7cf5a0891e0c4a4a6271814c0a31d39643525533e9cc7ab813473184a",
+      "mined_height": 471,
+      "type": "sendtoaddress",
+      "from_pool": "transparent",
+      "to_pool": "external_transparent",
+      "from_address": "tmJ6op7aXEMmzZaPc3wMQVugxo3E9LAgorY",
+      "to_address": "tmSRWfb2raEF8UmCdqTidHdZiuug4dFNvRD",
+      "amount_zec": "1.0",
+      "fee_zec": "0.0001",
+      "description": "External send: transparent to unknown address"
+    },
+    {
+      "txid": "e71d5cdd9b6df479378478482249fd44a9facb9ef62e1ce9490356b496f94212",
+      "mined_height": 472,
+      "type": "z_sendmany",
+      "from_pool": "sprout",
+      "to_pool": "external_sprout",
+      "from_address": "ztftJyethfmXj7CSn2WkfFmtJ9tiTMAHaz1PURieoFLWAiJRN1iXGyMUmTNaJwPh7oPtNYa5w482vY2KqKKebh5cz2ScMB7",
+      "to_address": "ztnkGdVC9JYmJUUqQaULVR63a5KW1h1chh1h6shfsXpRH7QXgvudHaCHpVVxKhvmC6ZPboXR53Ub7Wmu553wuFjEkzHPCzj",
+      "amount_zec": "1.0",
+      "fee_zec": "0.0001",
+      "description": "External send: sprout to unknown address"
+    },
+    {
+      "txid": "3310299ae214d6b2584a807d31a1516541daeba1f2b301346e0c5383a0fdd0b0",
+      "mined_height": 473,
+      "type": "z_sendmany",
+      "from_pool": "sapling",
+      "to_pool": "external_sapling",
+      "from_address": "zregtestsapling19pqgjtztwpl0yazaxrjqm78g48kzvastuh5s3z6qn6d3c3f8t8u025e7850hq7u5ny7as3cvtct",
+      "to_address": "zregtestsapling1guzdxw9znp8vgaj2sefprcv80sz3y6le0glsee8vfyjgphlgl50ac7jwgjhtuh3thwl4xkttusx",
+      "amount_zec": "1.0",
+      "fee_zec": "0.0001",
+      "description": "External send: sapling to unknown address"
+    }
+  ],
+  "balances_at_phase_end": {
+    "transparent": "2145.21537928",
+    "sprout": "484.47900373",
+    "sapling": "111.30470226",
+    "orchard": "0"
+  },
+  "note_counts": {
+    "sprout": 0,
+    "sapling": 0,
+    "orchard": 0
+  },
+  "utxo_count": 319,
+  "coinbase_utxo_count": 307,
+  "chain_info": {
+    "blocks": 499,
+    "bestblockhash": "018a21a3f5db546a2516d13bafe91094fcb726fc601766a8ecbb62e4b1ddffa5",
+    "chain": "regtest",
+    "size_on_disk": 0
+  },
+  "notes": "Sapling introduces the second shielded pool with dramatically improved performance (90% faster proving, 97% less memory). First NU where cross-pool transfers are possible (Sprout -> transparent -> Sapling).",
+  "imported_keys": {
+    "transparent_privkey": {
+      "address": "tmYoH8Tix1SrZ1yJXUL4DqGtebLjBcctFg4",
+      "wif": "cRvPtueWkGG5yjoQuk6rY2JSo8ggoAWxdLCF2L4AMgDhEnv8S5GC",
+      "label": "imported_privkey_phase2"
+    },
+    "transparent_watchonly": {
+      "address": "tmWUShs8ThdGpMskBJbuRCi7MaVM7YEffHn",
+      "label": "imported_watchonly_phase2"
+    },
+    "sprout_spending": {
+      "address": "ztXfijRNBH8XmY4Cyk3xHC5f7AhA38oVhEYk6hT1QN8J5LT7NGV47zgyDehPHCK8Afu7oaAGqUrUPyCzbkiEPcsHMYKWkma",
+      "key": "ST14jCfMb8QMk2hoEsng4yp3bqjrNCEFAtHwG7Ey8TnP6WcbAchD",
+      "label": "imported_sprout_sk_phase2"
+    },
+    "sprout_viewing": {
+      "address": "ztb97Sv27nFdyV9NnCFmrSSdMpwu4fnpc8Ypq3up7oNvtfkYTd7TvHkWLP3ntScvE5FoEFGmn12X9j9LdTByhCs1MMpYgXV",
+      "key": "ZiVtaVb2AxirW519eWKR9NkMNKR5bjiYErbmycsc3RbLtrnq2JQBpFbJjW6s94D84pJq6deTvvs4u4fAQwtpcRzY2W6iKZz45",
+      "label": "imported_sprout_vk_phase2"
+    },
+    "sapling_spending": {
+      "address": "zregtestsapling1epdjegn2lg8ddtvm94x7rpr7fdu5jhmtmtr5mvsst29259j86l42hcry59ce0uqw9g8jufl0nle",
+      "key": "secret-extended-key-regtest1qdje8nxuqyqqpqrgm47pzgna6ajeal3vhw40sr80fdh8gd9jfy5elsw9g2q3nnjmerk3c72ledyuxn6zdw5uu9z6848egfw9z3uutqsk03rav6tewqhqrunulhq4hgsuc4edw2ljz6pkcd0dqa4wegszpffr6m4uy9pvuwqrtas4fe3ma026a4s4cjgc3w9mywh3v6nn47acakk05e9a86h9x3hzrnrmntqaavtt846xd7f2cd358hpf4g0vvrefyeepxx7z65pnx8qj6h9uy",
+      "label": "imported_sapling_sk_phase2"
+    }
+  }
+}
