@@ -23,6 +23,7 @@ from .util import (
     start_nodes,
     start_wallets,
     start_zainos,
+    start_lightwalletds,
     connect_nodes_bi,
     sync_blocks,
     sync_mempools,
@@ -30,9 +31,11 @@ from .util import (
     stop_nodes,
     stop_wallets,
     stop_zainos,
+    stop_lightwalletds,
     wait_bitcoinds,
     wait_zainods,
     wait_zallets,
+    wait_lightwalletds,
     enable_coverage,
     check_json_precision,
     PortSeed,
@@ -45,10 +48,12 @@ class BitcoinTestFramework(object):
         self.activation_heights = {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1}
         self.num_nodes = 4
         self.num_indexers = 0
+        self.num_lightwalletds = 0
         self.num_wallets = 4
         self.cache_behavior = 'current'
         self.nodes = None
         self.zainos = None
+        self.lwds = None
         self.wallets = None
         self.miner_addresses = None
 
@@ -95,6 +100,9 @@ class BitcoinTestFramework(object):
     def setup_indexers(self):
         return start_zainos(self.num_indexers, self.options.tmpdir)
 
+    def setup_lightwalletds(self):
+        return start_lightwalletds(self.num_lightwalletds, self.options.tmpdir)
+
     def setup_wallets(self):
         return start_wallets(self.num_wallets, self.options.tmpdir)
 
@@ -123,6 +131,7 @@ class BitcoinTestFramework(object):
         self.sync_all(do_mempool_sync)
 
         self.zainos = self.setup_indexers()
+        self.lwds = self.setup_lightwalletds()
         self.wallets = self.setup_wallets()
 
     def split_network(self):
@@ -227,6 +236,10 @@ class BitcoinTestFramework(object):
                 stop_wallets(self.wallets)
                 wait_zallets()
 
+            print("Stopping lightwalletds")
+            stop_lightwalletds(self.lwds or [])
+            wait_lightwalletds()
+
             print("Stopping indexers")
             if self.zainos is not None:
                 stop_zainos(self.zainos)
@@ -241,7 +254,7 @@ class BitcoinTestFramework(object):
             # running processes, `util` keeps global dicts or running processes
             stop_all_processes()
         else:
-            print("Note: zebrads, zainods, and zallets were not stopped and may still be running")
+            print("Note: zebrads, zainods, lightwalletds, and zallets were not stopped and may still be running")
 
         if not self.options.nocleanup and not self.options.noshutdown:
             print("Cleaning up")

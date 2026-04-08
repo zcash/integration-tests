@@ -82,6 +82,9 @@ def zaino_binary():
 def zallet_binary():
     return os.getenv("ZALLET", os.path.join("src", "zallet"))
 
+def lightwalletd_binary():
+    return os.getenv("LIGHTWALLETD", os.path.join("src", "lightwalletd"))
+
 def zebrad_config(datadir):
     base_location = os.path.join('qa', 'defaults', 'zebrad', 'config.toml')
     new_location = os.path.join(datadir, "config.toml")
@@ -157,6 +160,9 @@ def zaino_rpc_port(n):
 
 def zaino_grpc_port(n):
     return PORT_MIN + (PORT_RANGE * 5) + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
+
+def lwd_grpc_port(n):
+    return PORT_MIN + (PORT_RANGE * 6) + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
 
 def check_json_precision():
     """Make sure json library being used does not lose precision converting ZEC values"""
@@ -1408,7 +1414,7 @@ def stop_all_processes():
     Forcibly terminate every zebrad, zainod and zallet process we spawned,
     regardless of whether a test data structure still references it.
     '''
-    for processes in (bitcoind_processes, zallet_processes, zainod_processes):
+    for processes in (bitcoind_processes, zallet_processes, zainod_processes, lwd_processes):
         for p in list(processes.values()):
             try:
                 p.terminate() # send SIGHIGH
@@ -1906,3 +1912,99 @@ def assert_in_message(e, needle: str) -> None:
     """Assert that JSONRPCException `e`'s message contains `needle`."""
     msg = e.error['message']
     assert_true(needle in msg, "Expected {!r} in error, got: {!r}".format(needle, msg))
+
+
+# Lightwalletd utilities
+
+lwd_processes = {}
+
+def write_lwd_conf(datadir, node_rpc_port):
+    """Write a minimal zcash.conf for lightwalletd to connect to a Zebrad node."""
+    conf_path = os.path.join(datadir, "zcash.conf")
+    with open(conf_path, "w", encoding="utf8") as f:
+        f.write("rpcbind=127.0.0.1\n")
+        f.write(f"rpcport={node_rpc_port}\n")
+        f.write("rpcuser=test\n")
+        f.write("rpcpassword=test\n")
+    return conf_path
+
+def start_lightwalletds(num_nodes, dirname, binary=None):
+    """Start multiple lightwalletd instances, return list of gRPC port numbers."""
+    if binary is None:
+        binary = [None] * num_nodes
+    ports = []
+    try:
+        for i in range(num_nodes):
+            ports.append(start_lightwalletd(i, dirname, binary=binary[i]))
+    except:
+        stop_lightwalletds(ports)
+        raise
+    return ports
+
+def start_lightwalletd(i, dirname, binary=None, stderr=None):
+    """Start a lightwalletd instance and return its gRPC port number."""
+    datadir = os.path.join(dirname, "lwd" + str(i))
+    os.makedirs(datadir, exist_ok=True)
+
+    if binary is None:
+        binary = lightwalletd_binary()
+
+    conf = write_lwd_conf(datadir, rpc_port(i))
+    grpc_addr = f"127.0.0.1:{lwd_grpc_port(i)}"
+
+    args = [
+        binary,
+        "--grpc-bind-addr", grpc_addr,
+        "--no-tls-very-insecure",
+        "--zcash-conf-path", conf,
+        "--data-dir", datadir,
+        "--log-file", os.path.join(datadir, "lwd.log"),
+        "--log-level", "10",
+    ]
+
+    if os.getenv("PYTHON_DEBUG", ""):
+        print(f"start_lightwalletd: starting lightwalletd {i}")
+
+    lwd_processes[i] = subprocess.Popen(args, stderr=stderr)
+    wait_for_lwd_start(lwd_processes[i], lwd_grpc_port(i), i)
+
+    if os.getenv("PYTHON_DEBUG", ""):
+        print(f"start_lightwalletd: lightwalletd {i} ready on {grpc_addr}")
+
+    return lwd_grpc_port(i)
+
+def wait_for_lwd_start(process, port, i):
+    """Poll lightwalletd via GetLightdInfo until it responds or exits."""
+    import grpc
+    from test_framework.proto import service_pb2, service_pb2_grpc
+
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        if process.poll() is not None:
+            raise Exception(
+                f"lightwalletd {i} exited with status {process.returncode} during initialization"
+            )
+        try:
+            with grpc.insecure_channel(f"127.0.0.1:{port}") as ch:
+                stub = service_pb2_grpc.CompactTxStreamerStub(ch)
+                stub.GetLightdInfo(service_pb2.Empty(), timeout=2)
+            return
+        except grpc.RpcError:
+            pass
+        time.sleep(0.5)
+    raise Exception(f"lightwalletd {i} did not become ready within 60 seconds")
+
+def stop_lightwalletds(lwds):
+    del lwds[:]
+
+def wait_lightwalletds():
+    for proc in list(lwd_processes.values()):
+        try:
+            proc.terminate()
+            proc.wait(timeout=10)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    lwd_processes.clear()
