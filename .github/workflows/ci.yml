@@ -596,7 +596,10 @@ jobs:
         env:
           HOST: ${{ matrix.host }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
-        run: cargo build --release --target ${{ matrix.rust_target }} --bin zallet
+        # zcashd-import is disabled on mingw32: its pqcrypto-mlkem dep fails
+        # to cross-compile to windows-gnu, and the tests needing it are
+        # Linux-only. See this commit's message for the full rationale.
+        run: cargo build --release --target ${{ matrix.rust_target }} ${{ matrix.name != 'mingw32' && '--features zcashd-import' || '' }} --bin zallet
         working-directory: ./zallet
 
       - name: Upload zallet
