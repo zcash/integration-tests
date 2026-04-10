@@ -29,11 +29,14 @@ python-grpc-tools-protoc \
   "$PROTO_SRC/service.proto"
 
 # grpcio-tools generates flat imports that break when loaded as a package.
-# Fix them to use relative imports.
-sed -i 's/^import compact_formats_pb2 as/from . import compact_formats_pb2 as/' \
+# Fix them to use relative imports in all generated Python artifacts.
+for generated_file in \
   "$PROTO_OUT/service_pb2.py" \
+  "$PROTO_OUT/service_pb2.pyi" \
   "$PROTO_OUT/service_pb2_grpc.py"
-sed -i 's/^import service_pb2 as/from . import service_pb2 as/' \
-  "$PROTO_OUT/service_pb2_grpc.py"
+do
+  sed -i 's/^import compact_formats_pb2 as/from . import compact_formats_pb2 as/' "$generated_file"
+  sed -i 's/^import service_pb2 as/from . import service_pb2 as/' "$generated_file"
+done
 
 echo "Stubs written to $PROTO_OUT"

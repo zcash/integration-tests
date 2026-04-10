@@ -2008,3 +2008,114 @@ def wait_lightwalletds():
             except Exception:
                 pass
     lwd_processes.clear()
+
+
+# zcashd utilities
+# Used for tests that need a full node with wallet to generate shielded transactions.
+
+zcashd_node_processes = {}
+
+ZCASHD_RPC_USER = "zcashrpc"
+ZCASHD_RPC_PASSWORD = "zcashrpc"
+
+
+def zcashd_node_binary():
+    return os.getenv("ZCASHD", os.path.join("src", "zcashd"))
+
+
+def zcashd_p2p_port(n):
+    assert n <= MAX_NODES
+    return PORT_MIN + (PORT_RANGE * 7) + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
+
+
+def zcashd_rpc_port(n):
+    return PORT_MIN + (PORT_RANGE * 8) + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
+
+
+def zcashd_rpc_url(i):
+    return "http://%s:%s@127.0.0.1:%d" % (ZCASHD_RPC_USER, ZCASHD_RPC_PASSWORD, zcashd_rpc_port(i))
+
+
+def write_zcash_conf(datadir, node_rpc_port, node_p2p_port, peer_p2p_port):
+    """Write a zcash.conf for a regtest zcashd node peered with zebrad.
+
+    All network upgrades are activated from block 1 to match zebrad's built-in
+    Regtest network defaults.  Heartwood (ZIP 213) enables shielded coinbase.
+    coinbasematurity=10 allows spending coinbase after 10 confirmations.
+    """
+    os.makedirs(datadir, exist_ok=True)
+    conf_path = os.path.join(datadir, "zcash.conf")
+    with open(conf_path, "w", encoding="utf8") as f:
+        f.write("regtest=1\n")
+        f.write("port=%d\n" % node_p2p_port)
+        f.write("rpcbind=127.0.0.1\n")
+        f.write("rpcport=%d\n" % node_rpc_port)
+        f.write("rpcuser=%s\n" % ZCASHD_RPC_USER)
+        f.write("rpcpassword=%s\n" % ZCASHD_RPC_PASSWORD)
+        # Activate all upgrades from block 1 to match zebrad Regtest defaults.
+        f.write("nuparams=5ba81b19:1\n")   # Overwinter
+        f.write("nuparams=76b809bb:1\n")   # Sapling
+        f.write("nuparams=2bb40e60:1\n")   # Blossom
+        f.write("nuparams=f5b9230b:1\n")   # Heartwood (ZIP 213: shielded coinbase)
+        f.write("nuparams=e9ff75a6:1\n")   # Canopy
+        f.write("nuparams=c2d6d0b4:1\n")   # NU5 (Orchard)
+        f.write("nuparams=c8e71055:1\n")   # NU6
+        f.write("addnode=127.0.0.1:%d\n" % peer_p2p_port)
+        f.write("i-am-aware-zcashd-will-be-replaced-by-zebrad-and-zallet-in-2025=1\n")
+    return conf_path
+
+
+def start_zcashd_node(i, dirname, peer_p2p_port, binary=None, stderr=None):
+    """Start a regtest zcashd node peered with zebrad and return an RPC proxy."""
+    if binary is None:
+        binary = zcashd_node_binary()
+    datadir = os.path.join(dirname, "zcashd" + str(i))
+    conf = write_zcash_conf(
+        datadir,
+        zcashd_rpc_port(i),
+        zcashd_p2p_port(i),
+        peer_p2p_port,
+    )
+    args = [binary, "-conf=" + conf, "-datadir=" + datadir]
+    zcashd_node_processes[i] = subprocess.Popen(args, stderr=stderr)
+    url = zcashd_rpc_url(i)
+    wait_for_zcashd_start(zcashd_node_processes[i], url, i)
+    if os.getenv("PYTHON_DEBUG", ""):
+        print("start_zcashd_node: zcashd %d ready, pid %d" % (i, zcashd_node_processes[i].pid))
+    return get_rpc_auth_proxy(url, i)
+
+
+def wait_for_zcashd_start(process, url, i):
+    """Poll zcashd RPC until ready or until the process exits."""
+    while True:
+        if process.poll() is not None:
+            raise Exception(
+                "zcashd node %d exited with status %d during initialization"
+                % (i, process.returncode)
+            )
+        try:
+            rpc = get_rpc_auth_proxy(url, i)
+            rpc.getblockcount()
+            break
+        except IOError as e:
+            if e.errno != errno.ECONNREFUSED:
+                raise
+        except JSONRPCException as e:
+            if e.error['code'] != -28:
+                raise
+        time.sleep(0.25)
+
+
+def stop_zcashd_nodes(nodes):
+    for node in nodes:
+        try:
+            node.stop()
+        except http.client.CannotSendRequest as e:
+            print("WARN: Unable to stop zcashd node: " + repr(e))
+    del nodes[:]
+
+
+def wait_zcashd_nodes():
+    for proc in list(zcashd_node_processes.values()):
+        proc.wait()
+    zcashd_node_processes.clear()

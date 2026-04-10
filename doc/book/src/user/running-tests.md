@@ -5,7 +5,8 @@
 ### Binaries
 
 All tests require the `zebrad` binary; most tests require the `zallet` binary;
-some tests require the `zainod` binary.
+some tests require the `zainod` binary. The gRPC parity tests additionally
+require the `lightwalletd` binary.
 
 By default, binaries must exist in the `./src/` folder under the repository
 root. Alternatively, you can set the binary paths with environment variables:
@@ -14,11 +15,12 @@ root. Alternatively, you can set the binary paths with environment variables:
 export ZEBRAD=/path/to/zebrad
 export ZAINOD=/path/to/zainod
 export ZALLET=/path/to/zallet
+export LIGHTWALLETD=/path/to/lightwalletd
 ```
 
 ### Python dependencies
 
-The `zmq`, `toml`, and `base58` Python libraries are required.
+The `zmq`, `toml`, `base58`, `grpcio`, and `protobuf` Python libraries are required.
 
 #### With uv (recommended)
 
@@ -32,6 +34,7 @@ On Ubuntu or Debian-based distributions:
 
 ```bash
 sudo apt-get install python3-zmq python3-base58 python3-toml
+pip3 install grpcio protobuf
 ```
 
 On macOS or other platforms:
@@ -39,7 +42,7 @@ On macOS or other platforms:
 ```bash
 python3 -m venv venv
 . venv/bin/activate
-pip3 install pyzmq base58 toml
+pip3 install pyzmq base58 toml grpcio protobuf
 ```
 
 ## Running the full test suite
@@ -55,6 +58,27 @@ Without uv:
 ```bash
 ./qa/zcash/full_test_suite.py
 ```
+
+## Running the gRPC parity tests
+
+The gRPC parity tests run [`zainod`] and [`lightwalletd`] side-by-side against
+the same [`zebrad`] node and compare their [lightwallet-protocol] gRPC responses.
+They require the `lightwalletd` binary (see [Binaries](#binaries) above).
+
+```bash
+uv run ./qa/zcash/grpc_comparison_tests.py
+```
+
+Pass any [test runner options](#test-runner-options) after the script name:
+
+```bash
+uv run ./qa/zcash/grpc_comparison_tests.py --nocleanup
+```
+
+[`zebrad`]: https://github.com/ZcashFoundation/zebra
+[`zainod`]: https://github.com/zingolabs/zaino
+[`lightwalletd`]: https://github.com/zcash/lightwalletd
+[lightwallet-protocol]: https://github.com/zcash/lightwallet-protocol
 
 ## Running individual tests
 
@@ -127,4 +151,5 @@ rm -rf cache
 killall zebrad
 killall zainod
 killall zallet
+killall lightwalletd
 ```

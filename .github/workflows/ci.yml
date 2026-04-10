@@ -33,6 +33,7 @@ on:
       - zebra-interop-request
       - zaino-interop-request
       - zallet-interop-request
+      - lightwalletd-interop-request
 
 permissions:
   contents: read
@@ -455,6 +456,83 @@ jobs:
       job_name_prefix: Build zallet on
       is_zallet: true
 
+  build-lightwalletd:
+    name: Build lightwalletd on ${{ matrix.platform }}${{ matrix.required_suffix }}
+    needs: setup
+    runs-on: ${{ matrix.build_os }}
+    container:
+      image: ${{ matrix.container }}
+      env:
+        HOME: /root
+        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+    continue-on-error: ${{ !matrix.required }}
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.build_matrix) }}
+
+    steps:
+      - name: Check out integration-tests to access actions
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: integration-tests
+          persist-credentials: false
+
+      - name: Compute interop repo ids
+        id: repo-ids
+        uses: ./integration-tests/.github/actions/interop-repo-ids
+
+      - id: start-interop
+        uses: ./integration-tests/.github/actions/start-interop
+        with:
+          status-app-id: ${{ secrets.STATUS_APP_ID }}
+          status-app-private-key: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
+          requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
+          requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
+          job-name: "Build lightwalletd on ${{ matrix.platform }}${{ matrix.required_suffix }}"
+
+      - name: Use specified zcash/lightwalletd commit
+        if: github.event.action == 'lightwalletd-interop-request'
+        shell: sh
+        env:
+          SHA: ${{ github.event.client_payload.sha }}
+        run: echo "LIGHTWALLETD_REF=${SHA}" >> $GITHUB_ENV
+
+      - name: Use zcash/lightwalletd current master
+        if: github.event.action != 'lightwalletd-interop-request'
+        run: echo "LIGHTWALLETD_REF=refs/heads/master" >> $GITHUB_ENV
+
+      - name: Check out zcash/lightwalletd
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: zcash/lightwalletd
+          ref: ${{ env.LIGHTWALLETD_REF }}
+          path: lightwalletd
+
+      - name: Set up Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
+        with:
+          go-version-file: lightwalletd/go.mod
+          cache-dependency-path: lightwalletd/go.sum
+
+      - name: Build lightwalletd
+        run: go build -v -o lightwalletd${{ matrix.file_ext }} .
+        working-directory: ./lightwalletd
+
+      - name: Upload lightwalletd
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: lightwalletd-${{ matrix.name }}
+          path: |
+              ${{ format('./lightwalletd/lightwalletd{0}', matrix.file_ext) }}
+
+      - uses: ./integration-tests/.github/actions/finish-interop
+        if: always()
+        with:
+          app-token: ${{ steps.start-interop.outputs.app-token }}
+          requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
+          requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
+          job-name: "Build lightwalletd on ${{ matrix.platform }}${{ matrix.required_suffix }}"
+
   # Not working in Windows
   sec-hard:
     name: sec-hard ${{ matrix.platform }}${{ matrix.required_suffix }}
@@ -463,6 +541,7 @@ jobs:
       - build-zebra
       - build-zaino
       - build-zallet
+      - build-lightwalletd
     runs-on: ${{ matrix.test_os }}
     container:
       image: ${{ matrix.container }}
@@ -523,6 +602,12 @@ jobs:
           name: zallet-${{ matrix.name }}
           path: ./src
 
+      - name: Download lightwalletd artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: lightwalletd-${{ matrix.name }}
+          path: ./src
+
       - name: Make artifact executable
         if: runner.os != 'Windows'
         shell: bash
@@ -576,7 +661,7 @@ jobs:
         run: |
           python3 -m venv ./venv
           . ./venv/bin/activate
-          pip install zmq asyncio base58 toml embit
+          pip install zmq asyncio base58 toml embit grpcio protobuf
 
   test-rpc:
     name: RPC tests ${{ matrix.platform }} ${{ matrix.backend }} ${{ matrix.shard }}${{ matrix.required_suffix }}
@@ -585,6 +670,7 @@ jobs:
       - build-zebra
       - build-zaino
       - build-zallet
+      - build-lightwalletd
       - rpc-depends
     runs-on: ${{ matrix.test_os }}
     container:
@@ -652,7 +738,7 @@ jobs:
         run: |
           python3 -m venv ./venv
           . ./venv/bin/activate
-          pip install zmq asyncio base58 toml embit
+          pip install zmq asyncio base58 toml embit grpcio protobuf
 
       - name: Download zebrad artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -670,6 +756,12 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: zallet-${{ matrix.name }}
+          path: ./src
+
+      - name: Download lightwalletd artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: lightwalletd-${{ matrix.name }}
           path: ./src
 
       - name: Make artifact executable
@@ -745,7 +837,7 @@ jobs:
               sys.exit(1)
           EOF
           . ./venv/bin/activate
-          ZALLET_BACKEND=${{ matrix.backend }} ZEBRAD=$(pwd)/${{ format('src/zebrad{0}', matrix.file_ext) }} ZAINOD=$(pwd)/${{ format('src/zainod{0}', matrix.file_ext) }} ZALLET=$(pwd)/${{ format('src/zallet{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py
+          ZALLET_BACKEND=${{ matrix.backend }} ZEBRAD=$(pwd)/${{ format('src/zebrad{0}', matrix.file_ext) }} ZAINOD=$(pwd)/${{ format('src/zainod{0}', matrix.file_ext) }} ZALLET=$(pwd)/${{ format('src/zallet{0}', matrix.file_ext) }} LIGHTWALLETD=$(pwd)/${{ format('src/lightwalletd{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py
 
       - uses: ./.github/actions/finish-interop
         if: always()
