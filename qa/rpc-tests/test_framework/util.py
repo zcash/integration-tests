@@ -2013,6 +2013,10 @@ def wait_lightwalletds():
 # zcashd utilities
 # Used for tests that need a full node with wallet to generate shielded transactions.
 
+# AuthServiceProxy defines its own JSONRPCException; import it here so
+# wait_for_zcashd_start can catch the warmup error (-28) raised by the proxy.
+from .authproxy import JSONRPCException as _AuthJSONRPCException
+
 zcashd_node_processes = {}
 
 ZCASHD_RPC_USER = "zcashrpc"
@@ -2036,12 +2040,16 @@ def zcashd_rpc_url(i):
     return "http://%s:%s@127.0.0.1:%d" % (ZCASHD_RPC_USER, ZCASHD_RPC_PASSWORD, zcashd_rpc_port(i))
 
 
-def write_zcash_conf(datadir, node_rpc_port, node_p2p_port, peer_p2p_port):
-    """Write a zcash.conf for a regtest zcashd node peered with zebrad.
+def write_zcash_conf(datadir, node_rpc_port, node_p2p_port, miner_address=None):
+    """Write a zcash.conf for a standalone regtest zcashd node.
 
-    All network upgrades are activated from block 1 to match zebrad's built-in
-    Regtest network defaults.  Heartwood (ZIP 213) enables shielded coinbase.
-    coinbasematurity=10 allows spending coinbase after 10 confirmations.
+    All network upgrades are activated from block 1.  Heartwood (ZIP 213)
+    enables shielded coinbase; NU5 enables Orchard.  No addnode is written
+    because blocks are pushed to zebrad via submitblock rather than P2P.
+
+    miner_address, if given, sets the coinbase recipient for `generate` calls.
+    setmineraddress has been removed from this zcashd version, so the address
+    must be set via the config file; restart zcashd between mining phases.
     """
     os.makedirs(datadir, exist_ok=True)
     conf_path = os.path.join(datadir, "zcash.conf")
@@ -2052,6 +2060,8 @@ def write_zcash_conf(datadir, node_rpc_port, node_p2p_port, peer_p2p_port):
         f.write("rpcport=%d\n" % node_rpc_port)
         f.write("rpcuser=%s\n" % ZCASHD_RPC_USER)
         f.write("rpcpassword=%s\n" % ZCASHD_RPC_PASSWORD)
+        if miner_address is not None:
+            f.write("mineraddress=%s\n" % miner_address)
         # Activate all upgrades from block 1 to match zebrad Regtest defaults.
         f.write("nuparams=5ba81b19:1\n")   # Overwinter
         f.write("nuparams=76b809bb:1\n")   # Sapling
@@ -2060,13 +2070,15 @@ def write_zcash_conf(datadir, node_rpc_port, node_p2p_port, peer_p2p_port):
         f.write("nuparams=e9ff75a6:1\n")   # Canopy
         f.write("nuparams=c2d6d0b4:1\n")   # NU5 (Orchard)
         f.write("nuparams=c8e71055:1\n")   # NU6
-        f.write("addnode=127.0.0.1:%d\n" % peer_p2p_port)
+        # Re-enable the deprecated getnewaddress RPC used to obtain a t-address
+        # for transparent coinbase mining.
+        f.write("allowdeprecated=getnewaddress\n")
         f.write("i-am-aware-zcashd-will-be-replaced-by-zebrad-and-zallet-in-2025=1\n")
     return conf_path
 
 
-def start_zcashd_node(i, dirname, peer_p2p_port, binary=None, stderr=None):
-    """Start a regtest zcashd node peered with zebrad and return an RPC proxy."""
+def start_zcashd_node(i, dirname, miner_address=None, binary=None, stderr=None):
+    """Start a standalone regtest zcashd node and return an RPC proxy."""
     if binary is None:
         binary = zcashd_node_binary()
     datadir = os.path.join(dirname, "zcashd" + str(i))
@@ -2074,7 +2086,7 @@ def start_zcashd_node(i, dirname, peer_p2p_port, binary=None, stderr=None):
         datadir,
         zcashd_rpc_port(i),
         zcashd_p2p_port(i),
-        peer_p2p_port,
+        miner_address=miner_address,
     )
     args = [binary, "-conf=" + conf, "-datadir=" + datadir]
     zcashd_node_processes[i] = subprocess.Popen(args, stderr=stderr)
@@ -2083,6 +2095,17 @@ def start_zcashd_node(i, dirname, peer_p2p_port, binary=None, stderr=None):
     if os.getenv("PYTHON_DEBUG", ""):
         print("start_zcashd_node: zcashd %d ready, pid %d" % (i, zcashd_node_processes[i].pid))
     return get_rpc_auth_proxy(url, i)
+
+
+def stop_zcashd_node(i, node):
+    """Stop zcashd node i via RPC and wait for the process to exit."""
+    try:
+        node.stop()
+    except (_AuthJSONRPCException, http.client.CannotSendRequest):
+        pass
+    if i in zcashd_node_processes:
+        zcashd_node_processes[i].wait()
+        del zcashd_node_processes[i]
 
 
 def wait_for_zcashd_start(process, url, i):
@@ -2100,7 +2123,7 @@ def wait_for_zcashd_start(process, url, i):
         except IOError as e:
             if e.errno != errno.ECONNREFUSED:
                 raise
-        except JSONRPCException as e:
+        except _AuthJSONRPCException as e:
             if e.error['code'] != -28:
                 raise
         time.sleep(0.25)
@@ -2110,7 +2133,7 @@ def stop_zcashd_nodes(nodes):
     for node in nodes:
         try:
             node.stop()
-        except http.client.CannotSendRequest as e:
+        except (http.client.CannotSendRequest, _AuthJSONRPCException) as e:
             print("WARN: Unable to stop zcashd node: " + repr(e))
     del nodes[:]
 

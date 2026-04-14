@@ -10,6 +10,12 @@ backed by the same Zebrad node.
 Mirrors the Rust test fixtures in client_rpc_test_fixtures, porting them to Python
 so they run inside the existing BitcoinTestFramework CI pipeline.
 
+Chain setup (via zcashd + submitblock into Zebrad):
+  Blocks 1-100  — Orchard coinbase (mined to orchard_addr).  Populates the Orchard
+                  commitment tree and provides mature shielded funds for Phase 2.
+  Block 101     — Confirms a z_sendmany tx that has a transparent output (to taddr)
+                  and a Sapling output (to sapling_addr), populating the Sapling tree.
+
 Methods tested (CompactTxStreamer service):
   GetLightdInfo, GetLatestBlock, GetBlock, GetBlockNullifiers,
   GetBlockRange, GetBlockRangeNullifiers,
@@ -22,18 +28,19 @@ Not yet tested (require a wallet to submit mempool transactions):
 """
 
 import time
+from decimal import Decimal
 
 import grpc
 
+from test_framework.config import ZebraArgs
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_true,
-    p2p_port,
+    start_nodes,
     start_zcashd_node,
-    sync_blocks,
+    stop_zcashd_node,
     zaino_grpc_port,
-    lwd_grpc_port,
 )
 from test_framework.proto import (
     compact_formats_pb2,
@@ -48,6 +55,29 @@ def _collect_stream(streaming_call):
     for msg in streaming_call:
         results.append(msg)
     return results
+
+
+def _wait_for_operation(zcashd, opid, timeout=120):
+    """
+    Poll z_getoperationresult until the given operation succeeds or fails.
+
+    z_getoperationresult consumes the result on first return, so we stop
+    polling as soon as a result appears.  Returns the result dict on success;
+    raises Exception on failure or timeout.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        results = zcashd.z_getoperationresult([opid])
+        if results:
+            r = results[0]
+            if r['status'] == 'success':
+                return r
+            raise Exception(
+                "z_sendmany %s failed: %s"
+                % (opid, r.get('error', {}).get('message', str(r)))
+            )
+        time.sleep(1)
+    raise Exception("z_sendmany operation %s timed out after %ds" % (opid, timeout))
 
 
 def _normalize_compact_block(block):
@@ -100,93 +130,123 @@ class GrpcComparisonTest(BitcoinTestFramework):
 
         # Populated in setup_network; used by test methods
         self.taddr = None
-        self.txid = None
+        self.txid = None          # txid of the z_sendmany tx (has both t and Sapling outputs)
         self.sapling_addr = None
-        self.shielded_coinbase_txid = None
-        self.shielded_block_height = None
+        self.sapling_txid = None  # same tx, kept separate for clarity in shielded tests
+        self.sapling_tx_height = None
         self.orchard_addr = None
         self.orchard_coinbase_txid = None
         self.orchard_block_height = None
 
+    def setup_nodes(self):
+        # All network upgrades activate at block 1 to match the zcashd config
+        # (nuparams=<branch_id>:1 for each upgrade).  This ensures zebrad
+        # accepts every block submitted via submitblock, including Sapling
+        # (ZIP 213 / Heartwood) and Orchard (NU5) coinbase blocks.
+        return start_nodes(self.num_nodes, self.options.tmpdir,
+                           [ZebraArgs(activation_heights={
+                               "Overwinter": 1,
+                               "Sapling": 1,
+                               "Blossom": 1,
+                               "Heartwood": 1,
+                               "Canopy": 1,
+                               "NU5": 1,
+                               "NU6": 1,
+                           })])
+
+    def _restart_zcashd(self, miner_address):
+        """Stop zcashd node 0, reconfigure with a new miner address, and restart."""
+        stop_zcashd_node(0, self.zcashd_nodes[0])
+        node = start_zcashd_node(0, self.options.tmpdir, miner_address=miner_address)
+        self.zcashd_nodes[0] = node
+        return node
+
     def setup_network(self, split=False):
         self.wallets = []  # no wallets used; required for teardown
 
-        # Start Zebrad (passive peer — does not mine).
+        # Start Zebrad (passive — does not mine).
         self.nodes = self.setup_nodes()
         zebrad = self.nodes[0]
 
-        # Start zcashd peered with zebrad.  zcashd carries the built-in wallet
-        # needed to generate addresses and mine shielded coinbase blocks.
-        zcashd = start_zcashd_node(0, self.options.tmpdir, p2p_port(0))
+        # Phase 0 — start zcashd without a miner address to generate wallet
+        # addresses.  setmineraddress has been removed from this zcashd version;
+        # the miner address must be set via zcash.conf and takes effect on restart.
+        zcashd = start_zcashd_node(0, self.options.tmpdir)
         self.zcashd_nodes = [zcashd]
 
-        # Wait for the zcashd → zebrad P2P connection to be established before
-        # mining so that every block propagates immediately.
-        zebrad_p2p = "127.0.0.1:%d" % p2p_port(0)
-        deadline = time.time() + 30
-        while time.time() < deadline:
-            if any(p['addr'] == zebrad_p2p for p in zcashd.getpeerinfo()):
-                break
-            time.sleep(0.5)
-        else:
-            raise Exception("zcashd did not connect to zebrad within 30s")
-
-        # Phase 1 — transparent coinbase (blocks 1-12).
-        # Provides real t-addr data for GetTaddressTxids / GetTaddressBalance /
-        # GetAddressUtxos tests.
         self.taddr = zcashd.getnewaddress()
-        zcashd.setmineraddress(self.taddr)
-        zcashd.generate(12)
-        self.txid = zcashd.getblock("1")['tx'][0]
 
-        # Generate a single unified address and extract its individual receivers
-        # via z_listunifiedreceivers so we can mine explicitly to each pool.
-        ua = zcashd.z_getnewaddress('unified')
+        # Generate a unified address with Sapling and Orchard receivers via the
+        # current account-based API.  z_getnewaddress('unified') was removed;
+        # use z_getnewaccount + z_getaddressforaccount instead.
+        account = zcashd.z_getnewaccount()['account']
+        ua = zcashd.z_getaddressforaccount(account, ['sapling', 'orchard'])['address']
         receivers = zcashd.z_listunifiedreceivers(ua)
-
-        # Phase 2 — shielded coinbase to Sapling via ZIP 213 (blocks 13-24).
-        # Heartwood is active from block 1, so a Sapling address is valid for mining.
         self.sapling_addr = receivers['sapling']
-        zcashd.setmineraddress(self.sapling_addr)
-        shielded_start = zcashd.getblockcount() + 1  # = 13
-        zcashd.generate(12)
-        self.shielded_block_height = shielded_start
-        self.shielded_coinbase_txid = zcashd.getblock(str(shielded_start))['tx'][0]
-
-        # Phase 3 — shielded coinbase to Orchard via ZIP 213 + NU5 (blocks 25-36).
-        # NU5 is active from block 1, so the Orchard receiver of the UA is valid
-        # for mining.  This populates the Orchard commitment tree, allowing
-        # GetTreeState to return a non-empty orchardTree.
         self.orchard_addr = receivers['orchard']
-        zcashd.setmineraddress(self.orchard_addr)
-        orchard_start = zcashd.getblockcount() + 1  # = 25
-        zcashd.generate(12)
-        self.orchard_block_height = orchard_start
-        self.orchard_coinbase_txid = zcashd.getblock(str(orchard_start))['tx'][0]
 
-        # Pad the chain to at least 100 blocks. Zainod requires a minimum of
-        # 100 blocks to start (see test_framework.py:prepare_chain).
-        # The three mining phases above produce 36 blocks; mine the remainder
-        # as transparent coinbase so the shielded block heights stay stable.
-        current_height = zcashd.getblockcount()
-        if current_height < 100:
-            zcashd.setmineraddress(self.taddr)
-            zcashd.generate(100 - current_height)
+        # Phase 1 — mine all blocks to the Orchard receiver (single restart).
+        # NU5 is active from block 1, so Orchard coinbase is valid throughout.
+        # All 100 blocks are Orchard coinbase, which populates the Orchard
+        # commitment tree and provides spendable shielded funds for Phase 2.
+        zcashd = self._restart_zcashd(self.orchard_addr)
+        zcashd.generate(100)
+        self.orchard_block_height = 1
+        self.orchard_coinbase_txid = zcashd.getblock("1")['tx'][0]
 
-        # Sync zebrad to zcashd's chain tip before starting the indexers.
-        sync_blocks([zebrad, zcashd], timeout=120)
+        # Phase 2 — send from the Orchard account to both the transparent address
+        # and the Sapling address in a single z_sendmany transaction.
+        #
+        # After 100 Orchard coinbase blocks the block-1 coinbase has matured
+        # (coinbase maturity = 100), so the Orchard balance is fully spendable.
+        # "NoPrivacy" allows cross-pool spending (Orchard → Sapling) and
+        # transparent recipients (Orchard → t-addr) in one transaction.
+        opid = zcashd.z_sendmany(
+            ua,
+            [
+                {"address": self.taddr, "amount": Decimal("1.0")},
+                {"address": self.sapling_addr, "amount": Decimal("1.0")},
+            ],
+            1,
+            Decimal("0.0001"),
+            "NoPrivacy",
+        )
+        op_result = _wait_for_operation(zcashd, opid)
+        send_txid = op_result['result']['txid']
+
+        # Mine 1 block to confirm both outputs (height 101).
+        zcashd.generate(1)
+        confirm_height = zcashd.getblockcount()  # = 101
+
+        # self.txid is used by test_get_transaction and transparent address tests.
+        # self.sapling_txid is the same tx viewed from the Sapling-output angle.
+        self.txid = send_txid
+        self.sapling_txid = send_txid
+        self.sapling_tx_height = confirm_height
+
+        # Push every zcashd-mined block into zebrad via submitblock.
+        # This sidesteps the known P2P propagation issues between zcashd and
+        # zebrad (ZcashFoundation/zebra#10329, #10332).
+        tip = zcashd.getblockcount()
+        for h in range(1, tip + 1):
+            raw_hex = zcashd.getblock(str(h), 0)
+            result = zebrad.submitblock(raw_hex)
+            if result is not None:
+                raise Exception("submitblock failed at height %d: %s" % (h, result))
+
+        assert zebrad.getblockcount() == tip, (
+            "zebrad height %d != zcashd height %d after submitblock"
+            % (zebrad.getblockcount(), tip)
+        )
 
         self.zainos = self.setup_indexers()
         self.lwds = self.setup_lightwalletds()
 
         # Wait for both indexers to sync to the chain tip before running tests.
-        tip = zebrad.getblockcount()
         self._wait_for_indexers(tip)
 
     def _wait_for_indexers(self, expected_height, timeout=60):
         """Block until both Zainod and Lightwalletd report the expected block height."""
-        import time
-
         zainod_ch = grpc.insecure_channel(f"127.0.0.1:{zaino_grpc_port(0)}")
         lwd_ch = grpc.insecure_channel(f"127.0.0.1:{self.lwds[0]}")
         try:
@@ -287,20 +347,20 @@ class GrpcComparisonTest(BitcoinTestFramework):
         print("Testing GetAddressUtxosStream...")
         self.test_get_address_utxos_stream(zs, ls)
 
-        # Shielded coinbase tests — blocks mined to a Sapling address via ZIP 213.
-        print("Testing GetBlock (shielded coinbase)...")
+        # Shielded transaction tests — block 101 contains the z_sendmany tx.
+        print("Testing GetBlock (shielded)...")
         self.test_get_block_shielded(zs, ls)
 
-        print("Testing GetBlockNullifiers (shielded coinbase)...")
+        print("Testing GetBlockNullifiers (shielded)...")
         self.test_get_block_nullifiers_shielded(zs, ls)
 
         print("Testing GetBlockRange (shielded)...")
         self.test_get_block_range_shielded(zs, ls)
 
-        print("Testing GetTransaction (shielded coinbase)...")
+        print("Testing GetTransaction (shielded)...")
         self.test_get_transaction_shielded(zs, ls)
 
-        print("Testing GetTreeState (after Sapling coinbase)...")
+        print("Testing GetTreeState (after Sapling output)...")
         self.test_get_tree_state_sapling(zs, ls)
 
         print("Testing GetBlock (Orchard coinbase)...")
@@ -313,8 +373,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         self.test_get_tree_state_orchard(zs, ls)
 
         # TODO: GetMempoolTx and GetMempoolStream require submitting a transaction
-        # to the mempool. This needs a wallet (zallet) to sign and send a raw tx.
-        # Add these when num_wallets=1 is wired up with a t-address workflow.
+        # to the mempool via the mempool RPC.
 
         zainod_ch.close()
         lwd_ch.close()
@@ -601,34 +660,38 @@ class GrpcComparisonTest(BitcoinTestFramework):
             assert_equal(z_u.height, l_u.height)
 
     # -------------------------------------------------------------------------
-    # Shielded coinbase tests
+    # Shielded transaction tests
     #
-    # These blocks were mined by zcashd with a Sapling miner address (ZIP 213,
-    # active via Heartwood from block 1).  The coinbase output is a Sapling note,
-    # so the compact block's vtx must be non-empty and identical across both
-    # implementations — unlike transparent-only blocks where Zainod omits vtx.
+    # Block 101 contains the z_sendmany confirmation transaction.  That tx
+    # has both a Sapling output (to sapling_addr) and a transparent output
+    # (to taddr), so the compact block's vtx must be non-empty and identical
+    # across both implementations.
     # -------------------------------------------------------------------------
 
     def test_get_block_shielded(self, zs, ls):
-        """A shielded-coinbase block must have matching, non-empty vtx."""
-        req = service_pb2.BlockID(height=self.shielded_block_height, hash=b"")
+        """Block with a Sapling output must have matching, non-empty vtx."""
+        req = service_pb2.BlockID(height=self.sapling_tx_height, hash=b"")
         z = _normalize_shielded_compact_block(zs.GetBlock(req))
         l = _normalize_shielded_compact_block(ls.GetBlock(req))
-        assert_true(len(z.vtx) > 0, "Zainod returned empty vtx for shielded coinbase block")
-        assert_true(len(l.vtx) > 0, "Lightwalletd returned empty vtx for shielded coinbase block")
+        assert_true(len(z.vtx) > 0, "Zainod returned empty vtx for shielded block")
+        assert_true(len(l.vtx) > 0, "Lightwalletd returned empty vtx for shielded block")
         assert_equal(z, l)
 
     def test_get_block_nullifiers_shielded(self, zs, ls):
-        req = service_pb2.BlockID(height=self.shielded_block_height, hash=b"")
+        req = service_pb2.BlockID(height=self.sapling_tx_height, hash=b"")
         z = _normalize_shielded_compact_block(zs.GetBlockNullifiers(req))
         l = _normalize_shielded_compact_block(ls.GetBlockNullifiers(req))
         assert_equal(z, l)
 
     def test_get_block_range_shielded(self, zs, ls):
-        """All blocks in the shielded range must have matching, non-empty vtx."""
-        end = self.shielded_block_height + 5
+        """All blocks in a shielded range must have matching, non-empty vtx.
+        Uses blocks sapling_tx_height-5 through sapling_tx_height (96-101) so
+        the range covers both Orchard-coinbase blocks and the Sapling-output block
+        without exceeding the chain tip."""
+        start = self.sapling_tx_height - 5  # = 96 (Orchard coinbase)
+        end = self.sapling_tx_height        # = 101 (Sapling output tx)
         req = service_pb2.BlockRange(
-            start=service_pb2.BlockID(height=self.shielded_block_height, hash=b""),
+            start=service_pb2.BlockID(height=start, hash=b""),
             end=service_pb2.BlockID(height=end, hash=b""),
         )
         z_blocks = [_normalize_shielded_compact_block(b) for b in _collect_stream(zs.GetBlockRange(req))]
@@ -640,18 +703,18 @@ class GrpcComparisonTest(BitcoinTestFramework):
             assert_equal(z_b, l_b)
 
     def test_get_transaction_shielded(self, zs, ls):
-        """Shielded coinbase transaction bytes and height must match."""
-        txid_bytes = bytes.fromhex(self.shielded_coinbase_txid)[::-1]
+        """Shielded transaction bytes and height must match across both indexers."""
+        txid_bytes = bytes.fromhex(self.sapling_txid)[::-1]
         req = service_pb2.TxFilter(hash=txid_bytes)
         z = zs.GetTransaction(req)
         l = ls.GetTransaction(req)
         assert_equal(z.data, l.data)
         assert_equal(z.height, l.height)
-        assert_equal(z.height, self.shielded_block_height)
+        assert_equal(z.height, self.sapling_tx_height)
 
     def test_get_tree_state_sapling(self, zs, ls):
-        """After Sapling coinbase the Sapling tree must be non-empty and identical."""
-        req = service_pb2.BlockID(height=self.shielded_block_height, hash=b"")
+        """After a Sapling output tx the Sapling tree must be non-empty and identical."""
+        req = service_pb2.BlockID(height=self.sapling_tx_height, hash=b"")
         z = zs.GetTreeState(req)
         l = ls.GetTreeState(req)
         assert_equal(z.network, l.network)
@@ -659,10 +722,10 @@ class GrpcComparisonTest(BitcoinTestFramework):
         assert_equal(z.hash, l.hash)
         assert_equal(z.saplingTree, l.saplingTree)
         assert_equal(z.orchardTree, l.orchardTree)
-        assert_true(len(z.saplingTree) > 0, "Sapling tree is empty after Sapling coinbase")
+        assert_true(len(z.saplingTree) > 0, "Sapling tree is empty after Sapling output tx")
 
     def test_get_block_orchard(self, zs, ls):
-        """An Orchard-coinbase block must have matching, non-empty vtx."""
+        """Block with Orchard coinbase must have matching, non-empty vtx."""
         req = service_pb2.BlockID(height=self.orchard_block_height, hash=b"")
         z = _normalize_shielded_compact_block(zs.GetBlock(req))
         l = _normalize_shielded_compact_block(ls.GetBlock(req))
@@ -671,7 +734,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         assert_equal(z, l)
 
     def test_get_transaction_orchard(self, zs, ls):
-        """Orchard coinbase transaction bytes and height must match."""
+        """Orchard coinbase transaction bytes and height must match across both indexers."""
         txid_bytes = bytes.fromhex(self.orchard_coinbase_txid)[::-1]
         req = service_pb2.TxFilter(hash=txid_bytes)
         z = zs.GetTransaction(req)
@@ -681,7 +744,9 @@ class GrpcComparisonTest(BitcoinTestFramework):
         assert_equal(z.height, self.orchard_block_height)
 
     def test_get_tree_state_orchard(self, zs, ls):
-        """After Orchard coinbase both the Sapling and Orchard trees must be non-empty."""
+        """After the first Orchard coinbase the Orchard tree must be non-empty.
+        The Sapling tree is expected to be empty at this height because Sapling
+        outputs do not appear until block 101 (the z_sendmany confirmation)."""
         req = service_pb2.BlockID(height=self.orchard_block_height, hash=b"")
         z = zs.GetTreeState(req)
         l = ls.GetTreeState(req)
@@ -690,7 +755,6 @@ class GrpcComparisonTest(BitcoinTestFramework):
         assert_equal(z.hash, l.hash)
         assert_equal(z.saplingTree, l.saplingTree)
         assert_equal(z.orchardTree, l.orchardTree)
-        assert_true(len(z.saplingTree) > 0, "Sapling tree is empty at Orchard coinbase block")
         assert_true(len(z.orchardTree) > 0, "Orchard tree is empty after Orchard coinbase")
 
 
