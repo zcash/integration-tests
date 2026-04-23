@@ -157,8 +157,8 @@ dependencies = [
 requires-dist = [
     { name = "base58" },
     { name = "embit", specifier = ">=0.8.0" },
-    { name = "grpcio" },
-    { name = "protobuf" },
+    { name = "grpcio", specifier = ">=1.80.0" },
+    { name = "protobuf", specifier = ">=6.31.1" },
     { name = "pyzmq" },
     { name = "toml" },
 ]

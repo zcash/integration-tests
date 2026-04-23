@@ -66,6 +66,7 @@ from test_framework.util import (
     start_nodes,
     start_zcashd_node,
     stop_zcashd_node,
+    tarfile_extractall,
     wait_and_assert_operationid_status,
     zaino_grpc_port,
 )
@@ -347,13 +348,13 @@ class GrpcComparisonTest(BitcoinTestFramework):
 
     def _restore_framework_cache(self, cache_path):
         with tarfile.open(os.path.join(cache_path, 'zebrad_state.tar.gz'), 'r:gz') as tf:
-            tf.extractall(self.options.tmpdir)
+            tarfile_extractall(tf, self.options.tmpdir)
 
     def _restore_stage1_cache(self, cache_path):
         self._load_cached_metadata(cache_path)
         for index in range(2):
             with tarfile.open(os.path.join(cache_path, 'zcashd%d_state.tar.gz' % index), 'r:gz') as tf:
-                tf.extractall(self.options.tmpdir)
+                tarfile_extractall(tf, self.options.tmpdir)
 
     def _start_build_nodes(self):
         return [

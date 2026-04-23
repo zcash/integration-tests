@@ -619,6 +619,9 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
             if os.path.exists(wallet_tgz_filename):
                 with tarfile.open(wallet_tgz_filename, "r:gz") as wallet_tgz_file:
                     tarfile_extractall(wallet_tgz_file, os.path.join(to_dir, "wallet.dat"))
+            else:
+                print('Warning: wallet cache missing for cache behavior %s, node %d; starting without wallet cache'
+                      % (cache_behavior, i))
 
             # Copy in per-node wallet config and update zcash.conf to set the
             # clock offsets correctly.
@@ -1928,6 +1931,7 @@ def write_lwd_conf(datadir, node_rpc_port):
     """Write a minimal zcash.conf for lightwalletd to connect to a Zebrad node."""
     conf_path = os.path.join(datadir, "zcash.conf")
     with open(conf_path, "w", encoding="utf8") as f:
+        f.write("regtest=1\n")
         f.write("rpcbind=127.0.0.1\n")
         f.write(f"rpcport={node_rpc_port}\n")
         f.write("rpcuser=test\n")

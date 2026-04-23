@@ -48,6 +48,11 @@ Those constraints are why the final test uses:
 
 The final structure came from working through a series of failures.
 
+Some of these failures likely indicate upstream bugs rather than intended
+behavior. When they are reproducible in isolation, they should be tracked
+against the relevant implementation (`zcashd`, Zaino, or Zebra), and any
+protocol ambiguity should be clarified in the corresponding specification.
+
 ### One-wallet chain construction was not reliable
 
 The first versions tried to build the whole fixture from a single standalone
@@ -122,6 +127,8 @@ state it expects is not fully available yet. The final test therefore:
 4. then waits for both indexers to catch up.
 
 This ordering is required, not cosmetic.
+It also appears to expose a Zaino startup-order dependency that should be
+tracked separately from the parity test itself.
 
 ## The final fixture design
 
@@ -208,6 +215,10 @@ The most important example is compact block normalization:
 Those differences are normalized away so the test focuses on the actual parity
 target: whether both services agree on the chain and the shielded contents that
 wallet clients care about.
+
+If a divergence turns out to reflect an underspecified part of the protocol
+rather than an implementation bug, the right long-term fix is to clarify that
+behavior in the relevant spec and then align the implementations to it.
 
 ## Maintenance guidance
 
