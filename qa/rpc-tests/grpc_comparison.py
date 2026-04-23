@@ -89,6 +89,7 @@ _GRPC_CACHE_NAME = 'grpc_comparison'
 _GRPC_STAGE1_CACHE_NAME = 'grpc_comparison_stage1'
 _GRPC_ACTIVATION_HEIGHT = 2
 _GRPC_CACHE_VERSION = 7
+_GRPC_STAGE1_HEIGHT = 202
 _GRPC_ZCASHD_NUPARAMS = {
     '5ba81b19': 1,                        # Overwinter
     '76b809bb': 1,                        # Sapling
@@ -125,14 +126,8 @@ def _write_checkpoint_file(node, max_height, path):
             f.write("%d %s\n" % (height, node.getblockhash(height)))
 
 
-def _treestate_has_final_state(treestate, pool_name):
-    pool = treestate.get(pool_name, {})
-    commitments = pool.get("commitments", {})
-    final_state = commitments.get("finalState")
-    return isinstance(final_state, str) and len(final_state) > 0
-
-
 def _grpc_metadata_fields():
+    """Metadata persisted alongside the cached fixture chain."""
     return (
         'taddr',
         'sapling_ua0', 'sapling_ua_aux', 'orchard_ua1', 'orchard_ua_aux',
@@ -239,15 +234,15 @@ class GrpcComparisonTest(BitcoinTestFramework):
         self.orchard_addr1 = None       # bare Orchard receiver of account 3 (receives at blocks 205, 203)
         self._orchard_aux_addr = None   # Orchard receiver used for the t→Orchard case and later Orchard spends
         self.t_to_sapling_txid = None
-        self.t_to_sapling_height = None     # 202
+        self.t_to_sapling_height = None     # 201
         self.t_to_orchard_txid = None
-        self.t_to_orchard_height = None     # 203
+        self.t_to_orchard_height = None     # 205
         self.sapling_to_sapling_txid = None
         self.sapling_to_sapling_height = None   # 204
         self.orchard_to_orchard_txid = None
-        self.orchard_to_orchard_height = None   # 205
+        self.orchard_to_orchard_height = None   # 206
         self.sapling_to_orchard_txid = None
-        self.sapling_to_orchard_height = None   # 206
+        self.sapling_to_orchard_height = None   # 203
         self.orchard_to_sapling_txid = None
         self.orchard_to_sapling_height = None   # 207
         self.sapling_to_t_txid = None
@@ -274,6 +269,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         )
 
     def setup_chain(self):
+        """Restore the final cache, fall back to the reusable stage-1 cache, or start clean."""
         cache_path = persistent_cache_path(_GRPC_CACHE_NAME)
         if not self.options.fresh and persistent_cache_exists(_GRPC_CACHE_NAME):
             try:
@@ -370,6 +366,22 @@ class GrpcComparisonTest(BitcoinTestFramework):
             % (expected_height, heights)
         )
 
+    def _restart_build_node(self, build_nodes, index):
+        """Restart a standalone builder node so its wallet reloads note state from disk."""
+        stop_zcashd_node(index, build_nodes[index])
+        build_nodes[index] = start_zcashd_node(
+            index,
+            self.options.tmpdir,
+            activation_heights=_GRPC_ZCASHD_NUPARAMS,
+        )
+        return build_nodes[index]
+
+    def _mine_and_sync_build_nodes(self, miner, build_nodes):
+        """Mine one block on the canonical builder node and submit it to the follower node."""
+        miner.generate(1)
+        _submit_missing_blocks(build_nodes[0], build_nodes[1])
+        return build_nodes[0].getblockcount()
+
     def _persist_stage1_cache(self, build_nodes):
         print("grpc_comparison: persisting stage-1 wallet cache")
         for index, node in enumerate(build_nodes):
@@ -396,10 +408,17 @@ class GrpcComparisonTest(BitcoinTestFramework):
 
         self._write_cached_metadata(cache_path)
         build_nodes = self._start_build_nodes()
-        self._wait_for_build_nodes_height(build_nodes, 202)
+        self._wait_for_build_nodes_height(build_nodes, _GRPC_STAGE1_HEIGHT)
         return build_nodes
 
     def _build_stage1_with_wallet_nodes(self):
+        """
+        Build the reusable prefix of the fixture chain.
+
+        Stage 1 does the slow work: mine 200 transparent blocks and create two
+        independent Sapling note pools. Subsequent reruns can resume from this
+        point without repeating the expensive proof generation.
+        """
         build_nodes = self._start_build_nodes()
         node0, node1 = build_nodes
 
@@ -443,15 +462,11 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 'AllowRevealedSenders',
             ),
         )
-        node0.generate(1)
-        _submit_missing_blocks(node0, node1)
-        self.t_to_sapling_height = node0.getblockcount()  # 201
+        self.t_to_sapling_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 201
 
         print("grpc_comparison: restarting primary builder wallet before auxiliary Sapling funding")
-        stop_zcashd_node(0, node0)
-        node0 = start_zcashd_node(0, self.options.tmpdir, activation_heights=_GRPC_ZCASHD_NUPARAMS)
-        build_nodes[0] = node0
-        assert_equal(node0.getblockcount(), 201)
+        node0 = self._restart_build_node(build_nodes, 0)
+        assert_equal(node0.getblockcount(), self.t_to_sapling_height)
 
         print("grpc_comparison: funding auxiliary Sapling pool from transparent coinbase")
         wait_and_assert_operationid_status(
@@ -464,17 +479,16 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 'AllowRevealedSenders',
             ),
         )
-        node0.generate(1)
-        _submit_missing_blocks(node0, node1)
-        assert_equal(node0.getblockcount(), 202)
+        assert_equal(self._mine_and_sync_build_nodes(node0, build_nodes), _GRPC_STAGE1_HEIGHT)
 
         return build_nodes
 
     def _complete_chain_from_stage1(self, build_nodes):
+        """Build the shielded transaction range used by the parity assertions."""
         node0, node1 = build_nodes
-        assert_equal(node0.getblockcount(), 202)
+        assert_equal(node0.getblockcount(), _GRPC_STAGE1_HEIGHT)
         _submit_missing_blocks(node0, node1)
-        assert_equal(node1.getblockcount(), 202)
+        assert_equal(node1.getblockcount(), _GRPC_STAGE1_HEIGHT)
 
         fund = Decimal('0.1')
         amount = Decimal('0.01')
@@ -491,9 +505,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 'AllowRevealedAmounts',
             ),
         )
-        node0.generate(1)
-        _submit_missing_blocks(node0, node1)
-        self.sapling_to_orchard_height = node0.getblockcount()  # 203
+        self.sapling_to_orchard_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 203
 
         print("grpc_comparison: building Sapling -> Sapling transaction")
         self.sapling_to_sapling_txid = wait_and_assert_operationid_status(
@@ -505,9 +517,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 ZIP_317_FEE,
             ),
         )
-        node0.generate(1)
-        _submit_missing_blocks(node0, node1)
-        self.sapling_to_sapling_height = node0.getblockcount()  # 204
+        self.sapling_to_sapling_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 204
 
         orchard_fee = conventional_fee(4)
         orchard_amount = Decimal('12.5') - orchard_fee
@@ -522,14 +532,10 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 'NoPrivacy',
             ),
         )
-        node0.generate(1)
-        _submit_missing_blocks(node0, node1)
-        self.t_to_orchard_height = node0.getblockcount()  # 205
+        self.t_to_orchard_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 205
         # Restart the Orchard-owning wallet after funding lands so it reloads
         # its Orchard note state before the first Orchard spend.
-        stop_zcashd_node(1, node1)
-        node1 = start_zcashd_node(1, self.options.tmpdir, activation_heights=_GRPC_ZCASHD_NUPARAMS)
-        build_nodes[1] = node1
+        node1 = self._restart_build_node(build_nodes, 1)
         assert_equal(node1.getblockcount(), node0.getblockcount())
 
         print("grpc_comparison: building Orchard -> Orchard transaction")
@@ -543,13 +549,9 @@ class GrpcComparisonTest(BitcoinTestFramework):
             ),
         )
         _relay_raw_transaction(node1, node0, self.orchard_to_orchard_txid)
-        node0.generate(1)
-        _submit_missing_blocks(node0, node1)
-        self.orchard_to_orchard_height = node0.getblockcount()  # 206
+        self.orchard_to_orchard_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 206
 
-        stop_zcashd_node(1, node1)
-        node1 = start_zcashd_node(1, self.options.tmpdir, activation_heights=_GRPC_ZCASHD_NUPARAMS)
-        build_nodes[1] = node1
+        node1 = self._restart_build_node(build_nodes, 1)
         assert_equal(node1.getblockcount(), node0.getblockcount())
 
         print("grpc_comparison: building Orchard -> Sapling transaction")
@@ -564,13 +566,9 @@ class GrpcComparisonTest(BitcoinTestFramework):
             ),
         )
         _relay_raw_transaction(node1, node0, self.orchard_to_sapling_txid)
-        node0.generate(1)
-        _submit_missing_blocks(node0, node1)
-        self.orchard_to_sapling_height = node0.getblockcount()  # 207
+        self.orchard_to_sapling_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 207
 
-        stop_zcashd_node(1, node1)
-        node1 = start_zcashd_node(1, self.options.tmpdir, activation_heights=_GRPC_ZCASHD_NUPARAMS)
-        build_nodes[1] = node1
+        node1 = self._restart_build_node(build_nodes, 1)
         assert_equal(node1.getblockcount(), node0.getblockcount())
 
         print("grpc_comparison: building Sapling -> transparent transaction")
@@ -584,9 +582,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 'AllowRevealedRecipients',
             ),
         )
-        node0.generate(1)
-        _submit_missing_blocks(node0, node1)
-        self.sapling_to_t_height = node0.getblockcount()  # 208
+        self.sapling_to_t_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 208
 
         print("grpc_comparison: building Orchard -> transparent transaction")
         self.orchard_to_t_txid = wait_and_assert_operationid_status(
@@ -600,9 +596,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
             ),
         )
         _relay_raw_transaction(node1, node0, self.orchard_to_t_txid)
-        node0.generate(1)
-        _submit_missing_blocks(node0, node1)
-        self.orchard_to_t_height = node0.getblockcount()  # 209
+        self.orchard_to_t_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 209
 
     def setup_nodes(self):
         # Match Zebra regtest defaults up to Canopy, and activate Orchard-era
@@ -655,12 +649,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
             self._persist_framework_cache()
             self.txid = self.nodes[0].getblock("1")['tx'][0]
 
-        if self._chain_loaded_from_cache:
-            print("grpc_comparison: waiting for restored Zebrad tip before starting indexers")
-            self._wait_for_zebra_tip(self.orchard_to_t_height)
-        else:
-            print("grpc_comparison: waiting for restored Zebrad tip before starting indexers")
-            self._wait_for_zebra_tip(self.orchard_to_t_height)
+        print("grpc_comparison: waiting for restored Zebrad tip before starting indexers")
+        self._wait_for_zebra_tip(self.orchard_to_t_height)
         self.zainos = self.setup_indexers()
         self.lwds = self.setup_lightwalletds()
 
@@ -711,143 +701,89 @@ class GrpcComparisonTest(BitcoinTestFramework):
             % (expected_height, timeout, last_height)
         )
 
+    def _run_checks(self, checks):
+        """Run a sequence of labeled test helpers in order."""
+        for label, method in checks:
+            print("Testing %s..." % label)
+            method()
+
     def run_test(self):
         zainod_ch = grpc.insecure_channel(f"127.0.0.1:{zaino_grpc_port(0)}")
         lwd_ch = grpc.insecure_channel(f"127.0.0.1:{self.lwds[0]}")
         zs = service_pb2_grpc.CompactTxStreamerStub(zainod_ch)
         ls = service_pb2_grpc.CompactTxStreamerStub(lwd_ch)
 
-        print("Testing GetLightdInfo...")
-        self.test_get_lightd_info(zs, ls)
+        # Start with chain-wide parity checks on transparent and metadata APIs.
+        self._run_checks([
+            ("GetLightdInfo", lambda: self.test_get_lightd_info(zs, ls)),
+            ("GetLatestBlock", lambda: self.test_get_latest_block(zs, ls)),
+            ("GetBlock", lambda: self.test_get_block(zs, ls)),
+            ("GetBlock (out of bounds)", lambda: self.test_get_block_out_of_bounds(zs, ls)),
+            ("GetBlockNullifiers", lambda: self.test_get_block_nullifiers(zs, ls)),
+            ("GetBlockRange (forward)", lambda: self.test_get_block_range(zs, ls)),
+            ("GetBlockRange (reverse)", lambda: self.test_get_block_range_reverse(zs, ls)),
+            ("GetBlockRange (out of bounds)", lambda: self.test_get_block_range_out_of_bounds(zs, ls)),
+            ("GetBlockRangeNullifiers", lambda: self.test_get_block_range_nullifiers(zs, ls)),
+            ("GetBlockRangeNullifiers (reverse)", lambda: self.test_get_block_range_nullifiers_reverse(zs, ls)),
+            ("GetTransaction", lambda: self.test_get_transaction(zs, ls)),
+            ("GetTaddressTxids (full range)", lambda: self.test_get_taddress_txids(zs, ls)),
+            ("GetTaddressTxids (lower bound)", lambda: self.test_get_taddress_txids_lower(zs, ls)),
+            ("GetTaddressTxids (upper bound)", lambda: self.test_get_taddress_txids_upper(zs, ls)),
+            ("GetTaddressBalance", lambda: self.test_get_taddress_balance(zs, ls)),
+            ("GetTaddressBalanceStream", lambda: self.test_get_taddress_balance_stream(zs, ls)),
+            ("GetTreeState (by height)", lambda: self.test_get_tree_state_by_height(zs, ls)),
+            ("GetTreeState (out of bounds)", lambda: self.test_get_tree_state_out_of_bounds(zs, ls)),
+            ("GetLatestTreeState", lambda: self.test_get_latest_tree_state(zs, ls)),
+            ("GetSubtreeRoots (sapling)", lambda: self.test_get_subtree_roots_sapling(zs, ls)),
+            ("GetSubtreeRoots (orchard)", lambda: self.test_get_subtree_roots_orchard(zs, ls)),
+            ("GetAddressUtxos", lambda: self.test_get_address_utxos(zs, ls)),
+            ("GetAddressUtxosStream", lambda: self.test_get_address_utxos_stream(zs, ls)),
+        ])
 
-        print("Testing GetLatestBlock...")
-        self.test_get_latest_block(zs, ls)
-
-        print("Testing GetBlock...")
-        self.test_get_block(zs, ls)
-
-        print("Testing GetBlock (out of bounds)...")
-        self.test_get_block_out_of_bounds(zs, ls)
-
-        print("Testing GetBlockNullifiers...")
-        self.test_get_block_nullifiers(zs, ls)
-
-        print("Testing GetBlockRange (forward)...")
-        self.test_get_block_range(zs, ls)
-
-        print("Testing GetBlockRange (reverse)...")
-        self.test_get_block_range_reverse(zs, ls)
-
-        print("Testing GetBlockRange (out of bounds)...")
-        self.test_get_block_range_out_of_bounds(zs, ls)
-
-        print("Testing GetBlockRangeNullifiers...")
-        self.test_get_block_range_nullifiers(zs, ls)
-
-        print("Testing GetBlockRangeNullifiers (reverse)...")
-        self.test_get_block_range_nullifiers_reverse(zs, ls)
-
-        print("Testing GetTransaction...")
-        self.test_get_transaction(zs, ls)
-
-        print("Testing GetTaddressTxids (full range)...")
-        self.test_get_taddress_txids(zs, ls)
-
-        print("Testing GetTaddressTxids (lower bound)...")
-        self.test_get_taddress_txids_lower(zs, ls)
-
-        print("Testing GetTaddressTxids (upper bound)...")
-        self.test_get_taddress_txids_upper(zs, ls)
-
-        print("Testing GetTaddressBalance...")
-        self.test_get_taddress_balance(zs, ls)
-
-        print("Testing GetTaddressBalanceStream...")
-        self.test_get_taddress_balance_stream(zs, ls)
-
-        print("Testing GetTreeState (by height)...")
-        self.test_get_tree_state_by_height(zs, ls)
-
-        print("Testing GetTreeState (out of bounds)...")
-        self.test_get_tree_state_out_of_bounds(zs, ls)
-
-        print("Testing GetLatestTreeState...")
-        self.test_get_latest_tree_state(zs, ls)
-
-        print("Testing GetSubtreeRoots (sapling)...")
-        self.test_get_subtree_roots_sapling(zs, ls)
-
-        print("Testing GetSubtreeRoots (orchard)...")
-        self.test_get_subtree_roots_orchard(zs, ls)
-
-        print("Testing GetAddressUtxos...")
-        self.test_get_address_utxos(zs, ls)
-
-        print("Testing GetAddressUtxosStream...")
-        self.test_get_address_utxos_stream(zs, ls)
-
-        # ---- Shielded transaction tests (blocks 202–205) ----
-
-        print("Testing GetBlock (t→Sapling, block %d)..." % self.t_to_sapling_height)
-        self.test_get_block_t_to_sapling(zs, ls)
-
-        print("Testing GetBlockNullifiers (t→Sapling)...")
-        self.test_get_block_nullifiers_t_to_sapling(zs, ls)
-
-        print("Testing GetBlockRange (shielded range %d–%d)..."
-              % (self.t_to_sapling_height, self.orchard_to_orchard_height))
-        self.test_get_block_range_shielded(zs, ls)
-
-        print("Testing GetTransaction (t→Sapling)...")
-        self.test_get_transaction_t_to_sapling(zs, ls)
-
-        print("Testing GetTreeState (after t→Sapling, block %d)..." % self.t_to_sapling_height)
-        self.test_get_tree_state_after_t_to_sapling(zs, ls)
-
-        print("Testing GetBlock (t→Orchard, block %d)..." % self.t_to_orchard_height)
-        self.test_get_block_t_to_orchard(zs, ls)
-
-        print("Testing GetTransaction (t→Orchard)...")
-        self.test_get_transaction_t_to_orchard(zs, ls)
-
-        print("Testing GetTreeState (after t→Orchard, block %d)..." % self.t_to_orchard_height)
-        self.test_get_tree_state_after_t_to_orchard(zs, ls)
-
-        print("Testing GetBlock (Sapling→Sapling, block %d)..." % self.sapling_to_sapling_height)
-        self.test_get_block_sapling_to_sapling(zs, ls)
-
-        print("Testing GetTransaction (Sapling→Sapling)...")
-        self.test_get_transaction_sapling_to_sapling(zs, ls)
-
-        print("Testing GetBlock (Orchard→Orchard, block %d)..." % self.orchard_to_orchard_height)
-        self.test_get_block_orchard_to_orchard(zs, ls)
-
-        print("Testing GetTransaction (Orchard→Orchard)...")
-        self.test_get_transaction_orchard_to_orchard(zs, ls)
-
-        print("Testing GetBlock (Sapling→Orchard, block %d)..." % self.sapling_to_orchard_height)
-        self.test_get_block_sapling_to_orchard(zs, ls)
-
-        print("Testing GetTransaction (Sapling→Orchard)...")
-        self.test_get_transaction_sapling_to_orchard(zs, ls)
-
-        print("Testing GetBlock (Orchard→Sapling, block %d)..." % self.orchard_to_sapling_height)
-        self.test_get_block_orchard_to_sapling(zs, ls)
-
-        print("Testing GetTransaction (Orchard→Sapling)...")
-        self.test_get_transaction_orchard_to_sapling(zs, ls)
-
-        print("Testing GetBlock (Sapling→t, block %d)..." % self.sapling_to_t_height)
-        self.test_get_block_sapling_to_t(zs, ls)
-
-        print("Testing GetTransaction (Sapling→t)...")
-        self.test_get_transaction_sapling_to_t(zs, ls)
-
-        print("Testing GetBlock (Orchard→t, block %d)..." % self.orchard_to_t_height)
-        self.test_get_block_orchard_to_t(zs, ls)
-
-        print("Testing GetTransaction (Orchard→t)...")
-        self.test_get_transaction_orchard_to_t(zs, ls)
+        # Then walk the shielded fixture in chain order so each assertion lines
+        # up with the block narrative at the top of the file.
+        self._run_checks([
+            ("GetBlock (t→Sapling, block %d)" % self.t_to_sapling_height,
+             lambda: self.test_get_block_t_to_sapling(zs, ls)),
+            ("GetBlockNullifiers (t→Sapling)",
+             lambda: self.test_get_block_nullifiers_t_to_sapling(zs, ls)),
+            ("GetBlockRange (shielded range %d–%d)" % (self.t_to_sapling_height, self.orchard_to_t_height),
+             lambda: self.test_get_block_range_shielded(zs, ls)),
+            ("GetTransaction (t→Sapling)",
+             lambda: self.test_get_transaction_t_to_sapling(zs, ls)),
+            ("GetTreeState (after t→Sapling, block %d)" % self.t_to_sapling_height,
+             lambda: self.test_get_tree_state_after_t_to_sapling(zs, ls)),
+            ("GetBlock (Sapling→Orchard, block %d)" % self.sapling_to_orchard_height,
+             lambda: self.test_get_block_sapling_to_orchard(zs, ls)),
+            ("GetTransaction (Sapling→Orchard)",
+             lambda: self.test_get_transaction_sapling_to_orchard(zs, ls)),
+            ("GetBlock (Sapling→Sapling, block %d)" % self.sapling_to_sapling_height,
+             lambda: self.test_get_block_sapling_to_sapling(zs, ls)),
+            ("GetTransaction (Sapling→Sapling)",
+             lambda: self.test_get_transaction_sapling_to_sapling(zs, ls)),
+            ("GetBlock (t→Orchard, block %d)" % self.t_to_orchard_height,
+             lambda: self.test_get_block_t_to_orchard(zs, ls)),
+            ("GetTransaction (t→Orchard)",
+             lambda: self.test_get_transaction_t_to_orchard(zs, ls)),
+            ("GetTreeState (after t→Orchard, block %d)" % self.t_to_orchard_height,
+             lambda: self.test_get_tree_state_after_t_to_orchard(zs, ls)),
+            ("GetBlock (Orchard→Orchard, block %d)" % self.orchard_to_orchard_height,
+             lambda: self.test_get_block_orchard_to_orchard(zs, ls)),
+            ("GetTransaction (Orchard→Orchard)",
+             lambda: self.test_get_transaction_orchard_to_orchard(zs, ls)),
+            ("GetBlock (Orchard→Sapling, block %d)" % self.orchard_to_sapling_height,
+             lambda: self.test_get_block_orchard_to_sapling(zs, ls)),
+            ("GetTransaction (Orchard→Sapling)",
+             lambda: self.test_get_transaction_orchard_to_sapling(zs, ls)),
+            ("GetBlock (Sapling→t, block %d)" % self.sapling_to_t_height,
+             lambda: self.test_get_block_sapling_to_t(zs, ls)),
+            ("GetTransaction (Sapling→t)",
+             lambda: self.test_get_transaction_sapling_to_t(zs, ls)),
+            ("GetBlock (Orchard→t, block %d)" % self.orchard_to_t_height,
+             lambda: self.test_get_block_orchard_to_t(zs, ls)),
+            ("GetTransaction (Orchard→t)",
+             lambda: self.test_get_transaction_orchard_to_t(zs, ls)),
+        ])
 
         # TODO: GetMempoolTx and GetMempoolStream require submitting a transaction
         # to the mempool via the mempool RPC.
@@ -1137,7 +1073,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
             assert_equal(z_u.height, l_u.height)
 
     # -------------------------------------------------------------------------
-    # Shielded transaction tests (blocks 202–208)
+    # Shielded transaction tests (blocks 201–209)
     #
     # Every block in the shielded range has at least one shielded component
     # (Sapling spend/output or Orchard action), so vtx must be non-empty and
@@ -1163,7 +1099,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         assert_equal(z.height, l.height)
         assert_equal(z.height, expected_height)
 
-    # -- t → Sapling (block 202) --
+    # -- t → Sapling (block 201) --
 
     def test_get_block_t_to_sapling(self, zs, ls):
         """Block with a t→Sapling output must have matching, non-empty vtx."""
@@ -1199,8 +1135,9 @@ class GrpcComparisonTest(BitcoinTestFramework):
             zs, ls, self.t_to_sapling_txid, self.t_to_sapling_height)
 
     def test_get_tree_state_after_t_to_sapling(self, zs, ls):
-        """After t→Sapling (block 202) both trees must be non-empty.
-        Orchard was seeded by the coinbase at block 201; Sapling by this tx."""
+        """After t→Sapling (block 201) Sapling must be non-empty.
+        Orchard tree state is already initialized on this chain layout, so we
+        only assert parity and Sapling population here."""
         req = service_pb2.BlockID(height=self.t_to_sapling_height, hash=b"")
         z = zs.GetTreeState(req)
         l = ls.GetTreeState(req)
@@ -1211,11 +1148,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
         assert_equal(z.orchardTree, l.orchardTree)
         assert_true(len(z.saplingTree) > 0,
                     "Sapling tree is empty after t→Sapling tx at height %d" % self.t_to_sapling_height)
-        assert_true(len(z.orchardTree) > 0,
-                    "Orchard tree is empty at height %d (should have been seeded by coinbase at 201)"
-                    % self.t_to_sapling_height)
 
-    # -- t → Orchard (block 201) --
+    # -- t → Orchard (block 205) --
 
     def test_get_block_t_to_orchard(self, zs, ls):
         """Block with a t→Orchard output must have matching, non-empty vtx."""
@@ -1227,8 +1161,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
             zs, ls, self.t_to_orchard_txid, self.t_to_orchard_height)
 
     def test_get_tree_state_after_t_to_orchard(self, zs, ls):
-        """After t→Orchard coinbase (block 201) the Orchard tree must be non-empty.
-        The Sapling tree is still empty at this height; it is seeded at block 202."""
+        """After t→Orchard (block 205) the Orchard tree must be non-empty."""
         req = service_pb2.BlockID(height=self.t_to_orchard_height, hash=b"")
         z = zs.GetTreeState(req)
         l = ls.GetTreeState(req)
