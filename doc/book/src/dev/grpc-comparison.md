@@ -33,7 +33,8 @@ Several interacting constraints shaped the final fixture:
 - Zebrad and standalone `zcashd` do not build the fixture chain together over
   P2P in this harness, so the test submits raw blocks explicitly.
 - Zainod must only start after Zebrad has loaded the full chain state, or it can
-  fail during initial indexing.
+  fail during initial indexing. That behavior appears to be a Zaino bug: Zainod
+  should wait for Zebra instead of crashing during startup.
 - Regenerating proof-heavy shielded transactions on every run is too slow for a
   useful parity test.
 
@@ -48,10 +49,11 @@ Those constraints are why the final test uses:
 
 The final structure came from working through a series of failures.
 
-Some of these failures likely indicate upstream bugs rather than intended
+Some of these failures appear to be upstream bugs rather than intended
 behavior. When they are reproducible in isolation, they should be tracked
 against the relevant implementation (`zcashd`, Zaino, or Zebra), and any
-protocol ambiguity should be clarified in the corresponding specification.
+protocol ambiguity should be clarified in the corresponding specification or
+ZIP before the implementations are updated.
 
 ### One-wallet chain construction was not reliable
 
@@ -61,7 +63,8 @@ The first versions tried to build the whole fixture from a single standalone
 - Sapling funds created on-chain were not always surfaced as spendable to the
   next `z_sendmany` call.
 - Orchard cross-pool and follow-on Orchard spends could crash in wallet anchor
-  handling.
+  handling. That looks like a `zcashd` bug and should be reported there if it
+  can be reproduced outside this fixture.
 - The wallet would often choose the same note pool for multiple test
   transactions, leading to duplicate-nullifier or "insufficient funds" errors.
 
@@ -91,7 +94,8 @@ steps instead of a single minimal funding transaction for each pool.
 ### ZIP 317 fee assumptions mattered
 
 Some cross-pool transactions that looked simple on paper were not satisfiable
-with a hard-coded `ZIP_317_FEE`.
+with a hard-coded `ZIP_317_FEE`. That also appears to be a `zcashd` wallet-side
+issue rather than an intended invariant of the fixture.
 
 The fix was to compute fees for the actual transaction shape where needed using
 `conventional_fee(...)`, while still keeping `ZIP_317_FEE` for the simpler
@@ -127,8 +131,8 @@ state it expects is not fully available yet. The final test therefore:
 4. then waits for both indexers to catch up.
 
 This ordering is required, not cosmetic.
-It also appears to expose a Zaino startup-order dependency that should be
-tracked separately from the parity test itself.
+It also appears to expose a Zaino startup bug that should be tracked separately
+from the parity test itself.
 
 ## The final fixture design
 
@@ -218,7 +222,9 @@ wallet clients care about.
 
 If a divergence turns out to reflect an underspecified part of the protocol
 rather than an implementation bug, the right long-term fix is to clarify that
-behavior in the relevant spec and then align the implementations to it.
+behavior in the relevant spec. For gRPC behavior, that likely means ZIP 307 or
+the lightwallet protocol itself. After that, the implementation that does not
+match the clarified spec should be fixed.
 
 ## Maintenance guidance
 
