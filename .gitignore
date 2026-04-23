@@ -10,6 +10,8 @@
 qa/pull-tester/tests_config.py
 qa/pull-tester/tests_config.ini
 qa/cache/*
+qa/rpc-tests/cache/grpc_comparison/
+qa/rpc-tests/cache/grpc_comparison_stage1/
 src/*
 
 poetry.lock

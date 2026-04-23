@@ -11,31 +11,22 @@ Mirrors the Rust test fixtures in client_rpc_test_fixtures, porting them to Pyth
 so they run inside the existing BitcoinTestFramework CI pipeline.
 
 Chain setup (zcashd mines; all blocks are submitted to Zebrad via submitblock):
-  Blocks 1–200  — Transparent coinbase → zcashd0 wallet t-address (taddr).
-                  Provides 100 mature UTXOs at height 200 for shielded spends.
-                  A second standalone wallet (zcashd1) follows the same chain and
-                  owns the Orchard account used for Orchard spends, matching the
-                  separation used by the working Orchard wallet tests.
-  Block  201    — z_shieldcoinbase: taddr → sapling_ua0  (t→Sapling).
-                  Coinbase UTXOs must go through z_shieldcoinbase, not z_sendmany.
-                  Populates the Sapling tree; notes are spendable after 1 block.
-  Block  202    — z_shieldcoinbase: taddr → sapling_ua_aux  (extra t→Sapling funding).
-                  Seeds a second Sapling note pool for the later Sapling spends,
-                  so the Sapling→Orchard spend and the later Sapling spends do not
-                  depend on zcashd note selection choosing distinct notes.
-  Block  203    — sapling_ua0 → orchard_addr0  (Sapling→Orchard, cross-pool).
-                  Also funds the Orchard pool so subsequent Orchard spends are possible.
-                  zcashd0 authors the Sapling side; zcashd1 later spends from the
-                  received Orchard note using its account UA.
-  Block  204    — sapling_ua_aux → sapling_addr1  (Sapling→Sapling).
-  Block  205    — z_sendmany: taddr → orchard_aux_addr  (t→Orchard).
-                  This seeds a second Orchard source account used for the later
-                  Orchard spends, so Orchard→Orchard does not have to share the
-                  same Orchard note pool with Orchard→Sapling and Orchard→t.
-  Block  206    — orchard_ua1 → orchard_addr1  (Orchard→Orchard).
-  Block  207    — orchard_ua_aux → sapling_addr1  (Orchard→Sapling, cross-pool).
-  Block  208    — sapling_ua_aux → taddr       (Sapling→t).
-  Block  209    — orchard_ua_aux → taddr       (Orchard→t).
+  The fixture begins with 200 transparent coinbase blocks to the zcashd0
+  wallet t-address (taddr), yielding 100 mature UTXOs by height 200. A second
+  standalone wallet (zcashd1) follows the same chain and owns the Orchard
+  account used for Orchard spends, matching the separation used by the working
+  Orchard wallet tests.
+
+  The shielded fixture range then appends:
+  - t→Sapling funding via z_shieldcoinbase to sapling_ua0
+  - extra t→Sapling funding via z_shieldcoinbase to sapling_ua_aux
+  - Sapling→Orchard cross-pool funding into orchard_addr0
+  - Sapling→Sapling
+  - t→Orchard funding into orchard_ua_aux
+  - Orchard→Orchard
+  - Orchard→Sapling
+  - Sapling→t
+  - Orchard→t
 
 Chain caching:
   After the first run the zcashd block data and chain metadata (addresses, txids,
@@ -88,8 +79,16 @@ from test_framework.proto import (
 _GRPC_CACHE_NAME = 'grpc_comparison'
 _GRPC_STAGE1_CACHE_NAME = 'grpc_comparison_stage1'
 _GRPC_ACTIVATION_HEIGHT = 2
-_GRPC_CACHE_VERSION = 7
+_GRPC_CACHE_VERSION = 8  # Bump when cached metadata/state layout changes incompatibly.
 _GRPC_STAGE1_HEIGHT = 202
+_GRPC_T_TO_SAPLING_HEIGHT = 201
+_GRPC_SAPLING_TO_ORCHARD_HEIGHT = 203
+_GRPC_SAPLING_TO_SAPLING_HEIGHT = 204
+_GRPC_T_TO_ORCHARD_HEIGHT = 205
+_GRPC_ORCHARD_TO_ORCHARD_HEIGHT = 206
+_GRPC_ORCHARD_TO_SAPLING_HEIGHT = 207
+_GRPC_SAPLING_TO_T_HEIGHT = 208
+_GRPC_ORCHARD_TO_T_HEIGHT = 209
 _GRPC_ZCASHD_NUPARAMS = {
     '5ba81b19': 1,                        # Overwinter
     '76b809bb': 1,                        # Sapling
@@ -99,6 +98,22 @@ _GRPC_ZCASHD_NUPARAMS = {
     'c2d6d0b4': _GRPC_ACTIVATION_HEIGHT,  # NU5
     'c8e71055': _GRPC_ACTIVATION_HEIGHT,  # NU6
 }
+
+
+def _skip_cached_runtime_files(tarinfo):
+    """Exclude runtime-only files from cached datadirs."""
+    basename = os.path.basename(tarinfo.name)
+    if basename in (
+        'debug.log',
+        'db.log',
+        'peers.dat',
+        'mempool.dat',
+        'fee_estimates.dat',
+    ):
+        return None
+    if basename.endswith('.lock'):
+        return None
+    return tarinfo
 
 
 def _submit_missing_blocks(src_node, dst_node):
@@ -234,21 +249,21 @@ class GrpcComparisonTest(BitcoinTestFramework):
         self.orchard_addr1 = None       # bare Orchard receiver of account 3 (receives at blocks 205, 203)
         self._orchard_aux_addr = None   # Orchard receiver used for the t→Orchard case and later Orchard spends
         self.t_to_sapling_txid = None
-        self.t_to_sapling_height = None     # 201
+        self.t_to_sapling_height = None
         self.t_to_orchard_txid = None
-        self.t_to_orchard_height = None     # 205
+        self.t_to_orchard_height = None
         self.sapling_to_sapling_txid = None
-        self.sapling_to_sapling_height = None   # 204
+        self.sapling_to_sapling_height = None
         self.orchard_to_orchard_txid = None
-        self.orchard_to_orchard_height = None   # 206
+        self.orchard_to_orchard_height = None
         self.sapling_to_orchard_txid = None
-        self.sapling_to_orchard_height = None   # 203
+        self.sapling_to_orchard_height = None
         self.orchard_to_sapling_txid = None
-        self.orchard_to_sapling_height = None   # 207
+        self.orchard_to_sapling_height = None
         self.sapling_to_t_txid = None
-        self.sapling_to_t_height = None         # 208
+        self.sapling_to_t_height = None
         self.orchard_to_t_txid = None
-        self.orchard_to_t_height = None         # 209
+        self.orchard_to_t_height = None
 
         self._chain_loaded_from_cache = False
         self._stage1_loaded_from_cache = False
@@ -325,16 +340,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
 
         src = os.path.join(self.options.tmpdir, 'node0')
 
-        def _skip_runtime_files(tarinfo):
-            basename = os.path.basename(tarinfo.name)
-            if basename in ('debug.log', 'db.log', 'peers.dat'):
-                return None
-            if basename.endswith('.lock'):
-                return None
-            return tarinfo
-
         with tarfile.open(os.path.join(cache_path, 'zebrad_state.tar.gz'), 'w:gz') as tf:
-            tf.add(src, arcname='node0', filter=_skip_runtime_files)
+            tf.add(src, arcname='node0', filter=_skip_cached_runtime_files)
 
         self._write_cached_metadata(cache_path)
 
@@ -393,18 +400,10 @@ class GrpcComparisonTest(BitcoinTestFramework):
             shutil.rmtree(cache_path)
         os.makedirs(cache_path)
 
-        def _skip_runtime_files(tarinfo):
-            basename = os.path.basename(tarinfo.name)
-            if basename in ('debug.log', 'db.log', 'peers.dat', 'mempool.dat', 'fee_estimates.dat'):
-                return None
-            if basename.endswith('.lock'):
-                return None
-            return tarinfo
-
         for index in range(2):
             src = os.path.join(self.options.tmpdir, 'zcashd%d' % index)
             with tarfile.open(os.path.join(cache_path, 'zcashd%d_state.tar.gz' % index), 'w:gz') as tf:
-                tf.add(src, arcname='zcashd%d' % index, filter=_skip_runtime_files)
+                tf.add(src, arcname='zcashd%d' % index, filter=_skip_cached_runtime_files)
 
         self._write_cached_metadata(cache_path)
         build_nodes = self._start_build_nodes()
@@ -462,7 +461,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 'AllowRevealedSenders',
             ),
         )
-        self.t_to_sapling_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 201
+        self.t_to_sapling_height = self._mine_and_sync_build_nodes(node0, build_nodes)
+        assert_equal(self.t_to_sapling_height, _GRPC_T_TO_SAPLING_HEIGHT)
 
         print("grpc_comparison: restarting primary builder wallet before auxiliary Sapling funding")
         node0 = self._restart_build_node(build_nodes, 0)
@@ -505,7 +505,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 'AllowRevealedAmounts',
             ),
         )
-        self.sapling_to_orchard_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 203
+        self.sapling_to_orchard_height = self._mine_and_sync_build_nodes(node0, build_nodes)
+        assert_equal(self.sapling_to_orchard_height, _GRPC_SAPLING_TO_ORCHARD_HEIGHT)
 
         print("grpc_comparison: building Sapling -> Sapling transaction")
         self.sapling_to_sapling_txid = wait_and_assert_operationid_status(
@@ -517,7 +518,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 ZIP_317_FEE,
             ),
         )
-        self.sapling_to_sapling_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 204
+        self.sapling_to_sapling_height = self._mine_and_sync_build_nodes(node0, build_nodes)
+        assert_equal(self.sapling_to_sapling_height, _GRPC_SAPLING_TO_SAPLING_HEIGHT)
 
         orchard_fee = conventional_fee(4)
         orchard_amount = Decimal('12.5') - orchard_fee
@@ -532,7 +534,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 'NoPrivacy',
             ),
         )
-        self.t_to_orchard_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 205
+        self.t_to_orchard_height = self._mine_and_sync_build_nodes(node0, build_nodes)
+        assert_equal(self.t_to_orchard_height, _GRPC_T_TO_ORCHARD_HEIGHT)
         # Restart the Orchard-owning wallet after funding lands so it reloads
         # its Orchard note state before the first Orchard spend.
         node1 = self._restart_build_node(build_nodes, 1)
@@ -549,7 +552,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
             ),
         )
         _relay_raw_transaction(node1, node0, self.orchard_to_orchard_txid)
-        self.orchard_to_orchard_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 206
+        self.orchard_to_orchard_height = self._mine_and_sync_build_nodes(node0, build_nodes)
+        assert_equal(self.orchard_to_orchard_height, _GRPC_ORCHARD_TO_ORCHARD_HEIGHT)
 
         node1 = self._restart_build_node(build_nodes, 1)
         assert_equal(node1.getblockcount(), node0.getblockcount())
@@ -566,7 +570,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
             ),
         )
         _relay_raw_transaction(node1, node0, self.orchard_to_sapling_txid)
-        self.orchard_to_sapling_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 207
+        self.orchard_to_sapling_height = self._mine_and_sync_build_nodes(node0, build_nodes)
+        assert_equal(self.orchard_to_sapling_height, _GRPC_ORCHARD_TO_SAPLING_HEIGHT)
 
         node1 = self._restart_build_node(build_nodes, 1)
         assert_equal(node1.getblockcount(), node0.getblockcount())
@@ -582,7 +587,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 'AllowRevealedRecipients',
             ),
         )
-        self.sapling_to_t_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 208
+        self.sapling_to_t_height = self._mine_and_sync_build_nodes(node0, build_nodes)
+        assert_equal(self.sapling_to_t_height, _GRPC_SAPLING_TO_T_HEIGHT)
 
         print("grpc_comparison: building Orchard -> transparent transaction")
         self.orchard_to_t_txid = wait_and_assert_operationid_status(
@@ -596,7 +602,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
             ),
         )
         _relay_raw_transaction(node1, node0, self.orchard_to_t_txid)
-        self.orchard_to_t_height = self._mine_and_sync_build_nodes(node0, build_nodes)  # 209
+        self.orchard_to_t_height = self._mine_and_sync_build_nodes(node0, build_nodes)
+        assert_equal(self.orchard_to_t_height, _GRPC_ORCHARD_TO_T_HEIGHT)
 
     def setup_nodes(self):
         # Match Zebra regtest defaults up to Canopy, and activate Orchard-era
@@ -620,7 +627,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
             if self._stage1_loaded_from_cache:
                 print("grpc_comparison: resuming from stage-1 wallet cache")
                 build_nodes = self._start_build_nodes()
-                self._wait_for_build_nodes_height(build_nodes, 202)
+                self._wait_for_build_nodes_height(build_nodes, _GRPC_STAGE1_HEIGHT)
             else:
                 print("grpc_comparison: building fresh stage-1 fixture chain with standalone zcashd")
                 build_nodes = self._build_stage1_with_wallet_nodes()
@@ -628,10 +635,14 @@ class GrpcComparisonTest(BitcoinTestFramework):
             try:
                 print("grpc_comparison: building stage-2 shielded transactions")
                 self._complete_chain_from_stage1(build_nodes)
+                # TODO: Re-home this fixture once standalone zcashd is retired.
+                # Today we still rely on standalone zcashd to author the
+                # shielded transactions, then replay the resulting chain into
+                # Zebrad for the actual parity checks.
+                #
                 # Zebra and standalone zcashd disagree on regtest difficulty
                 # throughout this standalone fixture, so replay via checkpoints
-                # and then wait until Zebra exposes treestates for the replayed
-                # shielded blocks before starting the downstream indexers.
+                # before starting the downstream indexers.
                 checkpoint_path = os.path.join(self.options.tmpdir, 'grpc_comparison_checkpoints.txt')
                 _write_checkpoint_file(build_nodes[0], build_nodes[0].getblockcount(), checkpoint_path)
                 self._zebra_checkpoints = checkpoint_path
@@ -727,8 +738,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
             ("GetBlockRangeNullifiers (reverse)", lambda: self.test_get_block_range_nullifiers_reverse(zs, ls)),
             ("GetTransaction", lambda: self.test_get_transaction(zs, ls)),
             ("GetTaddressTxids (full range)", lambda: self.test_get_taddress_txids(zs, ls)),
-            ("GetTaddressTxids (lower bound)", lambda: self.test_get_taddress_txids_lower(zs, ls)),
-            ("GetTaddressTxids (upper bound)", lambda: self.test_get_taddress_txids_upper(zs, ls)),
+            ("GetTaddressTxids (tip-only range)", lambda: self.test_get_taddress_txids_tip_only(zs, ls)),
+            ("GetTaddressTxids (genesis-only range)", lambda: self.test_get_taddress_txids_genesis_only(zs, ls)),
             ("GetTaddressBalance", lambda: self.test_get_taddress_balance(zs, ls)),
             ("GetTaddressBalanceStream", lambda: self.test_get_taddress_balance_stream(zs, ls)),
             ("GetTreeState (by height)", lambda: self.test_get_tree_state_by_height(zs, ls)),
@@ -925,7 +936,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
             assert_equal(z_tx.data, l_tx.data)
             assert_equal(z_tx.height, l_tx.height)
 
-    def test_get_taddress_txids_lower(self, zs, ls):
+    def test_get_taddress_txids_tip_only(self, zs, ls):
         tip = self.nodes[0].getblockcount()
         req = service_pb2.TransparentAddressBlockFilter(
             address=self.taddr,
@@ -941,7 +952,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
             assert_equal(z_tx.data, l_tx.data)
             assert_equal(z_tx.height, l_tx.height)
 
-    def test_get_taddress_txids_upper(self, zs, ls):
+    def test_get_taddress_txids_genesis_only(self, zs, ls):
         req = service_pb2.TransparentAddressBlockFilter(
             address=self.taddr,
             range=service_pb2.BlockRange(
@@ -1073,7 +1084,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
             assert_equal(z_u.height, l_u.height)
 
     # -------------------------------------------------------------------------
-    # Shielded transaction tests (blocks 201–209)
+    # Shielded transaction tests (the shielded fixture range)
     #
     # Every block in the shielded range has at least one shielded component
     # (Sapling spend/output or Orchard action), so vtx must be non-empty and
@@ -1112,9 +1123,9 @@ class GrpcComparisonTest(BitcoinTestFramework):
         assert_equal(z, l)
 
     def test_get_block_range_shielded(self, zs, ls):
-        """All blocks in the shielded range (202–208) must have matching, non-empty vtx."""
-        start = self.t_to_sapling_height   # 202
-        end   = self.orchard_to_t_height   # 208
+        """All blocks in the shielded range must have matching, non-empty vtx."""
+        start = self.t_to_sapling_height
+        end = self.orchard_to_t_height
         req = service_pb2.BlockRange(
             start=service_pb2.BlockID(height=start, hash=b""),
             end=service_pb2.BlockID(height=end, hash=b""),
@@ -1185,7 +1196,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         self._assert_transaction_match(
             zs, ls, self.sapling_to_sapling_txid, self.sapling_to_sapling_height)
 
-    # -- Orchard → Orchard (block 205) --
+    # -- Orchard → Orchard (block 206) --
 
     def test_get_block_orchard_to_orchard(self, zs, ls):
         """Block with an Orchard→Orchard spend must have matching, non-empty vtx."""
@@ -1209,7 +1220,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         self._assert_transaction_match(
             zs, ls, self.sapling_to_orchard_txid, self.sapling_to_orchard_height)
 
-    # -- Orchard → Sapling (block 206) --
+    # -- Orchard → Sapling (block 207) --
 
     def test_get_block_orchard_to_sapling(self, zs, ls):
         """Block with an Orchard→Sapling (cross-pool) tx must have matching, non-empty vtx."""
@@ -1221,7 +1232,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         self._assert_transaction_match(
             zs, ls, self.orchard_to_sapling_txid, self.orchard_to_sapling_height)
 
-    # -- Sapling → t (block 207) --
+    # -- Sapling → t (block 208) --
 
     def test_get_block_sapling_to_t(self, zs, ls):
         """Block with a Sapling→t tx must have matching, non-empty vtx (Sapling spend present)."""
@@ -1233,7 +1244,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         self._assert_transaction_match(
             zs, ls, self.sapling_to_t_txid, self.sapling_to_t_height)
 
-    # -- Orchard → t (block 208) --
+    # -- Orchard → t (block 209) --
 
     def test_get_block_orchard_to_t(self, zs, ls):
         """Block with an Orchard→t tx must have matching, non-empty vtx (Orchard action present)."""

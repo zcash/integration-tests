@@ -163,6 +163,10 @@ The final design uses two cache layers:
 - `qa/rpc-tests/cache/grpc_comparison/`
   Stores the final Zebrad state and metadata used by the parity test itself.
 
+These caches are generated artifacts. They are useful for local development and
+CI acceleration, but they should not be committed to git because the binary
+archives are hard to review and unnecessarily bloat repository history.
+
 This split was useful because it let development continue even when the later
 shielded transactions were still being debugged. Once the test was stable, it
 also kept the normal runtime low.
