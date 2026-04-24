@@ -204,21 +204,16 @@ That part exists because the builder chain and the validator chain are not being
 grown together live over P2P. The checkpoint-assisted setup made Zebrad replay
 stable enough for the indexer comparison to become routine.
 
-## Normalization rules are part of the design
+## Compact block parity is strict
 
-The parity test does not assert byte-for-byte identity for every protobuf field.
-Instead, it compares the parts that are intended to match and normalizes the
-known implementation-specific differences.
+The parity test now compares `CompactBlock` responses exactly as returned by
+each implementation. It does not normalize `protoVersion`, omit transparent
+coinbase compact transactions, or otherwise rewrite the compact block payload
+before comparing it.
 
-The most important example is compact block normalization:
-
-- Zainod and Lightwalletd can report different `protoVersion` values.
-- Lightwalletd may include transparent-only compact transactions on shielded
-  blocks that Zainod omits.
-
-Those differences are normalized away so the test focuses on the actual parity
-target: whether both services agree on the chain and the shielded contents that
-wallet clients care about.
+That makes the failures noisier, but it is deliberate: any divergence between
+Zainod and Lightwalletd should be surfaced directly in test output so it can be
+understood and fixed rather than normalized away.
 
 If a divergence turns out to reflect an underspecified part of the protocol
 rather than an implementation bug, the right long-term fix is to clarify that

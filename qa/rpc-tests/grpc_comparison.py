@@ -168,77 +168,11 @@ def _collect_stream(streaming_call):
     return results
 
 
-def _normalize_compact_block(block):
-    """
-    Normalize a CompactBlock for header-level comparison.
-
-    Known divergences between Zainod and Lightwalletd (with Zebrad as backend):
-    - protoVersion: Lightwalletd sets 1, Zainod sets 4. Zeroed out.
-    - vtx: Lightwalletd includes transparent coinbase transactions in compact
-      blocks; Zainod omits them (only shielded transactions appear). Cleared.
-
-    The header fields (height, hash, prevHash, time) are authoritative and
-    must agree between both implementations.
-    """
-    normalized = compact_formats_pb2.CompactBlock()
-    normalized.height = block.height
-    normalized.hash = block.hash
-    normalized.prevHash = block.prevHash
-    normalized.time = block.time
-    # chainMetadata is also comparable; copy it if present
-    if block.HasField("chainMetadata"):
-        normalized.chainMetadata.CopyFrom(block.chainMetadata)
-    return normalized
-
-
-def _normalize_shielded_compact_block(block):
-    """
-    Normalize a CompactBlock that contains shielded transactions for full
-    comparison including vtx.
-
-    Blocks in the shielded fixture range must have identical, non-empty
-    shielded CompactTx entries in both Zainod and Lightwalletd.
-
-    Known divergence:
-    - Lightwalletd still includes the transparent coinbase CompactTx in these
-      blocks, while Zainod omits transparent-only transactions. Filter those
-      out before comparing the remaining shielded txs.
-
-    The only remaining implementation-specific field zeroed here is
-    protoVersion.
-    """
-    normalized = compact_formats_pb2.CompactBlock()
-    normalized.height = block.height
-    normalized.hash = block.hash
-    normalized.prevHash = block.prevHash
-    normalized.time = block.time
-    normalized.protoVersion = 0
-    for tx in block.vtx:
-        if len(tx.spends) > 0 or len(tx.outputs) > 0 or len(tx.actions) > 0:
-            normalized_tx = normalized.vtx.add()
-            normalized_tx.index = tx.index
-            normalized_tx.txid = tx.txid
-            normalized_tx.fee = tx.fee
-            normalized_tx.spends.extend(tx.spends)
-            normalized_tx.outputs.extend(tx.outputs)
-            normalized_tx.actions.extend(tx.actions)
-    if block.HasField("chainMetadata"):
-        normalized.chainMetadata.CopyFrom(block.chainMetadata)
-    return normalized
-
-
-def _shielded_compact_block_for_range_check(block):
-    """
-    Prepare a shielded CompactBlock for GetBlockRange parity checks.
-
-    GetBlockRange is intended to detect full streamed compact-block
-    divergences, so only protoVersion is normalized here. The vtx payload is
-    otherwise compared exactly as returned by each implementation.
-    """
-    normalized = compact_formats_pb2.CompactBlock()
-    normalized.CopyFrom(block)
-    normalized.protoVersion = 0
-    return normalized
+def _strict_compact_block(block):
+    """Return a CompactBlock exactly as provided by the implementation."""
+    strict = compact_formats_pb2.CompactBlock()
+    strict.CopyFrom(block)
+    return strict
 
 
 def _compact_tx_summary(tx):
@@ -249,19 +183,19 @@ def _compact_tx_summary(tx):
     )
 
 
-def _compact_block_range_mismatch_message(z_block, l_block):
+def _compact_block_mismatch_message(label, z_block, l_block):
     """
-    Summarize the first useful difference between two GetBlockRange blocks.
+    Summarize the first useful difference between two CompactBlocks.
 
     Keep this compact enough for CI logs while still pointing developers at the
     exact block and CompactTx entry that diverged.
     """
     lines = [
-        "GetBlockRange shielded mismatch at height %d:" % z_block.height,
-        "  Zainod:       hash=%s prevHash=%s vtx=%d"
-        % (z_block.hash.hex(), z_block.prevHash.hex(), len(z_block.vtx)),
-        "  Lightwalletd: hash=%s prevHash=%s vtx=%d"
-        % (l_block.hash.hex(), l_block.prevHash.hex(), len(l_block.vtx)),
+        "%s mismatch at height %d:" % (label, z_block.height),
+        "  Zainod:       protoVersion=%d hash=%s prevHash=%s vtx=%d"
+        % (z_block.protoVersion, z_block.hash.hex(), z_block.prevHash.hex(), len(z_block.vtx)),
+        "  Lightwalletd: protoVersion=%d hash=%s prevHash=%s vtx=%d"
+        % (l_block.protoVersion, l_block.hash.hex(), l_block.prevHash.hex(), len(l_block.vtx)),
     ]
 
     if z_block.hash != l_block.hash or z_block.prevHash != l_block.prevHash:
@@ -896,9 +830,9 @@ class GrpcComparisonTest(BitcoinTestFramework):
 
     def test_get_block(self, zs, ls):
         req = service_pb2.BlockID(height=5, hash=b"")
-        z = _normalize_compact_block(zs.GetBlock(req))
-        l = _normalize_compact_block(ls.GetBlock(req))
-        assert_equal(z, l)
+        z = _strict_compact_block(zs.GetBlock(req))
+        l = _strict_compact_block(ls.GetBlock(req))
+        assert_equal(z, l, _compact_block_mismatch_message("GetBlock", z, l))
 
     def test_get_block_out_of_bounds(self, zs, ls):
         # Height beyond chain tip — both must respond with a gRPC error.
@@ -919,27 +853,31 @@ class GrpcComparisonTest(BitcoinTestFramework):
 
     def test_get_block_nullifiers(self, zs, ls):
         req = service_pb2.BlockID(height=5, hash=b"")
-        z = _normalize_compact_block(zs.GetBlockNullifiers(req))
-        l = _normalize_compact_block(ls.GetBlockNullifiers(req))
-        assert_equal(z, l)
+        z = _strict_compact_block(zs.GetBlockNullifiers(req))
+        l = _strict_compact_block(ls.GetBlockNullifiers(req))
+        assert_equal(z, l, _compact_block_mismatch_message("GetBlockNullifiers", z, l))
 
     def test_get_block_range(self, zs, ls):
         req = service_pb2.BlockRange(
             start=service_pb2.BlockID(height=1, hash=b""),
             end=service_pb2.BlockID(height=10, hash=b""),
         )
-        z_blocks = [_normalize_compact_block(b) for b in _collect_stream(zs.GetBlockRange(req))]
-        l_blocks = [_normalize_compact_block(b) for b in _collect_stream(ls.GetBlockRange(req))]
-        assert_equal(z_blocks, l_blocks)
+        z_blocks = [_strict_compact_block(b) for b in _collect_stream(zs.GetBlockRange(req))]
+        l_blocks = [_strict_compact_block(b) for b in _collect_stream(ls.GetBlockRange(req))]
+        assert_equal(len(z_blocks), len(l_blocks))
+        for z_b, l_b in zip(z_blocks, l_blocks):
+            assert_equal(z_b, l_b, _compact_block_mismatch_message("GetBlockRange", z_b, l_b))
 
     def test_get_block_range_reverse(self, zs, ls):
         req = service_pb2.BlockRange(
             start=service_pb2.BlockID(height=10, hash=b""),
             end=service_pb2.BlockID(height=1, hash=b""),
         )
-        z_blocks = [_normalize_compact_block(b) for b in _collect_stream(zs.GetBlockRange(req))]
-        l_blocks = [_normalize_compact_block(b) for b in _collect_stream(ls.GetBlockRange(req))]
-        assert_equal(z_blocks, l_blocks)
+        z_blocks = [_strict_compact_block(b) for b in _collect_stream(zs.GetBlockRange(req))]
+        l_blocks = [_strict_compact_block(b) for b in _collect_stream(ls.GetBlockRange(req))]
+        assert_equal(len(z_blocks), len(l_blocks))
+        for z_b, l_b in zip(z_blocks, l_blocks):
+            assert_equal(z_b, l_b, _compact_block_mismatch_message("GetBlockRange reverse", z_b, l_b))
 
     def test_get_block_range_out_of_bounds(self, zs, ls):
         # Both must respond with a gRPC error when the range exceeds the chain tip.
@@ -966,18 +904,22 @@ class GrpcComparisonTest(BitcoinTestFramework):
             start=service_pb2.BlockID(height=1, hash=b""),
             end=service_pb2.BlockID(height=10, hash=b""),
         )
-        z_blocks = [_normalize_compact_block(b) for b in _collect_stream(zs.GetBlockRangeNullifiers(req))]
-        l_blocks = [_normalize_compact_block(b) for b in _collect_stream(ls.GetBlockRangeNullifiers(req))]
-        assert_equal(z_blocks, l_blocks)
+        z_blocks = [_strict_compact_block(b) for b in _collect_stream(zs.GetBlockRangeNullifiers(req))]
+        l_blocks = [_strict_compact_block(b) for b in _collect_stream(ls.GetBlockRangeNullifiers(req))]
+        assert_equal(len(z_blocks), len(l_blocks))
+        for z_b, l_b in zip(z_blocks, l_blocks):
+            assert_equal(z_b, l_b, _compact_block_mismatch_message("GetBlockRangeNullifiers", z_b, l_b))
 
     def test_get_block_range_nullifiers_reverse(self, zs, ls):
         req = service_pb2.BlockRange(
             start=service_pb2.BlockID(height=10, hash=b""),
             end=service_pb2.BlockID(height=1, hash=b""),
         )
-        z_blocks = [_normalize_compact_block(b) for b in _collect_stream(zs.GetBlockRangeNullifiers(req))]
-        l_blocks = [_normalize_compact_block(b) for b in _collect_stream(ls.GetBlockRangeNullifiers(req))]
-        assert_equal(z_blocks, l_blocks)
+        z_blocks = [_strict_compact_block(b) for b in _collect_stream(zs.GetBlockRangeNullifiers(req))]
+        l_blocks = [_strict_compact_block(b) for b in _collect_stream(ls.GetBlockRangeNullifiers(req))]
+        assert_equal(len(z_blocks), len(l_blocks))
+        for z_b, l_b in zip(z_blocks, l_blocks):
+            assert_equal(z_b, l_b, _compact_block_mismatch_message("GetBlockRangeNullifiers reverse", z_b, l_b))
 
     def test_get_transaction(self, zs, ls):
         # self.txid is a hex string; the TxFilter expects bytes in little-endian order
@@ -1160,13 +1102,13 @@ class GrpcComparisonTest(BitcoinTestFramework):
 
     def _assert_shielded_block_match(self, zs, ls, height, label):
         req = service_pb2.BlockID(height=height, hash=b"")
-        z = _normalize_shielded_compact_block(zs.GetBlock(req))
-        l = _normalize_shielded_compact_block(ls.GetBlock(req))
+        z = _strict_compact_block(zs.GetBlock(req))
+        l = _strict_compact_block(ls.GetBlock(req))
         assert_true(len(z.vtx) > 0,
                     "Zainod returned empty vtx for %s block at height %d" % (label, height))
         assert_true(len(l.vtx) > 0,
                     "Lightwalletd returned empty vtx for %s block at height %d" % (label, height))
-        assert_equal(z, l)
+        assert_equal(z, l, _compact_block_mismatch_message("GetBlock %s" % label, z, l))
 
     def _assert_transaction_match(self, zs, ls, txid_hex, expected_height):
         txid_bytes = bytes.fromhex(txid_hex)[::-1]
@@ -1185,9 +1127,9 @@ class GrpcComparisonTest(BitcoinTestFramework):
 
     def test_get_block_nullifiers_t_to_sapling(self, zs, ls):
         req = service_pb2.BlockID(height=self.t_to_sapling_height, hash=b"")
-        z = _normalize_shielded_compact_block(zs.GetBlockNullifiers(req))
-        l = _normalize_shielded_compact_block(ls.GetBlockNullifiers(req))
-        assert_equal(z, l)
+        z = _strict_compact_block(zs.GetBlockNullifiers(req))
+        l = _strict_compact_block(ls.GetBlockNullifiers(req))
+        assert_equal(z, l, _compact_block_mismatch_message("GetBlockNullifiers t→Sapling", z, l))
 
     def test_get_block_range_shielded(self, zs, ls):
         """
@@ -1203,15 +1145,15 @@ class GrpcComparisonTest(BitcoinTestFramework):
             start=service_pb2.BlockID(height=start, hash=b""),
             end=service_pb2.BlockID(height=end, hash=b""),
         )
-        z_blocks = [_shielded_compact_block_for_range_check(b) for b in _collect_stream(zs.GetBlockRange(req))]
-        l_blocks = [_shielded_compact_block_for_range_check(b) for b in _collect_stream(ls.GetBlockRange(req))]
+        z_blocks = [_strict_compact_block(b) for b in _collect_stream(zs.GetBlockRange(req))]
+        l_blocks = [_strict_compact_block(b) for b in _collect_stream(ls.GetBlockRange(req))]
         assert_equal(len(z_blocks), len(l_blocks))
         for z_b, l_b in zip(z_blocks, l_blocks):
             assert_true(len(z_b.vtx) > 0,
                         "Zainod returned empty vtx for shielded block at height %d" % z_b.height)
             assert_true(len(l_b.vtx) > 0,
                         "Lightwalletd returned empty vtx for shielded block at height %d" % l_b.height)
-            assert_equal(z_b, l_b, _compact_block_range_mismatch_message(z_b, l_b))
+            assert_equal(z_b, l_b, _compact_block_mismatch_message("GetBlockRange shielded", z_b, l_b))
 
     def test_get_transaction_t_to_sapling(self, zs, ls):
         """t→Sapling transaction bytes and height must match across both indexers."""
