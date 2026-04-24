@@ -227,6 +227,72 @@ def _normalize_shielded_compact_block(block):
     return normalized
 
 
+def _shielded_compact_block_for_range_check(block):
+    """
+    Prepare a shielded CompactBlock for GetBlockRange parity checks.
+
+    GetBlockRange is intended to detect full streamed compact-block
+    divergences, so only protoVersion is normalized here. The vtx payload is
+    otherwise compared exactly as returned by each implementation.
+    """
+    normalized = compact_formats_pb2.CompactBlock()
+    normalized.CopyFrom(block)
+    normalized.protoVersion = 0
+    return normalized
+
+
+def _compact_tx_summary(tx):
+    """Return a short one-line summary of a CompactTx for failure messages."""
+    return (
+        "index=%d txid=%s spends=%d outputs=%d actions=%d"
+        % (tx.index, tx.txid.hex(), len(tx.spends), len(tx.outputs), len(tx.actions))
+    )
+
+
+def _compact_block_range_mismatch_message(z_block, l_block):
+    """
+    Summarize the first useful difference between two GetBlockRange blocks.
+
+    Keep this compact enough for CI logs while still pointing developers at the
+    exact block and CompactTx entry that diverged.
+    """
+    lines = [
+        "GetBlockRange shielded mismatch at height %d:" % z_block.height,
+        "  Zainod:       hash=%s prevHash=%s vtx=%d"
+        % (z_block.hash.hex(), z_block.prevHash.hex(), len(z_block.vtx)),
+        "  Lightwalletd: hash=%s prevHash=%s vtx=%d"
+        % (l_block.hash.hex(), l_block.prevHash.hex(), len(l_block.vtx)),
+    ]
+
+    if z_block.hash != l_block.hash or z_block.prevHash != l_block.prevHash:
+        return "\n".join(lines)
+
+    shared_len = min(len(z_block.vtx), len(l_block.vtx))
+    for index in range(shared_len):
+        z_tx = z_block.vtx[index]
+        l_tx = l_block.vtx[index]
+        if z_tx != l_tx:
+            lines.extend([
+                "  First differing CompactTx:",
+                "    Zainod[%d]: %s" % (index, _compact_tx_summary(z_tx)),
+                "    Lightwalletd[%d]: %s" % (index, _compact_tx_summary(l_tx)),
+            ])
+            return "\n".join(lines)
+
+    if len(z_block.vtx) != len(l_block.vtx):
+        extra_side = "Zainod" if len(z_block.vtx) > len(l_block.vtx) else "Lightwalletd"
+        extra_txs = z_block.vtx[shared_len:] if len(z_block.vtx) > len(l_block.vtx) else l_block.vtx[shared_len:]
+        lines.append("  Extra CompactTx entries on %s:" % extra_side)
+        for tx in extra_txs[:3]:
+            lines.append("    %s" % _compact_tx_summary(tx))
+        if len(extra_txs) > 3:
+            lines.append("    ... %d more" % (len(extra_txs) - 3))
+        return "\n".join(lines)
+
+    lines.append("  Blocks differ, but no shorter structured summary was found.")
+    return "\n".join(lines)
+
+
 class GrpcComparisonTest(BitcoinTestFramework):
 
     def __init__(self):
@@ -1124,22 +1190,28 @@ class GrpcComparisonTest(BitcoinTestFramework):
         assert_equal(z, l)
 
     def test_get_block_range_shielded(self, zs, ls):
-        """All blocks in the shielded range must have matching, non-empty vtx."""
+        """
+        All blocks in the shielded range must have matching, non-empty vtx.
+
+        This range check intentionally keeps the streamed CompactTx entries
+        intact so it can detect GetBlockRange divergences between Zainod and
+        Lightwalletd.
+        """
         start = self.t_to_sapling_height
         end = self.orchard_to_t_height
         req = service_pb2.BlockRange(
             start=service_pb2.BlockID(height=start, hash=b""),
             end=service_pb2.BlockID(height=end, hash=b""),
         )
-        z_blocks = [_normalize_shielded_compact_block(b) for b in _collect_stream(zs.GetBlockRange(req))]
-        l_blocks = [_normalize_shielded_compact_block(b) for b in _collect_stream(ls.GetBlockRange(req))]
+        z_blocks = [_shielded_compact_block_for_range_check(b) for b in _collect_stream(zs.GetBlockRange(req))]
+        l_blocks = [_shielded_compact_block_for_range_check(b) for b in _collect_stream(ls.GetBlockRange(req))]
         assert_equal(len(z_blocks), len(l_blocks))
         for z_b, l_b in zip(z_blocks, l_blocks):
             assert_true(len(z_b.vtx) > 0,
                         "Zainod returned empty vtx for shielded block at height %d" % z_b.height)
             assert_true(len(l_b.vtx) > 0,
                         "Lightwalletd returned empty vtx for shielded block at height %d" % l_b.height)
-            assert_equal(z_b, l_b)
+            assert_equal(z_b, l_b, _compact_block_range_mismatch_message(z_b, l_b))
 
     def test_get_transaction_t_to_sapling(self, zs, ls):
         """t→Sapling transaction bytes and height must match across both indexers."""
