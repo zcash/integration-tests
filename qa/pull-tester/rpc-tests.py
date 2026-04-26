@@ -289,7 +289,6 @@ NEW_SCRIPTS= [
     'getrawtransaction_sidechain.py',
     'fix_block_commitments.py',
     'indexer.py',
-    'grpc_comparison.py',
     'decodescript.py',
     'feature_nu6_1.py',
     'nuparams.py',
@@ -308,6 +307,7 @@ EXTENDED_SCRIPTS = [
     # Longest test should go first, to favor running tests in parallel
     'pruning.py',
     # vv Tests less than 5m vv
+    'grpc_comparison.py',
     # vv Tests less than 2m vv
     'getblocktemplate_longpoll.py',
     # vv Tests less than 60s vv
