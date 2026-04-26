@@ -95,7 +95,8 @@ steps instead of a single minimal funding transaction for each pool.
 
 Some cross-pool transactions that looked simple on paper were not satisfiable
 with a hard-coded `ZIP_317_FEE`. That also appears to be a `zcashd` wallet-side
-issue rather than an intended invariant of the fixture.
+issue rather than an intended invariant of the fixture. This behavior is now
+tracked upstream as [`zcash/zcash#6956`](https://github.com/zcash/zcash/issues/6956).
 
 The fix was to compute fees for the actual transaction shape where needed using
 `conventional_fee(...)`, while still keeping `ZIP_317_FEE` for the simpler
@@ -219,7 +220,8 @@ If a divergence turns out to reflect an underspecified part of the protocol
 rather than an implementation bug, the right long-term fix is to clarify that
 behavior in the relevant spec. For gRPC behavior, that likely means ZIP 307 or
 the lightwallet protocol itself. After that, the implementation that does not
-match the clarified spec should be fixed.
+match the clarified spec should be fixed, and the parity test should keep
+failing until that happens.
 
 ## Maintenance guidance
 
