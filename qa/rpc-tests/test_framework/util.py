@@ -616,12 +616,13 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
 
             # Copy in per-node wallet data
             wallet_tgz_filename = os.path.join(cache_path, "node"+str(i)+"_wallet.tar.gz")
-            if os.path.exists(wallet_tgz_filename):
-                with tarfile.open(wallet_tgz_filename, "r:gz") as wallet_tgz_file:
-                    tarfile_extractall(wallet_tgz_file, os.path.join(to_dir, "wallet.dat"))
-            else:
-                print('Warning: wallet cache missing for cache behavior %s, node %d; starting without wallet cache'
-                      % (cache_behavior, i))
+            if not os.path.exists(wallet_tgz_filename):
+                raise Exception(
+                    'Wallet cache missing for cache behavior %s, node %d'
+                    % (cache_behavior, i)
+                )
+            with tarfile.open(wallet_tgz_filename, "r:gz") as wallet_tgz_file:
+                tarfile_extractall(wallet_tgz_file, os.path.join(to_dir, "wallet.dat"))
 
             # Copy in per-node wallet config and update zcash.conf to set the
             # clock offsets correctly.
