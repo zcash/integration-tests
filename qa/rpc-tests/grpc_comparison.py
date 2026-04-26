@@ -50,9 +50,11 @@ import json
 import os
 import tarfile
 import time
+from difflib import unified_diff
 from decimal import Decimal
 
 import grpc
+from google.protobuf import text_format
 
 from test_framework.config import ZebraArgs
 from test_framework.test_framework import BitcoinTestFramework
@@ -183,6 +185,24 @@ def _compact_tx_summary(tx):
     )
 
 
+def _protobuf_unified_diff(z_block, l_block, label, max_lines=200):
+    """Render a unified diff for two protobuf messages."""
+    z_text = text_format.MessageToString(z_block)
+    l_text = text_format.MessageToString(l_block)
+    diff_lines = list(unified_diff(
+        z_text.splitlines(),
+        l_text.splitlines(),
+        fromfile="%s (Zainod)" % label,
+        tofile="%s (Lightwalletd)" % label,
+        lineterm="",
+    ))
+    if not diff_lines:
+        return "  No unified diff available."
+    if len(diff_lines) > max_lines:
+        diff_lines = diff_lines[:max_lines] + ["... diff truncated after %d lines ..." % max_lines]
+    return "\n".join(diff_lines)
+
+
 def _compact_block_mismatch_message(label, z_block, l_block):
     """
     Summarize the first useful difference between two CompactBlocks.
@@ -199,6 +219,8 @@ def _compact_block_mismatch_message(label, z_block, l_block):
     ]
 
     if z_block.hash != l_block.hash or z_block.prevHash != l_block.prevHash:
+        lines.append("")
+        lines.append(_protobuf_unified_diff(z_block, l_block, label))
         return "\n".join(lines)
 
     shared_len = min(len(z_block.vtx), len(l_block.vtx))
@@ -211,6 +233,8 @@ def _compact_block_mismatch_message(label, z_block, l_block):
                 "    Zainod[%d]: %s" % (index, _compact_tx_summary(z_tx)),
                 "    Lightwalletd[%d]: %s" % (index, _compact_tx_summary(l_tx)),
             ])
+            lines.append("")
+            lines.append(_protobuf_unified_diff(z_block, l_block, label))
             return "\n".join(lines)
 
     if len(z_block.vtx) != len(l_block.vtx):
@@ -221,10 +245,20 @@ def _compact_block_mismatch_message(label, z_block, l_block):
             lines.append("    %s" % _compact_tx_summary(tx))
         if len(extra_txs) > 3:
             lines.append("    ... %d more" % (len(extra_txs) - 3))
+        lines.append("")
+        lines.append(_protobuf_unified_diff(z_block, l_block, label))
         return "\n".join(lines)
 
     lines.append("  Blocks differ, but no shorter structured summary was found.")
+    lines.append("")
+    lines.append(_protobuf_unified_diff(z_block, l_block, label))
     return "\n".join(lines)
+
+
+def _assert_compact_block_equal(label, z_block, l_block):
+    """Assert two CompactBlocks are identical, with a readable unified diff on failure."""
+    if z_block != l_block:
+        raise AssertionError(_compact_block_mismatch_message(label, z_block, l_block))
 
 
 class GrpcComparisonTest(BitcoinTestFramework):
@@ -832,7 +866,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         req = service_pb2.BlockID(height=5, hash=b"")
         z = _strict_compact_block(zs.GetBlock(req))
         l = _strict_compact_block(ls.GetBlock(req))
-        assert_equal(z, l, _compact_block_mismatch_message("GetBlock", z, l))
+        _assert_compact_block_equal("GetBlock", z, l)
 
     def test_get_block_out_of_bounds(self, zs, ls):
         # Height beyond chain tip — both must respond with a gRPC error.
@@ -855,7 +889,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         req = service_pb2.BlockID(height=5, hash=b"")
         z = _strict_compact_block(zs.GetBlockNullifiers(req))
         l = _strict_compact_block(ls.GetBlockNullifiers(req))
-        assert_equal(z, l, _compact_block_mismatch_message("GetBlockNullifiers", z, l))
+        _assert_compact_block_equal("GetBlockNullifiers", z, l)
 
     def test_get_block_range(self, zs, ls):
         req = service_pb2.BlockRange(
@@ -866,7 +900,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         l_blocks = [_strict_compact_block(b) for b in _collect_stream(ls.GetBlockRange(req))]
         assert_equal(len(z_blocks), len(l_blocks))
         for z_b, l_b in zip(z_blocks, l_blocks):
-            assert_equal(z_b, l_b, _compact_block_mismatch_message("GetBlockRange", z_b, l_b))
+            _assert_compact_block_equal("GetBlockRange", z_b, l_b)
 
     def test_get_block_range_reverse(self, zs, ls):
         req = service_pb2.BlockRange(
@@ -877,7 +911,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         l_blocks = [_strict_compact_block(b) for b in _collect_stream(ls.GetBlockRange(req))]
         assert_equal(len(z_blocks), len(l_blocks))
         for z_b, l_b in zip(z_blocks, l_blocks):
-            assert_equal(z_b, l_b, _compact_block_mismatch_message("GetBlockRange reverse", z_b, l_b))
+            _assert_compact_block_equal("GetBlockRange reverse", z_b, l_b)
 
     def test_get_block_range_out_of_bounds(self, zs, ls):
         # Both must respond with a gRPC error when the range exceeds the chain tip.
@@ -908,7 +942,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         l_blocks = [_strict_compact_block(b) for b in _collect_stream(ls.GetBlockRangeNullifiers(req))]
         assert_equal(len(z_blocks), len(l_blocks))
         for z_b, l_b in zip(z_blocks, l_blocks):
-            assert_equal(z_b, l_b, _compact_block_mismatch_message("GetBlockRangeNullifiers", z_b, l_b))
+            _assert_compact_block_equal("GetBlockRangeNullifiers", z_b, l_b)
 
     def test_get_block_range_nullifiers_reverse(self, zs, ls):
         req = service_pb2.BlockRange(
@@ -919,7 +953,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         l_blocks = [_strict_compact_block(b) for b in _collect_stream(ls.GetBlockRangeNullifiers(req))]
         assert_equal(len(z_blocks), len(l_blocks))
         for z_b, l_b in zip(z_blocks, l_blocks):
-            assert_equal(z_b, l_b, _compact_block_mismatch_message("GetBlockRangeNullifiers reverse", z_b, l_b))
+            _assert_compact_block_equal("GetBlockRangeNullifiers reverse", z_b, l_b)
 
     def test_get_transaction(self, zs, ls):
         # self.txid is a hex string; the TxFilter expects bytes in little-endian order
@@ -1108,7 +1142,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
                     "Zainod returned empty vtx for %s block at height %d" % (label, height))
         assert_true(len(l.vtx) > 0,
                     "Lightwalletd returned empty vtx for %s block at height %d" % (label, height))
-        assert_equal(z, l, _compact_block_mismatch_message("GetBlock %s" % label, z, l))
+        _assert_compact_block_equal("GetBlock %s" % label, z, l)
 
     def _assert_transaction_match(self, zs, ls, txid_hex, expected_height):
         txid_bytes = bytes.fromhex(txid_hex)[::-1]
@@ -1129,7 +1163,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
         req = service_pb2.BlockID(height=self.t_to_sapling_height, hash=b"")
         z = _strict_compact_block(zs.GetBlockNullifiers(req))
         l = _strict_compact_block(ls.GetBlockNullifiers(req))
-        assert_equal(z, l, _compact_block_mismatch_message("GetBlockNullifiers t→Sapling", z, l))
+        _assert_compact_block_equal("GetBlockNullifiers t→Sapling", z, l)
 
     def test_get_block_range_shielded(self, zs, ls):
         """
@@ -1153,7 +1187,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
                         "Zainod returned empty vtx for shielded block at height %d" % z_b.height)
             assert_true(len(l_b.vtx) > 0,
                         "Lightwalletd returned empty vtx for shielded block at height %d" % l_b.height)
-            assert_equal(z_b, l_b, _compact_block_mismatch_message("GetBlockRange shielded", z_b, l_b))
+            _assert_compact_block_equal("GetBlockRange shielded", z_b, l_b)
 
     def test_get_transaction_t_to_sapling(self, zs, ls):
         """t→Sapling transaction bytes and height must match across both indexers."""
