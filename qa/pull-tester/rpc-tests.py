@@ -279,6 +279,7 @@ NEW_SCRIPTS= [
     'wallet.py',
     # vv Tests less than 2m vv
     'wallet_ironwood.py',
+    'grpc_comparison.py',
     # vv Tests less than 60s vv
     'addnode.py',
     'wallet_z_shieldcoinbase.py',
@@ -307,7 +308,6 @@ EXTENDED_SCRIPTS = [
     # Longest test should go first, to favor running tests in parallel
     'pruning.py',
     # vv Tests less than 5m vv
-    'grpc_comparison.py',
     # vv Tests less than 2m vv
     'getblocktemplate_longpoll.py',
     # vv Tests less than 60s vv

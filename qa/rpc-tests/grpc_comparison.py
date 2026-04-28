@@ -311,10 +311,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
             default=False,
             action="store_true",
             help=(
-                "Discard the final cached chain state and rebuild it. "
-                "The full cache lives at qa/rpc-tests/cache/%s/. "
-                "A reusable stage-1 wallet cache may still be used to skip "
-                "the slow initial Sapling funding setup." % _GRPC_CACHE_NAME
+                "Discard cached chain state and rebuild from scratch. "
+                "The full cache lives at qa/rpc-tests/cache/%s/." % _GRPC_CACHE_NAME
             ),
         )
 
@@ -337,7 +335,8 @@ class GrpcComparisonTest(BitcoinTestFramework):
             initialize_chain(self.options.tmpdir, self.num_nodes,
                              self.options.cachedir, 'clean')
         stage1_cache_path = persistent_cache_path(_GRPC_STAGE1_CACHE_NAME)
-        if (not self._chain_loaded_from_cache and
+        if (not self.options.fresh and
+                not self._chain_loaded_from_cache and
                 persistent_cache_exists(_GRPC_STAGE1_CACHE_NAME)):
             try:
                 self._load_cached_metadata(stage1_cache_path)
