@@ -171,6 +171,7 @@ NEW_SCRIPTS= [
     'nuparams.py',
     'getmininginfo.py',
     'zcashd_key_import.py',
+    'zcashd_key_import_db.py',
 ]
 
 ZMQ_SCRIPTS = [
