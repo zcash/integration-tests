@@ -211,9 +211,9 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         assert_true(Decimal(result['shieldingValue']) > Decimal('0'),
                     "Expected positive shielding value, got: {}".format(
                         result['shieldingValue']))
-        # `limit` is currently ignored by Zallet, so remainingUTXOs is
-        # always 0 on success. This invariant will change when limit is
-        # honored (https://github.com/zcash/wallet/issues/NNN).
+        # When `limit` is omitted, the proposal includes all eligible coinbase
+        # UTXOs, so `remainingUTXOs` is 0. Test 12 below exercises the case
+        # where `limit` truncates and `remainingUTXOs` is non-zero.
         assert_equal(result['remainingUTXOs'], 0)
         opid = result['opid']
         assert_true(isinstance(opid, str),
@@ -297,6 +297,85 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         opid = result['opid']
         txid = wait_and_assert_operationid_status(wallet, opid)
         assert_true(txid is not None, "Shielding with AllowRevealedSenders should succeed")
+
+        node.generate(1)
+        wait_for_mature_coinbase(wallet)
+        print("  PASSED")
+
+        # ================================================================
+        # Honored-parameter tests (post-propose_shielding_coinbase integration)
+        # ================================================================
+        # Prior to https://github.com/zcash/wallet/pull/402, the `memo` and
+        # `limit` parameters were accepted but ignored. They are now honored.
+
+        print("Test 11: Memo propagation to Orchard...")
+        node.generate(COINBASE_MATURITY + 10)
+        wait_for_mature_coinbase(wallet)
+
+        # Use a 1024-character hex memo (= 512 bytes), padded with zeros.
+        # The leading bytes spell "c0ffee" in ASCII.
+        my_memo = '633066666565' + '0' * (1024 - 12)
+
+        result = wallet.z_shieldcoinbase("*", zaddr, None, None, my_memo)
+        opid = result['opid']
+        txid = wait_and_assert_operationid_status(wallet, opid)
+        assert_true(txid is not None, "Shielding with memo should succeed")
+
+        node.generate(1)
+        wait_for_mature_coinbase(wallet)
+
+        # Look up the transaction's decrypted outputs and verify the memo
+        # arrived. This exercises Zallet's Orchard branch of
+        # `z_viewtransaction`; if memo retrieval for Orchard outputs is not
+        # yet supported, the test should be downgraded to a Sapling
+        # destination (see `wallet.z_getaddressforaccount(0, ["sapling"])`).
+        tx_details = wallet.z_viewtransaction(txid)
+        shielded_outputs = [o for o in tx_details['outputs']
+                            if o.get('pool') in ('sapling', 'orchard')]
+        assert_true(
+            len(shielded_outputs) >= 1,
+            "Expected at least one shielded output, got: {}".format(tx_details)
+        )
+        # `z_shieldcoinbase` routes everything into a single shielded
+        # payment, so the memo should be attached to that payment.
+        assert_equal(
+            shielded_outputs[0]['memo'], my_memo,
+            "Memo should propagate to the shielded note"
+        )
+        print("  PASSED")
+
+        print("Test 12: Limit truncation...")
+        # Need enough mature coinbase UTXOs to actually exercise truncation.
+        node.generate(COINBASE_MATURITY + 30)
+        wait_for_mature_coinbase(wallet, min_mature_utxos=10)
+
+        utxos_before = wallet.z_listunspent(COINBASE_MATURITY + 1)
+        transparent_before = [u for u in utxos_before if u.get('pool') == 'transparent']
+        n_eligible = len(transparent_before)
+        assert_true(
+            n_eligible >= 5,
+            "Need at least 5 mature coinbase UTXOs to test limit truncation, "
+            "got {}".format(n_eligible)
+        )
+
+        limit = 3
+        result = wallet.z_shieldcoinbase("*", zaddr, None, limit)
+        assert_equal(
+            result['shieldingUTXOs'], limit,
+            "Should select exactly `limit` UTXOs, got {}".format(result['shieldingUTXOs'])
+        )
+        assert_equal(
+            result['remainingUTXOs'], n_eligible - limit,
+            "Should leave the rest as remaining, got {}".format(result['remainingUTXOs'])
+        )
+        assert_true(
+            Decimal(result['remainingValue']) > Decimal('0'),
+            "Should have non-zero remaining value"
+        )
+
+        opid = result['opid']
+        txid = wait_and_assert_operationid_status(wallet, opid)
+        assert_true(txid is not None, "Limited shielding should succeed")
 
         node.generate(1)
         wait_for_mature_coinbase(wallet)
