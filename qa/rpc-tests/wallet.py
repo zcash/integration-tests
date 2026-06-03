@@ -10,6 +10,29 @@ import time
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, assert_true
 
+
+def wait_for_wallet_transparent(wallet, expected, timeout=60):
+    # z_gettotalbalance reflects only blocks the wallet has scanned and committed; after
+    # mining there is a delay before that view catches up. Poll for the expected value
+    # instead of racing it (there is no synchronous wallet-sync RPC yet, zcash/wallet#316).
+    deadline = time.time() + timeout
+    balance = wallet.z_gettotalbalance(1, True)['transparent']
+    while balance != expected and time.time() < deadline:
+        time.sleep(0.5)
+        balance = wallet.z_gettotalbalance(1, True)['transparent']
+    return balance
+
+
+def wait_for_wallet_txcount(wallet, expected, timeout=60):
+    # Same sync barrier, for the wallet's view of its transaction count.
+    deadline = time.time() + timeout
+    count = len(wallet.z_listtransactions())
+    while count != expected and time.time() < deadline:
+        time.sleep(0.5)
+        count = len(wallet.z_listtransactions())
+    return count
+
+
 # Test that we can create a wallet and use an address from it to mine blocks.
 class WalletTest (BitcoinTestFramework):
 
@@ -26,7 +49,8 @@ class WalletTest (BitcoinTestFramework):
         node_balance = self.nodes[0].getaddressbalance(transparent_address)
         assert_equal(node_balance['balance'], 625000000)
 
-        # Zallet can see the balance.
+        # Zallet can see the balance, once it has scanned the coinbase block.
+        wait_for_wallet_transparent(self.wallets[0], '6.25000000')
         wallet_balance = self.wallets[0].z_gettotalbalance(1, True)
         # TODO: Result is a string (https://github.com/zcash/wallet/issues/15)
         assert_equal(wallet_balance['transparent'], '6.25000000')
@@ -34,13 +58,11 @@ class WalletTest (BitcoinTestFramework):
         # Mine another block
         self.nodes[0].generate(1)
 
-        # Wait for the wallet to sync
-        time.sleep(1)
-
         node_balance = self.nodes[0].getaddressbalance(transparent_address)
         assert_equal(node_balance['balance'], 1250000000)
 
-        # There are 2 transactions in the wallet
+        # There are 2 transactions in the wallet, once it has scanned the new block.
+        wait_for_wallet_txcount(self.wallets[0], 2)
         assert_equal(len(self.wallets[0].z_listtransactions()), 2)
 
         # Confirmed balance in the wallet is either 6.25 or 12.5 ZEC
