@@ -210,6 +210,7 @@ jobs:
       - id: set-rpc-tests
         env:
           IS_INTEROP_REQUEST: ${{ endsWith(github.event.action, '-interop-request') }}
+          RPC_TEST_MATRIX: ${{ steps.set-matrices.outputs.rpc_test_matrix }}
         run: |
           cat <<EOF > ./subclass.py
           import importlib
@@ -275,7 +276,8 @@ jobs:
           # Strip required/required_suffix from the platform object: for RPC tests
           # the required flag is carried per-shard (set in subclass.py above), so the
           # platform object must not blanket-stamp every shard as required.
-          RPC_MATRIX_JSON=$(echo '${{ steps.set-matrices.outputs.rpc_test_matrix }}' | jq -c 'map(del(.required, .required_suffix))')
+          # RPC_TEST_MATRIX is passed via env (not inline ${{ }}) to avoid template injection.
+          RPC_MATRIX_JSON=$(echo "$RPC_TEST_MATRIX" | jq -c 'map(del(.required, .required_suffix))')
           RPC_SHARDS_JSON=$(SRC_DIR=$(pwd) python3 ./subclass.py)
           echo "$RPC_SHARDS_JSON" | jq -r '[.[] | .shard] | @json "rpc_test_shards=\(.)"' >> $GITHUB_OUTPUT
           echo -e "$RPC_MATRIX_JSON\n$RPC_SHARDS_JSON" | jq -r -s 'add | @json "rpc_test_shards_matrix=\(.)"' >> $GITHUB_OUTPUT
