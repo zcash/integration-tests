@@ -137,7 +137,7 @@ jobs:
           fi
 
       - name: Check out the selected test branch
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Empty on direct repo PRs, which selects the default.
           ref: ${{ steps.test-branch.outputs.test_sha }}
@@ -301,7 +301,7 @@ jobs:
 
     steps:
       - name: Check out integration-tests to access actions
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: integration-tests
           persist-credentials: false
@@ -331,7 +331,7 @@ jobs:
         run: echo "ZEBRA_REF=refs/heads/main" >> $GITHUB_ENV
 
       - name: Check out ZcashFoundation/zebra
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: ZcashFoundation/zebra
           ref: ${{ env.ZEBRA_REF }}
@@ -411,7 +411,7 @@ jobs:
 
     steps:
       - name: Check out integration-tests to access actions
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: integration-tests
           persist-credentials: false
@@ -441,7 +441,7 @@ jobs:
         run: echo "ZAINO_REF=refs/heads/dev" >> $GITHUB_ENV
 
       - name: Check out zingolabs/zaino
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: zingolabs/zaino
           ref: ${{ env.ZAINO_REF }}
@@ -521,7 +521,7 @@ jobs:
 
     steps:
       - name: Check out integration-tests to access actions
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: integration-tests
           persist-credentials: false
@@ -550,7 +550,7 @@ jobs:
         run: echo "ZALLET_REF=refs/heads/main" >> $GITHUB_ENV
 
       - name: Check out zcash/wallet
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: zcash/wallet
           ref: ${{ env.ZALLET_REF }}
@@ -645,7 +645,7 @@ jobs:
           fi
 
       - name: Check out the selected test branch
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Empty on direct repo PRs, which selects the default.
           ref: ${{ steps.test-branch.outputs.test_sha }}
@@ -766,7 +766,7 @@ jobs:
           fi
 
       - name: Check out the selected test branch
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # Empty on direct repo PRs, which selects the default.
           ref: ${{ steps.test-branch.outputs.test_sha }}
