@@ -26,8 +26,10 @@ import time
 import toml
 import re
 import errno
+import grpc
 
 from . import coverage
+from .proto import service_pb2_grpc
 from .proxy import ServiceProxy, JSONRPCException
 from .authproxy import AuthServiceProxy
 
@@ -55,13 +57,13 @@ PORT_MIN = 11000
 PORT_RANGE = 5000
 
 def zcashd_binary():
-    return os.getenv("ZEBRAD", os.path.join("src", "zebrad"))
+    return os.getenv("ZEBRAD", os.path.join("bin", "zebrad"))
 
 def zaino_binary():
-    return os.getenv("ZAINOD", os.path.join("src", "zainod"))
+    return os.getenv("ZAINOD", os.path.join("bin", "zainod"))
 
 def zallet_binary():
-    return os.getenv("ZALLET", os.path.join("src", "zallet"))
+    return os.getenv("ZALLET", os.path.join("bin", "zallet"))
 
 def zebrad_config(datadir):
     base_location = os.path.join('qa', 'defaults', 'zebrad', 'config.toml')
@@ -1095,22 +1097,28 @@ zainod_processes = {}
 
 def start_zainos(num_nodes, dirname, extra_args=None, rpchost=None, binary=None):
     """
-    Start multiple zainod's, return RPC connections to them
+    Start multiple zainod's, return RPC connections and gRPC stubs to them
     """
     if extra_args is None: extra_args = [ None for _ in range(num_nodes) ]
     if binary is None: binary = [ None for _ in range(num_nodes) ]
-    rpcs = []
+    json_rpcs = []
+    grpcs = []
     try:
         for i in range(num_nodes):
-            rpcs.append(start_zaino(i, dirname, extra_args[i], rpchost, binary=binary[i]))
+            (proxy, stub) = start_zaino(i, dirname, extra_args[i], rpchost, binary=binary[i])
+            json_rpcs.append(proxy)
+            grpcs.append(stub)
     except: # If one node failed to start, stop the others
-        stop_zainos(rpcs)
+        if json_rpcs is not None:
+            del json_rpcs[:]
+        if grpcs is not None:
+            del grpcs[:]
         raise
-    return rpcs
+    return (json_rpcs, grpcs)
 
 def start_zaino(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=None, stderr=None):
     """
-    Start a zainod and return RPC connection to it
+    Start a zainod and return RPC connection and gRPC stub to it
     """
     datadir = os.path.join(dirname, "zaino"+str(i))
     if binary is None:
@@ -1130,7 +1138,10 @@ def start_zaino(i, dirname, extra_args=None, rpchost=None, timewait=None, binary
     if COVERAGE_DIR:
         coverage.write_all_rpc_commands(COVERAGE_DIR, proxy)
 
-    return proxy
+    grpc_channel = grpc.insecure_channel('127.0.0.1:{}'.format(zaino_grpc_port(i)))
+    grpc_stub = service_pb2_grpc.CompactTxStreamerStub(grpc_channel)
+
+    return (proxy, grpc_stub)
 
 def wait_for_zainod_start(process, url, i):
     '''
@@ -1171,10 +1182,6 @@ def update_zainod_conf(datadir, rpc_port, indexer_port, zaino_rpc_port, zaino_gr
         toml.dump(config_file, f)
 
     return config_path
-
-def stop_zainos(zainos):
-    # TODO: Add a `stop` RPC method to zainod
-    del zainos[:] # Emptying array closes connections as a side effect
 
 def wait_zainods():
     # Wait for all zainods to cleanly exit

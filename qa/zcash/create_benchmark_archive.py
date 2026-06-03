@@ -11,7 +11,7 @@ import sys
 import tarfile
 import time
 
-ZCASH_CLI = './src/zcash-cli'
+ZCASH_CLI = './bin/zcash-cli'
 USAGE = """
 Requirements:
 - find

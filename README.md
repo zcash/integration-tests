@@ -24,8 +24,8 @@ codebase, with the Python test framework (and some of the tests) inherited from
 ### Running the tests locally
 
 - Clone the repository.
-- Build `zebrad`, `zainod`, and `zallet` binaries, and place them in a folder
-  `./src/` under the repository root.
+- Build `zebrad`, `zainod`, and `zallet` binaries, and place them in a directory
+  `./bin/` under the repository root.
 
 #### With uv (recommended)
 

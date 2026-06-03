@@ -4,6 +4,8 @@ version = "0.1.0"
 requires-python = "==3.11.*"
 dependencies = [
     "base58",
+    "grpcio",
+    "protobuf",
     "pyzmq",
     "toml",
 ]

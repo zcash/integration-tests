@@ -29,7 +29,6 @@ from .util import (
     sync_mempools,
     stop_nodes,
     stop_wallets,
-    stop_zainos,
     wait_bitcoinds,
     wait_zainods,
     wait_zallets,
@@ -47,7 +46,8 @@ class BitcoinTestFramework(object):
         self.num_wallets = 4
         self.cache_behavior = 'current'
         self.nodes = None
-        self.zainos = None
+        self.zainod_json_services = None
+        self.zainod_grpc_services = None
         self.wallets = None
         self.miner_addresses = None
 
@@ -88,6 +88,12 @@ class BitcoinTestFramework(object):
     def setup_wallets(self):
         return start_wallets(self.num_wallets, self.options.tmpdir)
 
+    def stop_zainos(self):
+        if self.zainod_json_services is not None:
+            del self.zainod_json_services[:]
+        if self.zainod_grpc_services is not None:
+            del self.zainod_grpc_services[:]
+
     def setup_network(self, split = False, do_mempool_sync = True):
         self.prepare_wallets()
         self.nodes = self.setup_nodes()
@@ -112,7 +118,7 @@ class BitcoinTestFramework(object):
         self.prepare_chain()
         self.sync_all(do_mempool_sync)
 
-        self.zainos = self.setup_indexers()
+        self.zainod_json_services, self.zainod_grpc_services = self.setup_indexers()
         self.wallets = self.setup_wallets()
 
     def split_network(self):
@@ -122,7 +128,7 @@ class BitcoinTestFramework(object):
         assert not self.is_network_split
         stop_wallets(self.wallets)
         wait_zallets()
-        stop_zainos(self.zainos)
+        self.stop_zainos()
         wait_zainods()
         stop_nodes(self.nodes)
         wait_bitcoinds()
@@ -153,7 +159,7 @@ class BitcoinTestFramework(object):
         assert self.is_network_split
         stop_wallets(self.wallets)
         wait_zallets()
-        stop_zainos(self.zainos)
+        self.stop_zainos()
         wait_zainods()
         stop_nodes(self.nodes)
         wait_bitcoinds()
@@ -166,8 +172,8 @@ class BitcoinTestFramework(object):
                           help="Leave bitcoinds and test.* datadir on exit or error")
         parser.add_option("--noshutdown", dest="noshutdown", default=False, action="store_true",
                           help="Don't stop bitcoinds after the test execution")
-        parser.add_option("--srcdir", dest="srcdir", default="../../src",
-                          help="Source directory containing bitcoind/bitcoin-cli (default: %default)")
+        parser.add_option("--bindir", dest="bindir", default="../../bin",
+                          help="Directory containing zebrad/zainod/zallet (default: %default)")
         parser.add_option("--cachedir", dest="cachedir", default=os.path.normpath(os.path.dirname(os.path.realpath(__file__))+"/../../cache"),
                           help="Directory for caching pregenerated datadirs")
         parser.add_option("--tmpdir", dest="tmpdir", default=tempfile.mkdtemp(prefix="test"),
@@ -191,7 +197,7 @@ class BitcoinTestFramework(object):
 
         PortSeed.n = self.options.port_seed
 
-        os.environ['PATH'] = self.options.srcdir+":"+os.environ['PATH']
+        os.environ['PATH'] = self.options.bindir+":"+os.environ['PATH']
 
         check_json_precision()
 
@@ -223,7 +229,7 @@ class BitcoinTestFramework(object):
             wait_zallets()
 
             print("Stopping indexers")
-            stop_zainos(self.zainos)
+            self.stop_zainos()
             wait_zainods()
 
             print("Stopping nodes")
