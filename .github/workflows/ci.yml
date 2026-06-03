@@ -276,7 +276,8 @@ jobs:
           # Strip required/required_suffix from the platform object: for RPC tests
           # the required flag is carried per-shard (set in subclass.py above), so the
           # platform object must not blanket-stamp every shard as required.
-          # RPC_TEST_MATRIX is passed via env (not inline ${{ }}) to avoid template injection.
+          # RPC_TEST_MATRIX is passed via env (not inlined into this script) to avoid
+          # GitHub Actions template injection.
           RPC_MATRIX_JSON=$(echo "$RPC_TEST_MATRIX" | jq -c 'map(del(.required, .required_suffix))')
           RPC_SHARDS_JSON=$(SRC_DIR=$(pwd) python3 ./subclass.py)
           echo "$RPC_SHARDS_JSON" | jq -r '[.[] | .shard] | @json "rpc_test_shards=\(.)"' >> $GITHUB_OUTPUT
