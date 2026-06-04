@@ -3,15 +3,10 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
+from test_framework.config import ZebraArgs
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
-    BLOSSOM_BRANCH_ID,
-    CANOPY_BRANCH_ID,
-    HEARTWOOD_BRANCH_ID,
-    NU5_BRANCH_ID,
-    NU6_BRANCH_ID,
     assert_equal, assert_true,
-    nuparams,
     start_node, connect_nodes, wait_and_assert_operationid_status,
     get_coinbase_address
 )
@@ -30,20 +25,17 @@ class MempoolUpgradeActivationTest(BitcoinTestFramework):
         self.cache_behavior = 'clean'
 
     def setup_network(self):
-        args = [
-            '-checkmempool',
-            '-debug=mempool',
-            '-blockmaxsize=4000',
-            '-preferredtxversion=4',
-            '-allowdeprecated=getnewaddress',
-            '-allowdeprecated=z_getnewaddress',
-            '-allowdeprecated=z_getbalance',
-            nuparams(BLOSSOM_BRANCH_ID, 200),
-            nuparams(HEARTWOOD_BRANCH_ID, 210),
-            nuparams(CANOPY_BRANCH_ID, 220),
-            nuparams(NU5_BRANCH_ID, 230),
-            nuparams(NU6_BRANCH_ID, 240),
-        ]
+        # The original zcashd test also passed -checkmempool, -debug=mempool,
+        # -blockmaxsize=4000, -preferredtxversion=4 and several -allowdeprecated
+        # flags. The Z3 stack has no ZebraArgs equivalent for these, so only the
+        # network-upgrade activation heights carry over here.
+        args = ZebraArgs(activation_heights={
+            "Blossom": 200,
+            "Heartwood": 210,
+            "Canopy": 220,
+            "NU5": 230,
+            "NU6": 240,
+        })
         self.nodes = []
         self.nodes.append(start_node(0, self.options.tmpdir, args))
         self.nodes.append(start_node(1, self.options.tmpdir, args))

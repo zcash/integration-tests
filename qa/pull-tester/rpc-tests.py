@@ -37,8 +37,21 @@ SERIAL_SCRIPTS = [
 
 FLAKY_SCRIPTS = [
     # These tests have intermittent failures that we haven't diagnosed yet.
-    'mempool_nu_activation.py', # this *may* be fixed
     'mempool_packages.py',
+]
+
+# These tests have not yet been migrated to the Z3 stack and cannot pass as
+# written. They are excluded from the default run so they do not block CI on
+# required platforms. Re-enable each one as it is migrated.
+DISABLED_SCRIPTS = [
+    # Passes a list of zcashd-style args to start_node, which now expects a
+    # ZebraArgs dataclass, so it errors out during setup_network. A faithful
+    # migration is non-trivial: the test exercises the Sapling, Blossom,
+    # Heartwood, Canopy and NU5 activation boundaries, but zebra regtest
+    # hardcodes everything up to Canopy to height 1 (only NU5 and later are
+    # configurable), and it relies on `-blockmaxsize` to overflow the mempool,
+    # which the zebra regtest config does not expose.
+    'mempool_nu_activation.py',
 ]
 
 BASE_SCRIPTS= [
