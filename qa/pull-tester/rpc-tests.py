@@ -28,30 +28,38 @@ import re
 
 SERIAL_SCRIPTS = [
     # These tests involve enough shielded spends (consuming all CPU
-    # cores) that we can't run them in parallel.
-    'mergetoaddress_sapling.py',
-    'mergetoaddress_ua_nu5.py',
-    'mergetoaddress_ua_sapling.py',
-    'wallet_shieldingcoinbase.py',
+    # cores) that we can't run them in parallel. When re-enabled after
+    # migration to the Z3 stack, move them back here (see DISABLED_SCRIPTS).
 ]
 
 FLAKY_SCRIPTS = [
     # These tests have intermittent failures that we haven't diagnosed yet.
-    'mempool_packages.py',
 ]
 
-# These tests have not yet been migrated to the Z3 stack and cannot pass as
-# written. They are excluded from the default run so they do not block CI on
-# required platforms. Re-enable each one as it is migrated.
+# These tests have not yet been migrated to the Z3 stack and cannot run as
+# written: they pass lists of zcashd-style args to start_node / start_nodes,
+# which now expect a ZebraArgs dataclass, so they error out during
+# setup_network with "'list' object has no attribute 'miner_address'". They are
+# excluded from the default run so they do not block CI on required platforms.
+# Re-enable each one (restoring its original SERIAL_SCRIPTS / FLAKY_SCRIPTS
+# membership) as it is migrated.
 DISABLED_SCRIPTS = [
-    # Passes a list of zcashd-style args to start_node, which now expects a
-    # ZebraArgs dataclass, so it errors out during setup_network. A faithful
-    # migration is non-trivial: the test exercises the Sapling, Blossom,
-    # Heartwood, Canopy and NU5 activation boundaries, but zebra regtest
-    # hardcodes everything up to Canopy to height 1 (only NU5 and later are
-    # configurable), and it relies on `-blockmaxsize` to overflow the mempool,
-    # which the zebra regtest config does not expose.
+    # Exercises the Sapling, Blossom, Heartwood, Canopy and NU5 activation
+    # boundaries, but zebra regtest hardcodes everything up to Canopy to height
+    # 1 (only NU5 and later are configurable), and it relies on `-blockmaxsize`
+    # to overflow the mempool, which the zebra regtest config does not expose.
     'mempool_nu_activation.py',
+    # Relies on `-limitancestorcount` and mempool debug flags that have no
+    # ZebraArgs equivalent.
+    'mempool_packages.py',
+    # The mergetoaddress tests (via mergetoaddress_helper) and
+    # wallet_shieldingcoinbase pass `-anchorconfirmations`,
+    # `-regtestshieldcoinbase`, `-debug` and `-allowdeprecated` flags that have
+    # no ZebraArgs equivalent.
+    'mergetoaddress_sapling.py',
+    'mergetoaddress_ua_nu5.py',
+    'mergetoaddress_ua_sapling.py',
+    'wallet_shieldingcoinbase.py',
 ]
 
 BASE_SCRIPTS= [
