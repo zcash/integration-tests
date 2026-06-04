@@ -30,6 +30,7 @@ from .util import (
     stop_nodes,
     stop_wallets,
     stop_zainos,
+    stop_all_processes,
     wait_bitcoinds,
     wait_zainods,
     wait_zallets,
@@ -218,17 +219,39 @@ class BitcoinTestFramework(object):
             print("Exiting after " + repr(e))
 
         if not self.options.noshutdown:
+            # Best-effort clean shutdown via RPC. Each step is guarded because a
+            # failure during setup can leave self.wallets / self.zainos /
+            # self.nodes as None or only partially populated. We deliberately do
+            # NOT wait on the processes here: on the failure path the RPC stop
+            # was skipped, so the processes are still running and a wait-first
+            # teardown would block for the full timeout on each one.
             print("Stopping wallets")
-            stop_wallets(self.wallets)
-            wait_zallets()
+            try:
+                if self.wallets is not None:
+                    stop_wallets(self.wallets)
+            except Exception as e:
+                print("WARN: error stopping wallets: " + repr(e))
 
             print("Stopping indexers")
-            stop_zainos(self.zainos)
-            wait_zainods()
+            try:
+                if self.zainos is not None:
+                    stop_zainos(self.zainos)
+            except Exception as e:
+                print("WARN: error stopping indexers: " + repr(e))
 
             print("Stopping nodes")
-            stop_nodes(self.nodes)
-            wait_bitcoinds()
+            try:
+                if self.nodes is not None:
+                    stop_nodes(self.nodes)
+            except Exception as e:
+                print("WARN: error stopping nodes: " + repr(e))
+
+            # Terminate every process we spawned (including any started during
+            # cache rebuild, which are not tracked by self.*). This sends
+            # SIGTERM to all of them first and then waits with a bound, so a
+            # failed setup cannot leave orphaned processes that hang the run,
+            # and cleanup itself stays fast regardless of how many are running.
+            stop_all_processes()
         else:
             print("Note: zebrads, zainods, and zallets were not stopped and may still be running")
 

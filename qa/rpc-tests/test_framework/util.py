@@ -726,7 +726,9 @@ def wait_or_kill(proc):
         proc.wait()
 
 def wait_bitcoinds():
-    # Wait for all bitcoinds to cleanly exit
+    # Wait for all bitcoinds to cleanly exit (stop_nodes already requested a
+    # `stop` via RPC). Bound the wait and fall back to terminating the process,
+    # so a node that fails to shut down cleanly cannot hang the run.
     for bitcoind in list(bitcoind_processes.values()):
         wait_or_kill(bitcoind)
     bitcoind_processes.clear()
@@ -1081,7 +1083,9 @@ def stop_wallets(wallets):
     del wallets[:] # Emptying array closes connections as a side effect
 
 def wait_zallets():
-    # Wait for all zallets to cleanly exit
+    # Wait for all zallets to cleanly exit (stop_wallets already requested a
+    # `stop` via RPC). Bound the wait and fall back to terminating the process,
+    # so a wallet that fails to shut down cleanly cannot hang the run.
     for zallet in list(zallet_processes.values()):
         wait_or_kill(zallet)
     zallet_processes.clear()
@@ -1223,3 +1227,33 @@ def wait_zainods():
             pass
         wait_or_kill(zainod)
     zainod_processes.clear()
+
+def stop_all_processes():
+    '''
+    Forcibly terminate every zebrad, zainod and zallet process we spawned,
+    regardless of whether a test data structure still references it.
+
+    This is the failure-path safety net. If setup fails partway through (for
+    example a wallet that cannot synchronize during cache rebuild), the normal
+    RPC-based shutdown is skipped, leaving orphaned processes that hold ports
+    and keep the test's stdout/stderr open. Those orphans make later tests hang
+    and stop the CI job from finishing until it times out. Killing them here
+    lets the test process exit so the run fails fast. Safe to call repeatedly
+    and when no processes are running.
+    '''
+    for processes in (bitcoind_processes, zallet_processes, zainod_processes):
+        for p in list(processes.values()):
+            try:
+                p.terminate()
+            except Exception:
+                pass
+        for p in list(processes.values()):
+            try:
+                p.wait(timeout=10)
+            except Exception:
+                try:
+                    p.kill()
+                    p.wait(timeout=10)
+                except Exception:
+                    pass
+        processes.clear()
