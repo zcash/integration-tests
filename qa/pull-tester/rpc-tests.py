@@ -72,9 +72,9 @@ DISABLED_SCRIPTS = [
     'bipdersig-p2p.py',
     'blockchain.py',
     'coinbase_funding_streams.py',
-    'errors.py',
-    'feature_logging.py',
-    'feature_walletfile.py',
+    'errors.py',  # TODO: zebra missing gettxoutsetinfo RPC
+    'feature_logging.py',  # TODO: no zcashd-style regtest/debug.log on zebra
+    'feature_walletfile.py',  # TODO: zcashd wallet.dat/-wallet, not used by zallet
     'feature_zip221.py',
     'feature_zip239.py',
     'feature_zip244_blockcommitments.py',
@@ -83,7 +83,7 @@ DISABLED_SCRIPTS = [
     'framework.py',
     'fundrawtransaction.py',
     'getblocktemplate.py',
-    'getchaintips.py',
+    'getchaintips.py',  # TODO: zebra missing getchaintips RPC
     'getrawtransaction_insight.py',
     'httpbasics.py',
     'invalidblockrequest.py',
@@ -100,7 +100,7 @@ DISABLED_SCRIPTS = [
     'merkle_blocks.py',
     'mining_shielded_coinbase.py',
     'multi_rpc.py',
-    'nodehandling.py',
+    'nodehandling.py',  # TODO: zebra missing setban/listbanned/disconnectnode
     'orchard_reorg.py',
     'p2p-fullblocktest.py',
     'p2p_node_bloom.py',
