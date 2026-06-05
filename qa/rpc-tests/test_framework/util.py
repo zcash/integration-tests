@@ -290,6 +290,23 @@ def wait_for_bitcoind_start(process, url, i):
                 raise # unknown JSON RPC exception
         time.sleep(0.25)
 
+# Regtest network-upgrade activation heights for the shared 'current' cache
+# built by rebuild_cache().
+#
+# Zebra (configured here via ZebraArgs.activation_heights) and zallet
+# (configured separately via `regtest_nuparams` in
+# qa/defaults/zallet/zallet.toml) MUST agree on these. If they disagree, wallet
+# sync fails with `InvalidData { message: "Missing Orchard tree state" }`:
+# zallet asks zebrad for the treestate at a height where zallet believes NU5 is
+# active and so requires an Orchard tree, but zebrad (which thinks NU5 is not
+# active there) returns none.
+#
+# Zebra's regtest defaults already activate Overwinter through Canopy at height
+# 1 but leave NU5 disabled, whereas zallet.toml activates NU5 at height 1, so we
+# explicitly activate NU5 at height 1 here to match. Keep this in sync with the
+# `regtest_nuparams` in qa/defaults/zallet/zallet.toml.
+REGTEST_CACHE_ACTIVATION_HEIGHTS = {"NU5": 1}
+
 def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
     """
     Create a set of node datadirs in `test_dir`, based upon the specified
@@ -351,6 +368,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
 
             config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i), ZebraArgs(
                 miner_address=miner_addresses[i],
+                activation_heights=dict(REGTEST_CACHE_ACTIVATION_HEIGHTS),
             ))
             args = [ zcashd_binary(), "-c="+config, "start" ]
 
