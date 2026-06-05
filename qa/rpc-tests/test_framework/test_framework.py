@@ -18,6 +18,7 @@ import traceback
 from .config import ZebraArgs
 from .proxy import JSONRPCException
 from .util import (
+    REGTEST_ACTIVATION_HEIGHTS,
     zcashd_binary,
     initialize_chain,
     prepare_wallets_for_mining,
@@ -70,7 +71,17 @@ class BitcoinTestFramework(object):
         if self.miner_addresses is None:
             args = None
         else:
-            args = [ZebraArgs(miner_address=addr) for addr in self.miner_addresses]
+            # Activate NU5 to match zallet's regtest config; otherwise wallet
+            # sync fails with "Missing Orchard tree state" (see
+            # REGTEST_ACTIVATION_HEIGHTS). Tests needing different activation
+            # heights override this method.
+            args = [
+                ZebraArgs(
+                    miner_address=addr,
+                    activation_heights=dict(REGTEST_ACTIVATION_HEIGHTS),
+                )
+                for addr in self.miner_addresses
+            ]
         return start_nodes(self.num_nodes, self.options.tmpdir, args)
 
     def prepare_chain(self):

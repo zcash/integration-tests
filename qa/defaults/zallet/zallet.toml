@@ -3,11 +3,10 @@ orchard_actions = 250
 
 [consensus]
 network = "regtest"
-# These activation heights MUST match the ones zebrad is started with for the
-# shared cache, or wallet sync fails with "Missing Orchard tree state". The
-# branch ids are Overwinter, Sapling, Blossom, Heartwood, Canopy and NU5; in
-# particular c2d6d0b4 (NU5) at height 1 must agree with
-# REGTEST_CACHE_ACTIVATION_HEIGHTS in qa/rpc-tests/test_framework/util.py.
+# These activation heights MUST match the ones zebrad is started with, or
+# wallet sync fails with "Missing Orchard tree state". They must agree with
+# REGTEST_ACTIVATION_HEIGHTS in qa/rpc-tests/test_framework/util.py.
+# The format is [consensusBranchId:activationHeight]
 regtest_nuparams = [
     "5ba81b19:1", # Overwinter
     "76b809bb:1", # Sapling
