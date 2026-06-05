@@ -4,9 +4,9 @@
 #
 # Usage:
 #
-# ZCASHD=./src/zcashd ZCASHCLI=./src/zcash-cli ./qa/zcash/smoke_tests.py --wallet=wallet.smoketest.dat "$HOME/.zcash"
-# 
-# ZCASHD=./src/zcashd ZCASHCLI=./src/zcash-cli ./qa/zcash/smoke_tests.py --wallet=wallet.smoketest.dat "$HOME/.zcash" --automate --use-faucet
+# ZCASHD=./bin/zcashd ZCASHCLI=./bin/zcash-cli ./qa/zcash/smoke_tests.py --wallet=wallet.smoketest.dat "$HOME/.zcash"
+#
+# ZCASHD=./bin/zcashd ZCASHCLI=./bin/zcash-cli ./qa/zcash/smoke_tests.py --wallet=wallet.smoketest.dat "$HOME/.zcash" --automate --use-faucet
 #
 
 import argparse
@@ -438,13 +438,13 @@ def transaction_chain(zcash):
             results, '4w', zcash,  sapling_zaddr_2,[
                 (taddr_3, starting_balance / Decimal('10')),
                 (sapling_zaddr_1, starting_balance / Decimal('10'))], "AllowRevealedRecipients")[0]
-        
+
         sapling_balance -= (starting_balance / Decimal('10')) + LEGACY_DEFAULT_FEE
         taddr_balance += starting_balance / Decimal('10')
 
         # taddr and Sapling -> Sapling
         check_z_mergetoaddress(results, '4ee', zcash, [taddr_3, sapling_zaddr_1], sapling_zaddr_2, sapling_balance + (starting_balance / Decimal('10')) - LEGACY_DEFAULT_FEE, "AllowRevealedSenders")
-    
+
         sapling_balance += (starting_balance / Decimal('10')) - LEGACY_DEFAULT_FEE
         taddr_balance -= starting_balance / Decimal('10')
 
@@ -452,7 +452,7 @@ def transaction_chain(zcash):
         check_z_sendmany(results, '4v', zcash, sapling_zaddr_2, [
                 (taddr_4, (starting_balance / Decimal('10'))),
                 (taddr_5, (starting_balance / Decimal('10')))], "AllowRevealedRecipients")[0]
-            
+
         sapling_balance -= ((starting_balance / Decimal('10')) * Decimal('2')) + LEGACY_DEFAULT_FEE
         taddr_balance += (starting_balance / Decimal('10')) * Decimal('2')
 

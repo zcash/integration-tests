@@ -55,9 +55,9 @@ RE_FORTIFY_USED = re.compile('Binary compiled with FORTIFY_SOURCE support.*Yes')
 CXX_BINARIES = [
 ]
 RUST_BINARIES = [
-    'src/zebrad',
-    'src/zainod',
-    'src/zallet',
+    'bin/zebrad',
+    'bin/zainod',
+    'bin/zallet',
 ]
 
 def test_rpath_runpath(filename):
@@ -91,7 +91,7 @@ def check_security_hardening():
     ret = True
 
     # PIE, RELRO, Canary, and NX are tested by `contrib/devtools/security-check.py`.
-    bin_programs = ['src/zebrad', 'src/zainod', 'src/zallet']
+    bin_programs = ['bin/zebrad', 'bin/zainod', 'bin/zallet']
     bin_scripts = []
 
     print(f"Checking binary security of {bin_programs + bin_scripts}...")
@@ -106,7 +106,7 @@ def check_security_hardening():
 
     # The remaining checks are only for ELF binaries
     # Assume that if zebrad is an ELF binary, they all are
-    with open(repofile('src/zebrad'), 'rb') as f:
+    with open(repofile('bin/zebrad'), 'rb') as f:
         magic = f.read(4)
         if not magic.startswith(b'\x7fELF'):
             return ret

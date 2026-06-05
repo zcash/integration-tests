@@ -338,15 +338,15 @@ def run_tests(test_handler, test_list, src_dir, build_dir, exeext, jobs=1, enabl
 
     #Set env vars
     if "ZEBRAD" not in os.environ:
-        os.environ["ZEBRAD"] = os.path.join(build_dir, "src", "zebrad" + exeext)
+        os.environ["ZEBRAD"] = os.path.join(build_dir, "bin", "zebrad" + exeext)
     if "ZAINOD" not in os.environ:
-        os.environ["ZAINOD"] = os.path.join(build_dir, "src", "zainod" + exeext)
+        os.environ["ZAINOD"] = os.path.join(build_dir, "bin", "zainod" + exeext)
     if "ZALLET" not in os.environ:
-        os.environ["ZALLET"] = os.path.join(build_dir, "src", "zallet" + exeext)
+        os.environ["ZALLET"] = os.path.join(build_dir, "bin", "zallet" + exeext)
 
     tests_dir = src_dir + '/qa/rpc-tests/'
 
-    flags = ["--srcdir={}/src".format(build_dir)] + args
+    flags = ["--bindir={}/bin".format(build_dir)] + args
     flags.append("--cachedir=%s/qa/cache" % build_dir)
 
     if enable_coverage:
