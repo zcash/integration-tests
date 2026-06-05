@@ -363,6 +363,11 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
 
             miner_addresses[i] = miner_address
 
+            # Persist the miner address into the cached wallet dir so that tests
+            # which restore this wallet from the cache can reuse it.
+            with open(wallet_miner_address_file(datadir), "w", encoding="utf8") as f:
+                f.write(miner_address.strip())
+
         # Create cache directories, run bitcoinds:
         block_time = int(time.time()) - (200 * PRE_BLOSSOM_BLOCK_TARGET_SPACING)
         for i in range(MAX_NODES):
@@ -532,6 +537,10 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
             node_path = node_dir(cachedir, i)
             if os.path.isdir(node_path):
                 if not os.path.isfile(node_file(cachedir, i, 'cache_config.json')):
+                    return True
+                # A cache from before miner addresses were recorded cannot be
+                # reused by prepare_wallets_for_mining; force a rebuild.
+                if not os.path.isfile(wallet_miner_address_file(wallet_dir(cachedir, i))):
                     return True
             else:
                 return True
@@ -703,6 +712,12 @@ def node_file(dirname, n_node, filename):
 
 def wallet_dir(dirname, n_wallet):
     return os.path.join(dirname, "wallet"+str(n_wallet))
+
+def wallet_miner_address_file(datadir):
+    # Records the wallet's mining address so a wallet restored from the chain
+    # cache can be reused (see prepare_wallets_for_mining) instead of being
+    # re-created, which would fail because the wallet already exists.
+    return os.path.join(datadir, "miner_address.txt")
 
 def check_node(i):
     bitcoind_processes[i].poll()
@@ -996,7 +1011,18 @@ def prepare_wallets_for_mining(num_wallets, dirname, binary=None):
     for i in range(num_wallets):
         datadir = wallet_dir(dirname, i)
         if os.path.exists(os.path.join(datadir, "wallet.db")):
-            raise Exception('Wallet %d already exists, cannot prepare it for mining' % i)
+            # The wallet was restored from the chain cache (init_from_cache
+            # copies the wallet dir, including its recorded miner address).
+            # Reuse it rather than re-creating it; the cached chain mined its
+            # coinbase to this address, so the test must mine to it too.
+            miner_address_path = wallet_miner_address_file(datadir)
+            if not os.path.exists(miner_address_path):
+                raise Exception(
+                    'Wallet %d already exists but has no recorded miner address; '
+                    'delete the cache to force a rebuild' % i)
+            with open(miner_address_path, "r", encoding="utf8") as f:
+                miner_addresses.append(f.read().strip())
+            continue
 
         zallet = binary[i]
 
@@ -1013,6 +1039,11 @@ def prepare_wallets_for_mining(num_wallets, dirname, binary=None):
         args = [ zallet, "-d="+datadir, "regtest", "generate-account-and-miner-address" ]
         process = subprocess.Popen(args, stdout=subprocess.PIPE, text=True)
         (miner_address, _) = process.communicate()
+
+        # Record the miner address so this freshly-prepared wallet can also be
+        # reused if it is later captured into a chain cache.
+        with open(wallet_miner_address_file(datadir), "w", encoding="utf8") as f:
+            f.write(miner_address.strip())
 
         miner_addresses.append(miner_address)
     return miner_addresses
