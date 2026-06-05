@@ -4,19 +4,19 @@
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 from test_framework.mininode import COIN
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal, assert_true,
     get_coinbase_address,
     start_nodes, stop_nodes,
-    initialize_chain_clean, connect_nodes_bi, wait_bitcoinds,
+    initialize_chain_clean, connect_nodes_bi, wait_nodes,
     wait_and_assert_operationid_status
 )
 from test_framework.zip317 import conventional_fee
 
 from decimal import Decimal
 
-class WalletPersistenceTest (BitcoinTestFramework):
+class WalletPersistenceTest (ZcashTestFramework):
 
     def setup_chain(self):
         print("Initializing test directory " + self.options.tmpdir)
@@ -78,7 +78,7 @@ class WalletPersistenceTest (BitcoinTestFramework):
 
         # Restart the nodes
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
         self.setup_network()
 
         # Make sure we still have the address after restarting
@@ -120,7 +120,7 @@ class WalletPersistenceTest (BitcoinTestFramework):
 
         # Restart the nodes
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
         self.setup_network()
 
         # Verify size of pools
@@ -148,7 +148,7 @@ class WalletPersistenceTest (BitcoinTestFramework):
 
         # Restart the nodes
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
         self.setup_network()
 
         # Verify balances
@@ -169,7 +169,7 @@ class WalletPersistenceTest (BitcoinTestFramework):
 
         # Restart the nodes
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
         self.setup_network()
 
         # Verify nullifiers persisted correctly by checking balance

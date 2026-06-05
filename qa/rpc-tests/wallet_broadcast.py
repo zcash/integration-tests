@@ -3,8 +3,8 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal, connect_nodes_bi, start_nodes, stop_nodes, sync_blocks, wait_bitcoinds
+from test_framework.test_framework import ZcashTestFramework
+from test_framework.util import assert_equal, connect_nodes_bi, start_nodes, stop_nodes, sync_blocks, wait_nodes
 from decimal import Decimal
 
 BASE_ARGS = [
@@ -12,11 +12,11 @@ BASE_ARGS = [
 ]
 
 # Test wallet address behaviour across network upgrades
-class WalletBroadcastTest(BitcoinTestFramework):
+class WalletBroadcastTest(ZcashTestFramework):
     def run_test(self):
         #do some -walletbroadcast tests
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
         self.nodes = start_nodes(3, self.options.tmpdir, [BASE_ARGS + ["-walletbroadcast=0"]] * 3)
         connect_nodes_bi(self.nodes,0,1)
         connect_nodes_bi(self.nodes,1,2)
@@ -45,7 +45,7 @@ class WalletBroadcastTest(BitcoinTestFramework):
 
         #restart the nodes with -walletbroadcast=1
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
         self.nodes = start_nodes(3, self.options.tmpdir, [BASE_ARGS] * 3)
         connect_nodes_bi(self.nodes,0,1)
         connect_nodes_bi(self.nodes,1,2)

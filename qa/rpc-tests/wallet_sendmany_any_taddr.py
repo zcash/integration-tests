@@ -5,7 +5,7 @@
 
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
     assert_raises_message,
@@ -20,7 +20,7 @@ TX_EXPIRY_DELTA = 10
 TX_EXPIRING_SOON_THRESHOLD = 3
 
 # Test ANY_TADDR special string in z_sendmany
-class WalletSendManyAnyTaddr(BitcoinTestFramework):
+class WalletSendManyAnyTaddr(ZcashTestFramework):
     def setup_nodes(self):
         return start_nodes(self.num_nodes, self.options.tmpdir, extra_args=[[
             '-txexpirydelta=%d' % TX_EXPIRY_DELTA,

@@ -7,10 +7,10 @@
 Test rollbacks on post-Heartwood chains.
 '''
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
-    bitcoind_processes,
+    node_processes,
     connect_nodes_bi,
     nuparams,
     start_node,
@@ -26,7 +26,7 @@ import time
 HAS_CANOPY = [nuparams(BLOSSOM_BRANCH_ID, 205), nuparams(HEARTWOOD_BRANCH_ID, 210), nuparams(CANOPY_BRANCH_ID, 220), '-nurejectoldversions=false']
 NO_CANOPY  = [nuparams(BLOSSOM_BRANCH_ID, 205), nuparams(HEARTWOOD_BRANCH_ID, 210), '-nurejectoldversions=false']
 
-class PostHeartwoodRollbackTest (BitcoinTestFramework):
+class PostHeartwoodRollbackTest (ZcashTestFramework):
 
     def setup_nodes(self):
         return start_nodes(self.num_nodes, self.options.tmpdir, extra_args=[
@@ -70,11 +70,11 @@ class PostHeartwoodRollbackTest (BitcoinTestFramework):
         # Upgrade node 2 and 3 to Canopy
         print("Upgrading nodes 2 and 3 to Canopy")
         self.nodes[2].stop()
-        bitcoind_processes[2].wait()
+        node_processes[2].wait()
         self.nodes[2] = start_node(2, self.options.tmpdir, extra_args=HAS_CANOPY)
 
         self.nodes[3].stop()
-        bitcoind_processes[3].wait()
+        node_processes[3].wait()
         self.nodes[3] = start_node(3, self.options.tmpdir, extra_args=HAS_CANOPY)
 
         # for i in range (0,3,2):

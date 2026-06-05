@@ -4,7 +4,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     NU5_BRANCH_ID,
     nuparams,
@@ -12,7 +12,7 @@ from test_framework.util import (
 )
 from wallet_golden_5_6_0 import golden_check_spendability
 
-class WalletTarnishedV5_6_0Test(BitcoinTestFramework):
+class WalletTarnishedV5_6_0Test(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 4

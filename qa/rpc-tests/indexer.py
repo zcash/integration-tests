@@ -3,11 +3,11 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal
 
 # Test that we can call the indexer RPCs.
-class IndexerTest (BitcoinTestFramework):
+class IndexerTest (ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

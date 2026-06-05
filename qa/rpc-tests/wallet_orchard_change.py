@@ -5,7 +5,7 @@
 
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.mininode import COIN
 from test_framework.util import (
     NU5_BRANCH_ID,
@@ -15,12 +15,12 @@ from test_framework.util import (
     start_nodes,
     stop_nodes,
     wait_and_assert_operationid_status,
-    wait_bitcoinds,
+    wait_nodes,
 )
 from test_framework.zip317 import conventional_fee, ZIP_317_FEE
 
 # Test wallet behaviour with the Orchard protocol
-class WalletOrchardChangeTest(BitcoinTestFramework):
+class WalletOrchardChangeTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 4
@@ -104,7 +104,7 @@ class WalletOrchardChangeTest(BitcoinTestFramework):
 
         # Shut down the nodes, and restart so that we can check wallet load
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
         self.setup_network()
 
         # The nodes have unaltered balances.

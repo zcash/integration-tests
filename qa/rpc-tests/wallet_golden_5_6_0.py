@@ -4,7 +4,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     NU5_BRANCH_ID,
     assert_equal,
@@ -12,7 +12,7 @@ from test_framework.util import (
     nuparams,
     start_nodes,
     stop_nodes,
-    wait_bitcoinds,
+    wait_nodes,
     wait_and_assert_operationid_status,
     persistent_cache_exists,
     persist_node_caches,
@@ -20,7 +20,7 @@ from test_framework.util import (
 from decimal import Decimal
 
 
-class WalletGoldenV5_6_0Test(BitcoinTestFramework):
+class WalletGoldenV5_6_0Test(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 4
@@ -134,7 +134,7 @@ class WalletGoldenV5_6_0Test(BitcoinTestFramework):
 
             # Shut down the nodes
             stop_nodes(self.nodes)
-            wait_bitcoinds()
+            wait_nodes()
 
             # persist the node state to the cache
             persist_node_caches(self.options.tmpdir, 'golden-v5.6.0', 4)
@@ -156,7 +156,7 @@ class WalletGoldenV5_6_0Test(BitcoinTestFramework):
 
             # Shut down the nodes
             stop_nodes(self.nodes)
-            wait_bitcoinds()
+            wait_nodes()
 
             # persist the node state to the cache
             persist_node_caches(self.options.tmpdir, 'tarnished-v5.6.0', 4)

@@ -7,9 +7,9 @@
 # Exercise the wallet keypool, and interaction with wallet encryption/locking
 
 from test_framework.authproxy import JSONRPCException
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, \
-    start_nodes, start_node, bitcoind_processes
+    start_nodes, start_node, node_processes
 
 def check_array_result(object_array, to_match, expected):
     """
@@ -32,13 +32,13 @@ def check_array_result(object_array, to_match, expected):
     if num_matched == 0:
         raise AssertionError("No objects matched %s"%(str(to_match)))
 
-class KeyPoolTest(BitcoinTestFramework):
+class KeyPoolTest(ZcashTestFramework):
 
     def run_test(self):
         nodes = self.nodes
         # Encrypt wallet and wait to terminate
         nodes[0].encryptwallet('test')
-        bitcoind_processes[0].wait()
+        node_processes[0].wait()
         # Restart node 0
         nodes[0] = start_node(0, self.options.tmpdir, extra_args=[
             '-allowdeprecated=getnewaddress',

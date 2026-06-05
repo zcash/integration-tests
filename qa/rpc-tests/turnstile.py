@@ -26,7 +26,7 @@
 # 7. Verify zcashd rejected the block
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
     fail,
@@ -35,7 +35,7 @@ from test_framework.util import (
     sync_blocks, sync_mempools,
     connect_nodes_bi,
     wait_and_assert_operationid_status,
-    bitcoind_processes,
+    node_processes,
     check_node_log
 )
 from test_framework.zip317 import conventional_fee, ZIP_317_FEE
@@ -49,7 +49,7 @@ BASE_ARGS = [
 TURNSTILE_ARGS = ['-experimentalfeatures',
                   '-developersetpoolsizezero']
 
-class TurnstileTest (BitcoinTestFramework):
+class TurnstileTest (ZcashTestFramework):
 
     def __init__(self):
         super().__init__()
@@ -83,7 +83,7 @@ class TurnstileTest (BitcoinTestFramework):
     # Helper method to stop and restart a single node with extra args and sync to the network
     def restart_and_sync_node(self, index, args=[]):
         self.nodes[index].stop()
-        bitcoind_processes[index].wait()
+        node_processes[index].wait()
         self.start_and_sync_node(index, args)
 
     def run_test(self):

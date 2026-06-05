@@ -5,7 +5,7 @@
 
 from test_framework.authproxy import JSONRPCException
 from test_framework.mininode import COIN
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     NU5_BRANCH_ID,
     assert_equal,
@@ -21,7 +21,7 @@ from test_framework.zip317 import conventional_fee
 from decimal import Decimal
 
 # Test wallet accounts behaviour
-class WalletAccountsTest(BitcoinTestFramework):
+class WalletAccountsTest(ZcashTestFramework):
     def setup_nodes(self):
         return start_nodes(self.num_nodes, self.options.tmpdir, extra_args=[[
             nuparams(NU5_BRANCH_ID, 210),

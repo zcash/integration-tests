@@ -4,10 +4,10 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     initialize_chain_clean, start_nodes, start_node,
-    bitcoind_processes, tarfile_extractall,
+    node_processes, tarfile_extractall,
 )
 from test_framework.util import (
     nuparams,
@@ -41,7 +41,7 @@ class Upgrade():
         self.tgz_path = p
         self.extra_args = a
 
-class UpgradeGoldenTest(BitcoinTestFramework):
+class UpgradeGoldenTest(ZcashTestFramework):
     def setup_chain(self):
         self.upgrades = [ Upgrade(35, os.path.dirname(os.path.realpath(__file__))+"/golden/blossom.tar.gz", HAS_BLOSSOM)
                         , Upgrade(45, os.path.dirname(os.path.realpath(__file__))+"/golden/heartwood.tar.gz", HAS_HEARTWOOD)
@@ -68,7 +68,7 @@ class UpgradeGoldenTest(BitcoinTestFramework):
         # Generate past the upgrade activation height.
         self.nodes[0].generate(to_height)
         self.nodes[0].stop()
-        bitcoind_processes[0].wait()
+        node_processes[0].wait()
 
         node_path = self.options.tmpdir + "/node0/regtest"
         os.remove(node_path + "/peers.dat")
@@ -89,7 +89,7 @@ class UpgradeGoldenTest(BitcoinTestFramework):
             if os.path.isfile(upgrade.tgz_path):
                 # shut down the node so we can replace its data dir(s)
                 self.nodes[i].stop()
-                bitcoind_processes[i].wait()
+                node_processes[i].wait()
 
                 regtest_path = self.options.tmpdir+"/node"+ str(i)+"/regtest"
                 shutil.rmtree(regtest_path)

@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.config import ZebraArgs
 from test_framework.util import (
     assert_true,
@@ -20,7 +20,7 @@ from test_framework.util import (
 #
 # Previous to the fix, the blockcommitments field was zero when both
 # Heartwood and NU5 activated in the same block.
-class BlockCommitmentsTest(BitcoinTestFramework):
+class BlockCommitmentsTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     BLOSSOM_BRANCH_ID,
     CANOPY_BRANCH_ID,
@@ -22,7 +22,7 @@ from test_framework.zip317 import conventional_fee
 
 from decimal import Decimal
 
-class WalletIsFromMe(BitcoinTestFramework):
+class WalletIsFromMe(ZcashTestFramework):
     def setup_chain(self):
         initialize_chain_clean(self.options.tmpdir, 1)
 

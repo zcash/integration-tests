@@ -8,7 +8,7 @@
 # Test REST interface
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, assert_greater_than, \
     hex_str_to_bytes, start_nodes, connect_nodes_bi
 
@@ -48,7 +48,7 @@ def http_post_call(host, port, path, requestdata = '', response_object = 0):
 
     return conn.getresponse().read()
 
-class RESTTest (BitcoinTestFramework):
+class RESTTest (ZcashTestFramework):
     FORMAT_SEPARATOR = "."
 
     def __init__(self):

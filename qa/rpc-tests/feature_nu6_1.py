@@ -5,7 +5,7 @@
 
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.config import ZebraArgs
 from test_framework.util import (
     assert_equal,
@@ -13,7 +13,7 @@ from test_framework.util import (
 )
 
 # Verify the NU6.1 activation block contains the expected lockbox disbursement.
-class OnetimeLockboxDisbursementTest(BitcoinTestFramework):
+class OnetimeLockboxDisbursementTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

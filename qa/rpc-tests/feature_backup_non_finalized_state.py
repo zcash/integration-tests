@@ -3,12 +3,12 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, start_nodes
 import time
 
 # Test that Zebra can backup and restore non finalized state
-class BackupNonFinalized(BitcoinTestFramework):
+class BackupNonFinalized(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

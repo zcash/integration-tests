@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_raises,
     connect_nodes,
@@ -11,7 +11,7 @@ from test_framework.util import (
     check_node_log,
 )
 
-class FrameworkTest (BitcoinTestFramework):
+class FrameworkTest (ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

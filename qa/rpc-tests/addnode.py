@@ -3,10 +3,10 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, connect_nodes_bi
 
-class AddNodeTest (BitcoinTestFramework):
+class AddNodeTest (ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

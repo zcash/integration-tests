@@ -6,12 +6,12 @@
 
 #
 # Helper script to create the cache
-# (see BitcoinTestFramework.setup_chain)
+# (see ZcashTestFramework.setup_chain)
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 
-class CreateCache(BitcoinTestFramework):
+class CreateCache(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

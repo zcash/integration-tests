@@ -4,7 +4,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
     get_coinbase_address,
@@ -24,7 +24,7 @@ BASE_ARGS = [
 ]
 
 # Test wallet behaviour with Sapling addresses
-class MempoolLimit(BitcoinTestFramework):
+class MempoolLimit(ZcashTestFramework):
     def setup_nodes(self):
         extra_args = [
             BASE_ARGS + ['-mempooltxcostlimit=20000'], # 2 transactions at min cost

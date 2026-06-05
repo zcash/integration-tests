@@ -6,13 +6,13 @@
 
 from time import sleep
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.authproxy import JSONRPCException
 from test_framework.util import assert_equal, \
-    start_nodes, start_node, connect_nodes_bi, bitcoind_processes
+    start_nodes, start_node, connect_nodes_bi, node_processes
 
 
-class ZapWalletTXesTest (BitcoinTestFramework):
+class ZapWalletTXesTest (ZcashTestFramework):
 
     def __init__(self):
         super().__init__()
@@ -61,14 +61,14 @@ class ZapWalletTXesTest (BitcoinTestFramework):
 
         # restart zcashd
         self.nodes[0].stop()
-        bitcoind_processes[0].wait()
+        node_processes[0].wait()
         self.nodes[0] = start_node(0,self.options.tmpdir)
 
         tx3 = self.nodes[0].gettransaction(txid3)
         assert_equal(tx3['txid'], txid3) # tx must be available (unconfirmed)
 
         self.nodes[0].stop()
-        bitcoind_processes[0].wait()
+        node_processes[0].wait()
 
         # restart zcashd with zapwallettxes
         self.nodes[0] = start_node(0,self.options.tmpdir, ["-zapwallettxes=1"])

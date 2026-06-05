@@ -6,16 +6,16 @@
 # This test reproduces https://github.com/zcash/zcash/issues/4301
 # It takes an hour to run!
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
-    bitcoind_processes,
+    node_processes,
     initialize_chain_clean,
     start_node,
 )
 import time
 
-class WalletDBFlush (BitcoinTestFramework):
+class WalletDBFlush (ZcashTestFramework):
 
     def setup_chain(self):
         print("Initializing test directory "+self.options.tmpdir)
@@ -46,7 +46,7 @@ class WalletDBFlush (BitcoinTestFramework):
         self.nodes[0].generate(2)
 
         self.nodes[0].stop()
-        bitcoind_processes[0].wait()
+        node_processes[0].wait()
 
         print("Start mining to address ", zaddr)
         self.nodes[0] = self.start_node_with(0, [
@@ -55,7 +55,7 @@ class WalletDBFlush (BitcoinTestFramework):
         self.nodes[0].generate(1)
         self.sync_all()
         self.nodes[0].stop()
-        bitcoind_processes[0].wait()
+        node_processes[0].wait()
 
         # If you replace main.cpp:3129 DATABASE_WRITE_INTERVAL with
         # 60 (seconds), then sleeptime here can be 80, and this test
@@ -71,7 +71,7 @@ class WalletDBFlush (BitcoinTestFramework):
         self.nodes[0].generate(1)
         self.sync_all()
         self.nodes[0].stop()
-        bitcoind_processes[0].wait()
+        node_processes[0].wait()
 
         print("Restart, generate, expect assert in CopyPreviousWitnesses")
         self.nodes[0] = self.start_node_with(0, [

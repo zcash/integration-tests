@@ -8,7 +8,7 @@ from decimal import Decimal
 from test_framework.authproxy import JSONRPCException
 from test_framework.mininode import NodeConn, NetworkThread, CInv, \
     msg_mempool, msg_getdata, msg_tx, mininode_lock, SAPLING_PROTO_VERSION
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, connect_nodes_bi, fail, \
     p2p_port, start_nodes, sync_blocks, sync_mempools
 from test_framework.zip317 import conventional_fee
@@ -16,7 +16,7 @@ from test_framework.zip317 import conventional_fee
 from tx_expiry_helper import TestNode, create_transaction
 
 
-class TxExpiringSoonTest(BitcoinTestFramework):
+class TxExpiringSoonTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

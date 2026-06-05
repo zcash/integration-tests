@@ -10,7 +10,7 @@ from test_framework.mininode import ( \
         BLOSSOM_PROTO_VERSION
         )
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import ( \
         ZCASHD_BINARY, assert_equal, initialize_chain_clean, \
         start_node, stop_node, \
@@ -93,7 +93,7 @@ class TestNode(NodeConnCB):
         self.ping_counter += 1
         return success
 
-class MaxUploadTest(BitcoinTestFramework):
+class MaxUploadTest(ZcashTestFramework):
     def __init__(self):
         self.utxo = []
 

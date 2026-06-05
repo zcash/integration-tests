@@ -8,13 +8,13 @@
 # Test rpc http basics
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, str_to_b64str
 
 import http.client
 import urllib.parse
 
-class HTTPBasicsTest (BitcoinTestFramework):
+class HTTPBasicsTest (ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 3

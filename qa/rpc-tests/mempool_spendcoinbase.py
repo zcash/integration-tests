@@ -16,7 +16,7 @@
 
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.authproxy import JSONRPCException
 from test_framework.util import assert_equal, assert_greater_than, assert_raises, \
     start_node
@@ -24,7 +24,7 @@ from test_framework.zip317 import conventional_fee
 
 
 # Create one-input, one-output, no-fee transaction:
-class MempoolSpendCoinbaseTest(BitcoinTestFramework):
+class MempoolSpendCoinbaseTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

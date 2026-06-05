@@ -4,7 +4,7 @@
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 from test_framework.config import ZebraArgs
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
     start_nodes,
@@ -20,7 +20,7 @@ from test_framework.util import (
 from decimal import Decimal
 
 
-class NuparamsTest(BitcoinTestFramework):
+class NuparamsTest(ZcashTestFramework):
     '''
     Test that unspecified network upgrades are activated automatically;
     this is really more of a test of the test framework.

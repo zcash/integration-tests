@@ -7,12 +7,12 @@
 # Test getrawtransaction on side chains
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal
 from test_framework.proxy import JSONRPCException
 
 
-class GetRawTransactionSideChainTest(BitcoinTestFramework):
+class GetRawTransactionSideChainTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 1

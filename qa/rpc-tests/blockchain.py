@@ -11,12 +11,12 @@
 
 import decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
 )
 
-class BlockchainTest(BitcoinTestFramework):
+class BlockchainTest(ZcashTestFramework):
     """
     Test blockchain-related RPC calls:
 

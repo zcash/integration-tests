@@ -9,10 +9,10 @@
 # This gives us two tips, verify that it works.
 
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal
 
-class GetChainTipsTest (BitcoinTestFramework):
+class GetChainTipsTest (ZcashTestFramework):
 
     def run_test (self):
 

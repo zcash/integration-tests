@@ -6,7 +6,7 @@
 
 from test_framework.flyclient import (ZcashMMRNode, append, delete, make_root_commitment)
 from test_framework.mininode import (CBlockHeader)
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     BLOSSOM_BRANCH_ID,
     HEARTWOOD_BRANCH_ID,
@@ -25,7 +25,7 @@ NULL_FIELD = "00" * 32
 CHAIN_HISTORY_ROOT_VERSION = 2010200
 
 # Verify block header field 'hashLightClientRoot' is set correctly for Heartwood blocks.
-class Zip221Test(BitcoinTestFramework):
+class Zip221Test(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

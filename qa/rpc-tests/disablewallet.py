@@ -8,11 +8,11 @@
 # Exercise API with -disablewallet.
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import start_nodes
 
 
-class DisableWalletTest (BitcoinTestFramework):
+class DisableWalletTest (ZcashTestFramework):
 
     def __init__(self):
         super().__init__()
