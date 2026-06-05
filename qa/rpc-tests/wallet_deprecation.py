@@ -3,12 +3,12 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_true,
     start_nodes,
     stop_nodes,
-    wait_bitcoinds,
+    wait_nodes,
 )
 from test_framework.authproxy import JSONRPCException
 
@@ -25,7 +25,7 @@ TESTABLE_FEATURES = [
 ]
 
 # Test wallet address behaviour across network upgrades
-class WalletDeprecationTest(BitcoinTestFramework):
+class WalletDeprecationTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 1
@@ -82,7 +82,7 @@ class WalletDeprecationTest(BitcoinTestFramework):
 
     def test_case(self, start_mode, features_to_allow, expected_state, default_enabled, default_disabled):
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
         start_mode(features_to_allow)
 
         for function in default_enabled:

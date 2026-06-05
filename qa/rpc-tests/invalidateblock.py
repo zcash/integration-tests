@@ -8,13 +8,13 @@
 # Test InvalidateBlock code
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import start_node, \
     connect_nodes_bi, sync_blocks
 
 import time
 
-class InvalidateTest(BitcoinTestFramework):
+class InvalidateTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.cache_behavior = 'clean'

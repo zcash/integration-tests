@@ -6,7 +6,7 @@
 
 # Test descendant package tracking code
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     ROUND_DOWN,
     Decimal,
@@ -23,7 +23,7 @@ from test_framework.zip317 import conventional_fee
 def satoshi_round(amount):
     return  Decimal(amount).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
 
-class MempoolPackagesTest(BitcoinTestFramework):
+class MempoolPackagesTest(ZcashTestFramework):
     limitdescendantcount = 120
 
     def setup_network(self):

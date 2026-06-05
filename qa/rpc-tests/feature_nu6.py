@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from test_framework.config import ZebraArgs
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, start_nodes
 
 # Check the behaviour of the value pools and funding streams at NU6.
@@ -16,7 +16,7 @@ from test_framework.util import assert_equal, start_nodes
 # - The lockbox pool and rewards are activated at NU6.
 # - The lockbox accumulates after NU6 inside the configured range.
 # - The lockbox rewrards and NU6 funding streams end after the configured range.
-class PoolsTest(BitcoinTestFramework):
+class PoolsTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

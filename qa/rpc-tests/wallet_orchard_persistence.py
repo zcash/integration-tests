@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.mininode import COIN
 from test_framework.util import (
     NU5_BRANCH_ID,
@@ -12,7 +12,7 @@ from test_framework.util import (
     nuparams,
     start_nodes,
     stop_nodes,
-    wait_bitcoinds,
+    wait_nodes,
     wait_and_assert_operationid_status,
 )
 from test_framework.zip317 import conventional_fee, ZIP_317_FEE
@@ -20,7 +20,7 @@ from test_framework.zip317 import conventional_fee, ZIP_317_FEE
 from decimal import Decimal
 
 # Test wallet behaviour with the Orchard protocol
-class WalletOrchardPersistenceTest(BitcoinTestFramework):
+class WalletOrchardPersistenceTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 4
@@ -89,7 +89,7 @@ class WalletOrchardPersistenceTest(BitcoinTestFramework):
 
         # Shut down the nodes, and restart so that we can check wallet load
         stop_nodes(self.nodes);
-        wait_bitcoinds()
+        wait_nodes()
         self.setup_network()
 
         balance0 -= conventional_fee(2)

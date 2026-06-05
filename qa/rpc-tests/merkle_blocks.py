@@ -9,13 +9,13 @@
 #
 
 import string
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.authproxy import JSONRPCException
 from test_framework.util import assert_equal, assert_raises_message, start_node, connect_nodes
 from test_framework.zip317 import conventional_fee
 
 
-class MerkleBlockTest(BitcoinTestFramework):
+class MerkleBlockTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

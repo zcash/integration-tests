@@ -5,7 +5,7 @@
 
 
 from test_framework.blocktools import derive_block_commitments_hash
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     BLOSSOM_BRANCH_ID,
     CANOPY_BRANCH_ID,
@@ -21,7 +21,7 @@ from test_framework.util import (
 TERMINATOR = b'\x00' * 32
 
 # Verify block header field 'hashLightClientRoot' is set correctly for NU5 blocks.
-class AuthDataRootTest(BitcoinTestFramework):
+class AuthDataRootTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

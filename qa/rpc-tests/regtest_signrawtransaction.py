@@ -3,14 +3,14 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     start_nodes,
     wait_and_assert_operationid_status,
 )
 from test_framework.zip317 import ZIP_317_FEE
 
-class RegtestSignrawtransactionTest (BitcoinTestFramework):
+class RegtestSignrawtransactionTest (ZcashTestFramework):
 
     def setup_nodes(self):
         return start_nodes(self.num_nodes, self.options.tmpdir, extra_args=[[

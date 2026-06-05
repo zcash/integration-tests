@@ -26,11 +26,11 @@ length computation (40b5d5e3ea4b602c34c4efaba0b9f6171dddfef5) corrects the issue
 
 """
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (assert_equal, assert_true,
     assert_start_raises_init_error,
     start_nodes, start_node, connect_nodes_bi,
-    bitcoind_processes,
+    node_processes,
     nuparams, OVERWINTER_BRANCH_ID, SAPLING_BRANCH_ID)
 
 import logging
@@ -41,7 +41,7 @@ logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO, str
 HAS_SAPLING = [nuparams(OVERWINTER_BRANCH_ID, 10), nuparams(SAPLING_BRANCH_ID, 15)]
 NO_SAPLING = [nuparams(OVERWINTER_BRANCH_ID, 10), nuparams(SAPLING_BRANCH_ID, 150)]
 
-class SaplingRewindTest(BitcoinTestFramework):
+class SaplingRewindTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 3
@@ -91,7 +91,7 @@ class SaplingRewindTest(BitcoinTestFramework):
         # Stop the overwinter node to ensure state is flushed to disk.
         logging.info("Shutting down lagging node...")
         self.nodes[2].stop()
-        bitcoind_processes[2].wait()
+        node_processes[2].wait()
         
         # Restart the nodes, reconnect, and sync the network. This succeeds if "-reindex" is passed.
         logging.info("Reconnecting the network...")

@@ -3,19 +3,19 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
     connect_nodes_bi,
     start_nodes,
     stop_nodes,
-    wait_bitcoinds,
+    wait_nodes,
     NU5_BRANCH_ID,
 )
 from test_framework.mininode import nuparams
 
 # Test wallet address behaviour across network upgrades
-class WalletAddressesTest(BitcoinTestFramework):
+class WalletAddressesTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         # need 2 nodes to import addresses
@@ -127,7 +127,7 @@ class WalletAddressesTest(BitcoinTestFramework):
         # stop the nodes & restart to ensure that the imported address
         # still shows up in listaddresses output
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
         self.setup_network()
 
         listed_addresses = self.list_addresses(1, ['imported', 'mnemonic_seed'])

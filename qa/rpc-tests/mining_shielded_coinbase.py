@@ -5,7 +5,7 @@
 
 from decimal import Decimal
 from test_framework.authproxy import JSONRPCException
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.mininode import COIN, nuparams
 from test_framework.util import (
     BLOSSOM_BRANCH_ID,
@@ -14,7 +14,7 @@ from test_framework.util import (
     NU5_BRANCH_ID,
     assert_equal,
     assert_raises,
-    bitcoind_processes,
+    node_processes,
     connect_nodes,
     start_node,
     wait_and_assert_operationid_status,
@@ -22,7 +22,7 @@ from test_framework.util import (
 )
 from test_framework.zip317 import conventional_fee
 
-class ShieldCoinbaseTest (BitcoinTestFramework):
+class ShieldCoinbaseTest (ZcashTestFramework):
 
     def __init__(self):
         super().__init__()
@@ -56,7 +56,7 @@ class ShieldCoinbaseTest (BitcoinTestFramework):
         node1_zaddr = self.nodes[1].z_getnewaddress('sapling')
 
         self.nodes[1].stop()
-        bitcoind_processes[1].wait()
+        node_processes[1].wait()
         self.nodes[1] = self.start_node_with(1, [
             "-mineraddress=%s" % node1_zaddr,
         ])
@@ -137,7 +137,7 @@ class ShieldCoinbaseTest (BitcoinTestFramework):
 
         # Set node 1's miner address to the UA
         self.nodes[1].stop()
-        bitcoind_processes[1].wait()
+        node_processes[1].wait()
         self.nodes[1] = self.start_node_with(1, [
             "-mineraddress=%s" % node1_ua,
         ])

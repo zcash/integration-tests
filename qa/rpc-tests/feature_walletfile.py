@@ -9,9 +9,9 @@ import os
 
 from test_framework.util import start_node, stop_node, assert_start_raises_init_error
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 
-class WalletFileTest(BitcoinTestFramework):
+class WalletFileTest(ZcashTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.cache_behavior = 'clean'

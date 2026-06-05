@@ -7,7 +7,7 @@
 # Test reorg limit
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     check_node,
     connect_nodes_bi,
@@ -29,7 +29,7 @@ def check_stopped(i, timeout=10):
             break
     return stopped
 
-class ReorgLimitTest(BitcoinTestFramework):
+class ReorgLimitTest(ZcashTestFramework):
 
     def setup_nodes(self):
         self.log_stderr = tempfile.SpooledTemporaryFile(max_size=2**16)

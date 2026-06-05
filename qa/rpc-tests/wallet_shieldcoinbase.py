@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.authproxy import JSONRPCException
 from test_framework.util import assert_equal, initialize_chain_clean, \
     start_node, connect_nodes_bi, sync_blocks, sync_mempools, \
@@ -13,7 +13,7 @@ from test_framework.zip317 import conventional_fee, ZIP_317_FEE
 
 from decimal import Decimal
 
-class WalletShieldCoinbaseTest (BitcoinTestFramework):
+class WalletShieldCoinbaseTest (ZcashTestFramework):
     def setup_chain(self):
         print("Initializing test directory "+self.options.tmpdir)
         initialize_chain_clean(self.options.tmpdir, 4)

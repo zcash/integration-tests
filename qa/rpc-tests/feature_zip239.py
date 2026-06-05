@@ -15,7 +15,7 @@ from test_framework.mininode import (
     msg_reject,
     uint256_from_reversed_hex,
 )
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     BLOSSOM_BRANCH_ID,
     HEARTWOOD_BRANCH_ID,
@@ -37,7 +37,7 @@ import os.path
 import time
 
 # Test ZIP 239 behaviour before and after NU5.
-class Zip239Test(BitcoinTestFramework):
+class Zip239Test(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.cache_behavior = 'sprout'

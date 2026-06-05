@@ -8,7 +8,7 @@
 # Test --help
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, zebrad_binary
 
 from difflib import SequenceMatcher, unified_diff
@@ -606,7 +606,7 @@ Compatibility options:
 
 """
 
-class ShowHelpTest(BitcoinTestFramework):
+class ShowHelpTest(ZcashTestFramework):
 
     def setup_network(self):
         self.nodes = []

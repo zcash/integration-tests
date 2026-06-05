@@ -7,7 +7,7 @@
 # Test the effect of reorgs on the Orchard commitment tree.
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     BLOSSOM_BRANCH_ID,
     HEARTWOOD_BRANCH_ID,
@@ -23,7 +23,7 @@ from test_framework.zip317 import ZIP_317_FEE
 
 from finalsaplingroot import ORCHARD_TREE_EMPTY_ROOT
 
-class OrchardReorgTest(BitcoinTestFramework):
+class OrchardReorgTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 4

@@ -5,7 +5,7 @@
 
 from io import BytesIO
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
     CANOPY_BRANCH_ID,
@@ -27,7 +27,7 @@ from test_framework.zip317 import conventional_fee, ZIP_317_FEE
 
 from decimal import Decimal
 
-class GetBlockTemplateTest(BitcoinTestFramework):
+class GetBlockTemplateTest(ZcashTestFramework):
     '''
     Test getblocktemplate, ensure that a block created from its result
     can be submitted and accepted.

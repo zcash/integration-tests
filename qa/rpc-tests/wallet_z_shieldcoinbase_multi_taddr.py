@@ -46,7 +46,7 @@ import subprocess
 import time
 
 from decimal import Decimal
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.config import ZebraArgs
 from test_framework.util import (
     assert_equal,
@@ -57,7 +57,7 @@ from test_framework.util import (
     stop_node,
     stop_wallets,
     wait_and_assert_operationid_status,
-    wait_bitcoinds,
+    wait_nodes,
     wait_zallets,
     wallet_dir,
     zallet_binary,
@@ -82,7 +82,7 @@ def first_transparent_receiver(wallet, ua):
         "UA has no transparent receiver: {!r} -> {!r}".format(ua, receivers))
 
 
-class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
+class WalletZShieldCoinbaseMultiTaddrTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()
@@ -153,7 +153,7 @@ class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
         stop_wallets(self.wallets)
         wait_zallets()
         stop_node(self.nodes[0], 0)
-        wait_bitcoinds()
+        wait_nodes()
 
         # Truncate the wallet's block-scan state so it no longer holds
         # records for heights zebrad is about to lose. After shutdown

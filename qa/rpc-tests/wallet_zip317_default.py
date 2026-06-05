@@ -5,7 +5,7 @@
 
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.mininode import COIN
 from test_framework.util import (
     CANOPY_BRANCH_ID,
@@ -20,7 +20,7 @@ from test_framework.util import (
 from test_framework.zip317 import conventional_fee, ZIP_317_FEE
 
 # Regression test for https://github.com/zcash/zcash/issues/6956 .
-class WalletZip317DefaultTest(BitcoinTestFramework):
+class WalletZip317DefaultTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 2

@@ -5,14 +5,14 @@
 
 from test_framework.mininode import NodeConn, NetworkThread, \
     msg_tx, SAPLING_PROTO_VERSION
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import start_nodes, p2p_port, assert_equal
 from tx_expiry_helper import TestNode, create_transaction
 
 import time
 
 
-class TxExpiryDoSTest(BitcoinTestFramework):
+class TxExpiryDoSTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

@@ -4,14 +4,14 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, \
     hex_str_to_bytes, bytes_to_hex_str
 from test_framework.mininode import CTransaction
 from io import BytesIO
 
 
-class DecodeScriptTest(BitcoinTestFramework):
+class DecodeScriptTest(ZcashTestFramework):
     """Tests decoding scripts via RPC command "decodescript"."""
 
     def __init__(self):

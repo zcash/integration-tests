@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     NU5_BRANCH_ID,
     assert_equal,
@@ -18,7 +18,7 @@ from test_framework.zip317 import conventional_fee
 from decimal import Decimal
 
 # Test wallet z_listunspent behaviour across network upgrades
-class WalletListNotes(BitcoinTestFramework):
+class WalletListNotes(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.cache_behavior = 'sprout'

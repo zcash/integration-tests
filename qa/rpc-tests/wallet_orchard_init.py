@@ -8,7 +8,7 @@ import os.path
 
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.mininode import COIN
 from test_framework.util import (
     NU5_BRANCH_ID,
@@ -17,13 +17,13 @@ from test_framework.util import (
     nuparams,
     start_nodes,
     stop_nodes,
-    wait_bitcoinds,
+    wait_nodes,
     wait_and_assert_operationid_status,
 )
 from test_framework.zip317 import conventional_fee, ZIP_317_FEE
 
 # Test wallet behaviour with the Orchard protocol
-class OrchardWalletInitTest(BitcoinTestFramework):
+class OrchardWalletInitTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 4
@@ -96,7 +96,7 @@ class OrchardWalletInitTest(BitcoinTestFramework):
 
         # Shut down the network and delete node 0's wallet
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
 
         tmpdir = self.options.tmpdir
         os.remove(os.path.join(tmpdir, "node0", "regtest", "wallet.dat"))

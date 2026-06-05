@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import NU5_BRANCH_ID, nuparams
 from mergetoaddress_helper import MergeToAddressHelper
 
@@ -13,7 +13,7 @@ def get_new_address(test, node):
     #       Orchard, so exclude it from the UA for now.
     return test.nodes[node].z_getaddressforaccount(account, ['p2pkh', 'sapling'])['address']
 
-class MergeToAddressUANU5 (BitcoinTestFramework):
+class MergeToAddressUANU5 (ZcashTestFramework):
     # TODO: Until we can merge from Orchard, we just use 'ANY_SAPLING' as the wildcard here, since
     # we don’t have an `'ANY_ORCHARD'` yet and `'ANY_SPROUT'` isn’t compatible with Orchard.
     helper = MergeToAddressHelper(get_new_address, 'ANY_SAPLING')

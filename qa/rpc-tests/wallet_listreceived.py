@@ -4,7 +4,7 @@
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 from test_framework.authproxy import JSONRPCException
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
     assert_true,
@@ -24,7 +24,7 @@ my_memo = my_memo + '0'*(1024-len(my_memo))
 
 no_memo = 'f6' + ('0'*1022) # see section 5.5 of the protocol spec
 
-class ListReceivedTest (BitcoinTestFramework):
+class ListReceivedTest (ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 3

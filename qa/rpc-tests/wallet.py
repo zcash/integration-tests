@@ -7,11 +7,11 @@
 #from decimal import Decimal
 import time
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, assert_true
 
 # Test that we can create a wallet and use an address from it to mine blocks.
-class WalletTest (BitcoinTestFramework):
+class WalletTest (ZcashTestFramework):
 
     def __init__(self):
         super().__init__()

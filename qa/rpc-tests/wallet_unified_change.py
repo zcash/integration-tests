@@ -4,7 +4,7 @@
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 from decimal import Decimal
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     NU5_BRANCH_ID,
     assert_equal,
@@ -17,7 +17,7 @@ from test_framework.mininode import COIN
 from test_framework.zip317 import conventional_fee, ZIP_317_FEE
 
 # Test wallet accounts behaviour
-class WalletUnifiedChangeTest(BitcoinTestFramework):
+class WalletUnifiedChangeTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 4

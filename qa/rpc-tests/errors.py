@@ -9,9 +9,9 @@
 #
 
 from test_framework.authproxy import JSONRPCException
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 
-class BlockchainTest(BitcoinTestFramework):
+class BlockchainTest(ZcashTestFramework):
     """
     Test RPC call failure cases.
     """

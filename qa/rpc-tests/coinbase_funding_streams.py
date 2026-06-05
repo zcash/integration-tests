@@ -5,7 +5,7 @@
 
 from decimal import Decimal
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.blocktools import create_block, create_coinbase
 from test_framework.mininode import (
     fundingstream,
@@ -20,7 +20,7 @@ from test_framework.script import (
 )
 from test_framework.util import (
     assert_equal,
-    bitcoind_processes,
+    node_processes,
     connect_nodes,
     start_node,
     BLOSSOM_BRANCH_ID,
@@ -41,7 +41,7 @@ def redeem_script(addr):
 
     raise ValueError("unrecognized address type")
 
-class CoinbaseFundingStreamsTest(BitcoinTestFramework):
+class CoinbaseFundingStreamsTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 2
@@ -88,9 +88,9 @@ class CoinbaseFundingStreamsTest(BitcoinTestFramework):
 
         # Restart both nodes with funding streams.
         self.nodes[0].stop()
-        bitcoind_processes[0].wait()
+        node_processes[0].wait()
         self.nodes[1].stop()
-        bitcoind_processes[1].wait()
+        node_processes[1].wait()
         new_args = [
             "-mineraddress=%s" % miner_addr,
             "-minetolocalwallet=0",

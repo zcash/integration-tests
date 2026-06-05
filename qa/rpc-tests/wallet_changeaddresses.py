@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     SAPLING_BRANCH_ID,
     connect_nodes_bi,
@@ -18,7 +18,7 @@ from test_framework.zip317 import conventional_fee, ZIP_317_FEE
 from decimal import Decimal
 
 # Test wallet change address behaviour
-class WalletChangeAddressesTest(BitcoinTestFramework):
+class WalletChangeAddressesTest(ZcashTestFramework):
 
     def setup_chain(self):
         print("Initializing test directory " + self.options.tmpdir)

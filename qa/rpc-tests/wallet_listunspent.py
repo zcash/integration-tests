@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.mininode import COIN
 from test_framework.util import (
     assert_equal,
@@ -20,7 +20,7 @@ from decimal import Decimal
 def unspent_total(unspent):
     return sum((item['amount'] for item in unspent))
 
-class WalletListUnspent(BitcoinTestFramework):
+class WalletListUnspent(ZcashTestFramework):
     def setup_nodes(self):
         return start_nodes(4, self.options.tmpdir, extra_args=[[
             nuparams(NU5_BRANCH_ID, 201),

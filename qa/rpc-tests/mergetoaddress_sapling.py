@@ -3,13 +3,13 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from mergetoaddress_helper import MergeToAddressHelper
 
 def get_new_address(test, node):
     return test.nodes[node].z_getnewaddress('sapling')
 
-class MergeToAddressSapling (BitcoinTestFramework):
+class MergeToAddressSapling (ZcashTestFramework):
     helper = MergeToAddressHelper(get_new_address, 'ANY_SAPLING')
 
     def setup_chain(self):

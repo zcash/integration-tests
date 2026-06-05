@@ -3,7 +3,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.mininode import COIN
 from test_framework.util import (
     NU5_BRANCH_ID,
@@ -14,7 +14,7 @@ from test_framework.util import (
     start_nodes,
     stop_nodes,
     wait_and_assert_operationid_status,
-    wait_bitcoinds,
+    wait_nodes,
 )
 from test_framework.zip317 import conventional_fee
 
@@ -27,7 +27,7 @@ BASE_ARGS = [
 ]
 
 # Test wallet behaviour when reindexing with Orchard state.
-class WalletOrchardReindexTest(BitcoinTestFramework):
+class WalletOrchardReindexTest(ZcashTestFramework):
     def setup_nodes(self):
         return start_nodes(self.num_nodes, self.options.tmpdir, extra_args=[BASE_ARGS] * self.num_nodes)
 
@@ -75,7 +75,7 @@ class WalletOrchardReindexTest(BitcoinTestFramework):
         # Restart the node with -reindex.
         blockcount = self.nodes[0].getblockcount()
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
         self.num_nodes = 1
         self.nodes = [start_node(0, self.options.tmpdir, BASE_ARGS + ['-reindex'])]
 

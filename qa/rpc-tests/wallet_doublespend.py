@@ -8,7 +8,7 @@ import os.path
 from decimal import Decimal
 
 from test_framework.mininode import COIN
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     NU5_BRANCH_ID,
     assert_equal,
@@ -16,13 +16,13 @@ from test_framework.util import (
     nuparams,
     start_nodes,
     stop_nodes,
-    wait_bitcoinds,
+    wait_nodes,
     wait_and_assert_operationid_status,
 )
 from test_framework.zip317 import conventional_fee
 
 # Test wallet behaviour with the Orchard protocol
-class WalletDoubleSpendTest(BitcoinTestFramework):
+class WalletDoubleSpendTest(ZcashTestFramework):
     def __init__(self):
         super().__init__()
         self.num_nodes = 4
@@ -64,7 +64,7 @@ class WalletDoubleSpendTest(BitcoinTestFramework):
 
         # Shut down the nodes
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_nodes()
 
         # Copy node 1's wallet to node 2
         tmpdir = self.options.tmpdir

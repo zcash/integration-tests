@@ -9,23 +9,23 @@
 # Dependency: python-bitcoinrpc
 
 from test_framework.authproxy import JSONRPCException
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import (
     assert_equal,
-    bitcoind_processes,
+    node_processes,
     get_rpc_proxy,
     rpc_port,
     rpc_url,
     start_nodes,
     stop_nodes,
-    wait_bitcoinds,
+    wait_nodes,
 )
 from test_framework.netutil import addr_to_hex, get_bind_addrs, all_interfaces
 
 import sys
 
 
-class RPCBindTest(BitcoinTestFramework):
+class RPCBindTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()
@@ -51,11 +51,11 @@ class RPCBindTest(BitcoinTestFramework):
         binds = ['-rpcbind='+addr for addr in addresses]
         self.nodes = start_nodes(self.num_nodes, self.options.tmpdir, [base_args + binds], connect_to)
         try:
-            pid = bitcoind_processes[0].pid
+            pid = node_processes[0].pid
             assert_equal(set(get_bind_addrs(pid)), set(expected))
         finally:
             stop_nodes(self.nodes)
-            wait_bitcoinds()
+            wait_nodes()
 
     def run_allowip_test(self, allow_ips, rpchost, rpcport):
         '''
@@ -71,7 +71,7 @@ class RPCBindTest(BitcoinTestFramework):
         finally:
             node = None # make sure connection will be garbage collected and closed
             stop_nodes(self.nodes)
-            wait_bitcoinds()
+            wait_nodes()
 
     def run_test(self):
         # due to OS-specific network stats queries, this test works only on Linux

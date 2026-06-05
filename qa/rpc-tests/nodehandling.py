@@ -8,14 +8,14 @@
 # Test node handling
 #
 
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.util import assert_equal, connect_nodes_bi, p2p_port, \
     start_node, stop_node
 
 import time
 import urllib.parse
 
-class NodeHandlingTest (BitcoinTestFramework):
+class NodeHandlingTest (ZcashTestFramework):
 
     def run_test(self):
         ###########################

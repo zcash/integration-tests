@@ -32,7 +32,7 @@
 import time
 
 from decimal import Decimal
-from test_framework.test_framework import BitcoinTestFramework
+from test_framework.test_framework import ZcashTestFramework
 from test_framework.authproxy import JSONRPCException
 from test_framework.config import ZebraArgs
 from test_framework.util import (
@@ -137,7 +137,7 @@ def assert_in_message(e, needle):
     assert_true(needle in msg, "Expected {!r} in error, got: {!r}".format(needle, msg))
 
 
-class WalletZShieldCoinbaseTest(BitcoinTestFramework):
+class WalletZShieldCoinbaseTest(ZcashTestFramework):
 
     def __init__(self):
         super().__init__()
