@@ -72,7 +72,6 @@ DISABLED_SCRIPTS = [
     'bipdersig-p2p.py',
     'blockchain.py',
     'coinbase_funding_streams.py',
-    'disablewallet.py',
     'errors.py',
     'feature_logging.py',
     'feature_walletfile.py',

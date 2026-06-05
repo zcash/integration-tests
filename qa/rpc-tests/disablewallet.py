@@ -5,11 +5,13 @@
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #
-# Exercise API with -disablewallet.
+# Exercise the node API without a wallet.
+#
+# On the Z3 stack the wallet (zallet) is a separate process, so a node started
+# without any wallet is the default; we just run a single node and no wallets.
 #
 
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import start_nodes
 
 
 class DisableWalletTest (BitcoinTestFramework):
@@ -18,11 +20,7 @@ class DisableWalletTest (BitcoinTestFramework):
         super().__init__()
         self.cache_behavior = 'clean'
         self.num_nodes = 1
-
-    def setup_network(self, split=False):
-        self.nodes = start_nodes(self.num_nodes, self.options.tmpdir, [['-disablewallet']])
-        self.is_network_split = False
-        self.sync_all()
+        self.num_wallets = 0
 
     def run_test (self):
         # Check regression: https://github.com/bitcoin/bitcoin/issues/6963#issuecomment-154548880
