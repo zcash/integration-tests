@@ -36,139 +36,117 @@ FLAKY_SCRIPTS = [
     # These tests have intermittent failures that we haven't diagnosed yet.
 ]
 
-# These tests have not yet been migrated to the Z3 stack and cannot run as
-# written: they pass lists of zcashd-style args to start_node / start_nodes,
-# which now expect a ZebraArgs dataclass, so they error out during
-# setup_network with "'list' object has no attribute 'miner_address'". They are
-# excluded from the default run so they do not block CI on required platforms.
-# Re-enable each one (restoring its original SERIAL_SCRIPTS / FLAKY_SCRIPTS
-# membership) as it is migrated.
+# Disabled until migrated to the Z3 stack. Inline note = why it fails
+# (missing feature/RPC, or that it just needs a ZebraArgs migration).
 DISABLED_SCRIPTS = [
-    # Exercises the Sapling, Blossom, Heartwood, Canopy and NU5 activation
-    # boundaries, but zebra regtest hardcodes everything up to Canopy to height
-    # 1 (only NU5 and later are configurable), and it relies on `-blockmaxsize`
-    # to overflow the mempool, which the zebra regtest config does not expose.
-    'mempool_nu_activation.py',
-    # Relies on `-limitancestorcount` and mempool debug flags that have no
-    # ZebraArgs equivalent.
-    'mempool_packages.py',
-    # The mergetoaddress tests (via mergetoaddress_helper) and
-    # wallet_shieldingcoinbase pass `-anchorconfirmations`,
-    # `-regtestshieldcoinbase`, `-debug` and `-allowdeprecated` flags that have
-    # no ZebraArgs equivalent.
-    'mergetoaddress_sapling.py',
-    'mergetoaddress_ua_nu5.py',
-    'mergetoaddress_ua_sapling.py',
-    'wallet_shieldingcoinbase.py',
-
-    # --- Green-now: tests that fail on the Z3 stack and have not been
-    # migrated yet. Disabled so CI is green on the already-migrated subset;
-    # re-enable each as it is migrated. Failure classes: legacy list-args
-    # setup_network ('list' object has no attribute 'miner_address'),
-    # unimplemented zebra RPCs (e.g. gettxoutsetinfo, RPC basic-auth),
-    # zcashd-only config/log files, and behavioural assertion mismatches.
-    'addressindex.py',
-    'bip65-cltv-p2p.py',
-    'bipdersig-p2p.py',
-    'blockchain.py',
-    'coinbase_funding_streams.py',
-    'errors.py',  # TODO: zebra missing gettxoutsetinfo RPC
-    'feature_logging.py',  # TODO: no zcashd-style regtest/debug.log on zebra
-    'feature_walletfile.py',  # TODO: zcashd wallet.dat/-wallet, not used by zallet
-    'feature_zip221.py',
-    'feature_zip239.py',
-    'feature_zip244_blockcommitments.py',
-    'finalorchardroot.py',
-    'finalsaplingroot.py',
-    'framework.py',
-    'fundrawtransaction.py',
-    'getblocktemplate.py',
-    'getchaintips.py',  # TODO: zebra missing getchaintips RPC
-    'getrawtransaction_insight.py',
-    'httpbasics.py',
-    'invalidblockrequest.py',
-    'invalidtxrequest.py',
-    'key_import_export.py',
-    'keypool.py',
-    'listtransactions.py',
-    'mempool_limit.py',
-    'mempool_reorg.py',
-    'mempool_resurrect_test.py',
-    'mempool_spendcoinbase.py',
-    'mempool_tx_expiry.py',
-    'mergetoaddress_mixednotes.py',
-    'merkle_blocks.py',
-    'mining_shielded_coinbase.py',
-    'multi_rpc.py',
-    'nodehandling.py',  # TODO: zebra missing setban/listbanned/disconnectnode
-    'orchard_reorg.py',
-    'p2p-fullblocktest.py',
-    'p2p_node_bloom.py',
-    'p2p_nu_peer_management.py',
-    'p2p_txexpiringsoon.py',
-    'p2p_txexpiry_dos.py',
-    'post_heartwood_rollback.py',
-    'prioritisetransaction.py',
-    'proxy_test.py',
-    'rawtransactions.py',
-    'regtest_signrawtransaction.py',
-    'remove_sprout_shielding.py',
-    'reorg_limit.py',  # TODO: zebra reorg/sync differs (node ignores longer competing chain on reconnect)
-    'rest.py',
-    'rewind_index.py',
-    'sapling_rewind_check.py',
-    'shorter_block_times.py',
-    'show_help.py',
-    'signrawtransaction_offline.py',
-    'signrawtransactions.py',
-    'spentindex.py',
-    'sprout_sapling_migration.py',
-    'threeofthreerestore.py',
-    'timestampindex.py',
-    'turnstile.py',
-    'txn_doublespend.py',
-    'upgrade_golden.py',
-    'wallet_1941.py',
-    'wallet_accounts.py',
-    'wallet_addresses.py',
-    'wallet_anchorfork.py',
-    'wallet_broadcast.py',
-    'wallet_changeaddresses.py',
-    'wallet_changeindicator.py',
-    'wallet_deprecation.py',
-    'wallet_doublespend.py',
-    'wallet_golden_5_6_0.py',
-    'wallet_import_export.py',
-    'wallet_isfromme.py',
-    'wallet_listnotes.py',
-    'wallet_listreceived.py',
-    'wallet_listunspent.py',
-    'wallet_nullifiers.py',
-    'wallet_orchard.py',
-    'wallet_orchard_change.py',
-    'wallet_orchard_init.py',
-    'wallet_orchard_persistence.py',
-    'wallet_orchard_reindex.py',
-    'wallet_overwintertx.py',
-    'wallet_parsing_amounts.py',
-    'wallet_persistence.py',
-    'wallet_sapling.py',
-    'wallet_sendmany_any_taddr.py',
-    'wallet_shieldcoinbase_sapling.py',
-    'wallet_shieldcoinbase_ua_nu5.py',
-    'wallet_shieldcoinbase_ua_sapling.py',
-    'wallet_tarnished_5_6_0.py',
-    'wallet_treestate.py',
-    'wallet_unified_change.py',
-    'wallet_z_sendmany.py',
-    'wallet_z_shieldcoinbase.py',
-    'wallet_z_shieldcoinbase_multi_taddr.py',
-    'wallet_zero_value.py',
-    'wallet_zip317_default.py',
-    'walletbackup.py',
-    'zapwallettxes.py',
-    'zkey_import_export.py',
-    'zmq_test.py',
+    'addressindex.py',  # zallet missing getnewaddress, sendtoaddress, getbalance
+    'bip65-cltv-p2p.py',  # P2P/mininode framework
+    'bipdersig-p2p.py',  # P2P/mininode framework
+    'blockchain.py',  # zebra missing gettxoutsetinfo
+    'coinbase_funding_streams.py',  # zallet missing getnewaddress, z_getnewaddress, z_getbalance
+    'errors.py',  # zebra missing gettxoutsetinfo
+    'feature_logging.py',  # no zcashd regtest/debug.log
+    'feature_walletfile.py',  # zcashd wallet.dat/-wallet
+    'feature_zip221.py',  # pre-NU5 nuparams (zebra hardcodes to height 1)
+    'feature_zip239.py',  # P2P/mininode framework
+    'feature_zip244_blockcommitments.py',  # pre-NU5 nuparams (zebra hardcodes to height 1)
+    'finalorchardroot.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'finalsaplingroot.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'framework.py',  # no zcashd regtest/debug.log
+    'fundrawtransaction.py',  # zallet missing getnewaddress, sendtoaddress, sendmany
+    'getblocktemplate.py',  # zallet missing getnewaddress, sendmany, z_getbalance
+    'getchaintips.py',  # zebra missing getchaintips
+    'getrawtransaction_insight.py',  # zallet missing getnewaddress, sendtoaddress
+    'httpbasics.py',  # RPC basic auth unsupported
+    'invalidblockrequest.py',  # P2P/mininode framework
+    'invalidtxrequest.py',  # P2P/mininode framework
+    'key_import_export.py',  # zallet missing getnewaddress, sendtoaddress, getbalance
+    'keypool.py',  # zallet missing getnewaddress, encryptwallet, keypoolrefill
+    'listtransactions.py',  # zallet missing getnewaddress, sendtoaddress, sendmany
+    'mempool_limit.py',  # zallet missing z_getnewaddress
+    'mempool_nu_activation.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'mempool_packages.py',  # zallet missing getnewaddress
+    'mempool_reorg.py',  # zallet missing getnewaddress
+    'mempool_resurrect_test.py',  # zallet missing getnewaddress, gettransaction
+    'mempool_spendcoinbase.py',  # zallet missing getnewaddress
+    'mempool_tx_expiry.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'mergetoaddress_mixednotes.py',  # zallet missing getnewaddress, z_getnewaddress, z_getbalance
+    'mergetoaddress_sapling.py',  # zallet missing z_getnewaddress
+    'mergetoaddress_ua_nu5.py',  # -anchorconfirmations unsupported
+    'mergetoaddress_ua_sapling.py',  # -anchorconfirmations unsupported
+    'merkle_blocks.py',  # zallet missing getnewaddress, getbalance
+    'mining_shielded_coinbase.py',  # zallet missing getnewaddress, z_getnewaddress, getbalance
+    'multi_rpc.py',  # RPC basic auth unsupported
+    'nodehandling.py',  # zebra missing setban, listbanned, clearbanned
+    'orchard_reorg.py',  # pre-NU5 nuparams (zebra hardcodes to height 1)
+    'p2p-fullblocktest.py',  # P2P/mininode framework
+    'p2p_node_bloom.py',  # P2P/mininode framework
+    'p2p_nu_peer_management.py',  # P2P/mininode framework
+    'p2p_txexpiringsoon.py',  # P2P/mininode framework
+    'p2p_txexpiry_dos.py',  # P2P/mininode framework
+    'post_heartwood_rollback.py',  # pre-NU5 nuparams (zebra hardcodes to height 1)
+    'prioritisetransaction.py',  # zallet missing getnewaddress, sendtoaddress, getbalance
+    'proxy_test.py',  # -proxy/tor unsupported
+    'rawtransactions.py',  # zallet missing getnewaddress, sendtoaddress, getbalance
+    'regtest_signrawtransaction.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'remove_sprout_shielding.py',  # zallet missing getnewaddress, z_getnewaddress, z_getbalance
+    'reorg_limit.py',  # investigate
+    'rest.py',  # zallet missing getnewaddress, sendtoaddress, getbalance
+    'rewind_index.py',  # pre-NU5 nuparams (zebra hardcodes to height 1)
+    'sapling_rewind_check.py',  # pre-NU5 nuparams (zebra hardcodes to height 1)
+    'shorter_block_times.py',  # zallet missing z_getnewaddress
+    'show_help.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'signrawtransaction_offline.py',  # zallet missing getnewaddress, dumpprivkey
+    'signrawtransactions.py',  # zebra missing signrawtransaction
+    'spentindex.py',  # zallet missing getnewaddress, sendtoaddress
+    'sprout_sapling_migration.py',  # zallet missing z_getnewaddress, z_getbalance, z_importkey
+    'threeofthreerestore.py',  # zallet missing getnewaddress, dumpprivkey, importprivkey
+    'timestampindex.py',  # -insightexplorer index, -txindex unsupported
+    'turnstile.py',  # zallet missing z_getnewaddress, z_getbalance
+    'txn_doublespend.py',  # zallet missing getnewaddress, sendtoaddress, getbalance
+    'upgrade_golden.py',  # pre-NU5 nuparams (zebra hardcodes to height 1)
+    'wallet_1941.py',  # zallet missing getnewaddress, z_getnewaddress, z_getbalance
+    'wallet_accounts.py',  # zallet missing z_getnewaddress, z_getbalance, z_getbalanceforaccount
+    'wallet_addresses.py',  # zallet missing getnewaddress, z_getnewaddress, sendmany
+    'wallet_anchorfork.py',  # zallet missing z_getnewaddress, getbalance
+    'wallet_broadcast.py',  # zallet missing getnewaddress, sendtoaddress, getbalance
+    'wallet_changeaddresses.py',  # zallet missing getnewaddress, z_getnewaddress
+    'wallet_changeindicator.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'wallet_deprecation.py',  # zallet missing getnewaddress, z_getnewaddress
+    'wallet_doublespend.py',  # zallet missing z_getbalanceforaccount, gettransaction
+    'wallet_golden_5_6_0.py',  # zallet missing z_getbalanceforaccount
+    'wallet_import_export.py',  # zallet missing getnewaddress, z_getnewaddress, z_exportkey
+    'wallet_isfromme.py',  # zallet missing getnewaddress, z_getnewaddress, getbalance
+    'wallet_listnotes.py',  # zallet missing z_getnewaddress, z_getbalance, z_exportviewingkey
+    'wallet_listreceived.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'wallet_listunspent.py',  # zallet missing getnewaddress, getbalance, z_getbalanceforaccount
+    'wallet_nullifiers.py',  # zallet missing getnewaddress, z_getnewaddress, z_getbalance
+    'wallet_orchard.py',  # zallet missing z_getbalanceforaccount, resendwallettransactions
+    'wallet_orchard_change.py',  # zallet missing z_getbalanceforaccount
+    'wallet_orchard_init.py',  # zallet missing z_getbalanceforaccount, resendwallettransactions
+    'wallet_orchard_persistence.py',  # zallet missing z_getbalanceforaccount
+    'wallet_orchard_reindex.py',  # zallet missing z_getbalanceforaccount
+    'wallet_overwintertx.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'wallet_parsing_amounts.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'wallet_persistence.py',  # zallet missing z_getnewaddress, z_getbalance, z_exportkey
+    'wallet_sapling.py',  # zallet missing getnewaddress, z_getnewaddress, z_getbalance
+    'wallet_sendmany_any_taddr.py',  # zallet missing getnewaddress, z_getnewaddress, getbalance
+    'wallet_shieldcoinbase_sapling.py',  # zallet missing z_getnewaddress, z_getbalance
+    'wallet_shieldcoinbase_ua_nu5.py',  # zallet missing z_getbalance, z_getbalanceforaccount
+    'wallet_shieldcoinbase_ua_sapling.py',  # zallet missing z_getbalance, z_getbalanceforaccount
+    'wallet_shieldingcoinbase.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'wallet_tarnished_5_6_0.py',  # needs ZebraArgs migration (list args)
+    'wallet_treestate.py',  # zallet missing z_getnewaddress, z_getbalance
+    'wallet_unified_change.py',  # zallet missing z_getbalanceforaccount, gettransaction
+    'wallet_z_sendmany.py',  # zallet missing getnewaddress, z_getnewaddress, sendtoaddress
+    'wallet_z_shieldcoinbase.py',  # investigate
+    'wallet_z_shieldcoinbase_multi_taddr.py',  # investigate
+    'wallet_zero_value.py',  # zallet missing getnewaddress
+    'wallet_zip317_default.py',  # zallet missing getnewaddress, z_getnewaddress, z_getbalanceforaccount
+    'walletbackup.py',  # zallet missing getnewaddress, sendtoaddress, getbalance
+    'zapwallettxes.py',  # zallet missing getnewaddress, sendtoaddress, getbalance
+    'zkey_import_export.py',  # zallet missing getnewaddress, z_getnewaddress, z_getbalance
+    'zmq_test.py',  # zallet missing getnewaddress, sendtoaddress
 ]
 
 BASE_SCRIPTS= [
