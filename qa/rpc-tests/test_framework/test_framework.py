@@ -24,15 +24,20 @@ from .util import (
     start_nodes,
     start_wallets,
     start_zainos,
+    start_lightwalletds,
     connect_nodes_bi,
     sync_blocks,
     sync_mempools,
     stop_nodes,
     stop_wallets,
     stop_zainos,
+    stop_lightwalletds,
+    stop_zcashd_nodes,
     wait_bitcoinds,
     wait_zainods,
     wait_zallets,
+    wait_lightwalletds,
+    wait_zcashd_nodes,
     enable_coverage,
     check_json_precision,
     PortSeed,
@@ -44,11 +49,15 @@ class BitcoinTestFramework(object):
     def __init__(self):
         self.num_nodes = 4
         self.num_indexers = 0
+        self.num_lightwalletds = 0
         self.num_wallets = 4
+        self.num_zcashd_nodes = 0
         self.cache_behavior = 'current'
         self.nodes = None
         self.zainos = None
+        self.lwds = None
         self.wallets = None
+        self.zcashd_nodes = None
         self.miner_addresses = None
 
     def run_test(self):
@@ -85,6 +94,9 @@ class BitcoinTestFramework(object):
     def setup_indexers(self):
         return start_zainos(self.num_indexers, self.options.tmpdir)
 
+    def setup_lightwalletds(self):
+        return start_lightwalletds(self.num_lightwalletds, self.options.tmpdir)
+
     def setup_wallets(self):
         return start_wallets(self.num_wallets, self.options.tmpdir)
 
@@ -113,6 +125,7 @@ class BitcoinTestFramework(object):
         self.sync_all(do_mempool_sync)
 
         self.zainos = self.setup_indexers()
+        self.lwds = self.setup_lightwalletds()
         self.wallets = self.setup_wallets()
 
     def split_network(self):
@@ -222,15 +235,23 @@ class BitcoinTestFramework(object):
             stop_wallets(self.wallets)
             wait_zallets()
 
+            print("Stopping lightwalletds")
+            stop_lightwalletds(self.lwds or [])
+            wait_lightwalletds()
+
             print("Stopping indexers")
-            stop_zainos(self.zainos)
+            stop_zainos(self.zainos or [])
             wait_zainods()
+
+            print("Stopping zcashd nodes")
+            stop_zcashd_nodes(self.zcashd_nodes or [])
+            wait_zcashd_nodes()
 
             print("Stopping nodes")
             stop_nodes(self.nodes)
             wait_bitcoinds()
         else:
-            print("Note: zebrads, zainods, and zallets were not stopped and may still be running")
+            print("Note: zebrads, zainods, lightwalletds, zallets, and zcashd nodes were not stopped and may still be running")
 
         if not self.options.nocleanup and not self.options.noshutdown:
             print("Cleaning up")

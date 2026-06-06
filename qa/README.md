@@ -4,23 +4,14 @@ multiple tests from the [rpc-tests](/rpc-tests/) folder.
 Test dependencies
 =================
 
-Before running the tests, the following must be installed.
+Before running the tests, install the Python dependencies with `uv`:
 
-Unix
-----
-
-The `zmq`, `toml` and `base58` Python libraries are required. On Ubuntu or Debian-based
-distributions they can be installed via:
-```
-sudo apt-get install python3-zmq python3-base58
+```bash
+uv sync
 ```
 
-OS X
-------
-
-```
-pip3 install pyzmq base58 toml
-```
+See the [`uv` installation instructions](https://docs.astral.sh/uv/getting-started/installation/)
+if it is not already installed.
 
 Setup
 =====
@@ -40,15 +31,15 @@ Running tests locally
 
 You can run any single test by calling
 
-    ./qa/pull-tester/rpc-tests.py <testname1>
+    uv run ./qa/pull-tester/rpc-tests.py <testname1>
 
 Or you can run any combination of tests by calling
 
-    ./qa/pull-tester/rpc-tests.py <testname1> <testname2> <testname3> ...
+    uv run ./qa/pull-tester/rpc-tests.py <testname1> <testname2> <testname3> ...
 
 Run the regression test suite with
 
-    ./qa/pull-tester/rpc-tests.py
+    uv run ./qa/pull-tester/rpc-tests.py
 
 By default, tests will be run in parallel. To specify how many jobs to run,
 append `--jobs=n` (default n=4).
@@ -70,13 +61,13 @@ Possible options, which apply to each individual test run:
 ```
 
 If you set the environment variable `PYTHON_DEBUG=1` you will get some debug
-output (example: `PYTHON_DEBUG=1 qa/pull-tester/rpc-tests.py wallet`).
+output (example: `PYTHON_DEBUG=1 uv run ./qa/pull-tester/rpc-tests.py wallet`).
 
 To get real-time output during a test you can run it using the
-`python3` binary such as:
+`uv run python3` such as:
 
 ```
-python3 qa/rpc-tests/wallet.py
+uv run python3 qa/rpc-tests/wallet.py
 ```
 
 A 200-block -regtest blockchain and wallets for four nodes

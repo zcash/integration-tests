@@ -63,6 +63,9 @@ def zaino_binary():
 def zallet_binary():
     return os.getenv("ZALLET", os.path.join("src", "zallet"))
 
+def lightwalletd_binary():
+    return os.getenv("LIGHTWALLETD", os.path.join("src", "lightwalletd"))
+
 def zebrad_config(datadir):
     base_location = os.path.join('qa', 'defaults', 'zebrad', 'config.toml')
     new_location = os.path.join(datadir, "config.toml")
@@ -138,6 +141,9 @@ def zaino_rpc_port(n):
 
 def zaino_grpc_port(n):
     return PORT_MIN + (PORT_RANGE * 5) + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
+
+def lwd_grpc_port(n):
+    return PORT_MIN + (PORT_RANGE * 6) + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
 
 def check_json_precision():
     """Make sure json library being used does not lose precision converting ZEC values"""
@@ -491,7 +497,10 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
             # Copy in per-node wallet data
             wallet_tgz_filename = os.path.join(cache_path, "node"+str(i)+"_wallet.tar.gz")
             if not os.path.exists(wallet_tgz_filename):
-                raise Exception('Wallet cache missing for cache behavior %s, node %d' % (cache_behavior, i))
+                raise Exception(
+                    'Wallet cache missing for cache behavior %s, node %d'
+                    % (cache_behavior, i)
+                )
             with tarfile.open(wallet_tgz_filename, "r:gz") as wallet_tgz_file:
                 tarfile_extractall(wallet_tgz_file, os.path.join(to_dir, "wallet.dat"))
 
@@ -560,23 +569,27 @@ def persist_node_caches(tmpdir, cache_behavior, num_nodes):
         node_path = os.path.join(tmpdir, 'node' + str(i), 'regtest')
 
         # Clean up the files that we don't want to persist
-        os.remove(os.path.join(node_path, 'debug.log'))
-        os.remove(os.path.join(node_path, 'db.log'))
-        os.remove(os.path.join(node_path, 'peers.dat'))
+        for filename in ('debug.log', 'db.log', 'peers.dat'):
+            path = os.path.join(node_path, filename)
+            if os.path.exists(path):
+                os.remove(path)
 
         # Persist the wallet file for the node to the cache
+        wallet_path = os.path.join(node_path, 'wallet.dat')
         wallet_tgz_filename = os.path.join(cache_path, 'node' + str(i) + '_wallet.tar.gz')
-        with tarfile.open(wallet_tgz_filename, "w:gz") as wallet_tgz_file:
-            wallet_tgz_file.add(os.path.join(node_path, 'wallet.dat'), arcname="")
+        if os.path.exists(wallet_path):
+            with tarfile.open(wallet_tgz_filename, "w:gz") as wallet_tgz_file:
+                wallet_tgz_file.add(wallet_path, arcname="")
 
         # Persist the chain data and cache config just once; it will be reused
         # for all of the nodes when loading from the cache.
         if i == 0:
             # Move the wallet.dat file out of the way so that it doesn't
             # pollute the chain cache tarfile
-            shutil.move(
-                    os.path.join(node_path, 'wallet.dat'),
-                    os.path.join(tmpdir, 'wallet.dat.0'))
+            if os.path.exists(wallet_path):
+                shutil.move(
+                        wallet_path,
+                        os.path.join(tmpdir, 'wallet.dat.0'))
 
             # Store the current time so that we can correctly set the clock
             # offset when restoring from the cache.
@@ -592,9 +605,11 @@ def persist_node_caches(tmpdir, cache_behavior, num_nodes):
                 chain_cache_file.add(node_path, arcname="")
 
             # Move the wallet file back into place
-            shutil.move(
-                    os.path.join(tmpdir, 'wallet.dat.0'),
-                    os.path.join(node_path, 'wallet.dat'))
+            wallet_tmp = os.path.join(tmpdir, 'wallet.dat.0')
+            if os.path.exists(wallet_tmp):
+                shutil.move(
+                        wallet_tmp,
+                        wallet_path)
 
 
 def _rpchost_to_args(rpchost):
@@ -1199,7 +1214,8 @@ def update_zainod_conf(datadir, rpc_port, indexer_port, zaino_rpc_port, zaino_gr
         json_rpc_listen_address='127.0.0.1:'+str(zaino_rpc_port),
         grpc_listen_address='127.0.0.1:'+str(zaino_grpc_port),
         validator_grpc_listen_address='127.0.0.1:'+str(indexer_port),
-        validator_jsonrpc_listen_address='127.0.0.1:'+str(rpc_port)
+        validator_jsonrpc_listen_address='127.0.0.1:'+str(rpc_port),
+        storage_database_path=os.path.join(datadir, 'db'),
     )
 
     config_file = zaino_config.update(config_file)
@@ -1223,3 +1239,242 @@ def wait_zainods():
             pass
         wait_or_kill(zainod)
     zainod_processes.clear()
+
+
+# Lightwalletd utilities
+
+lwd_processes = {}
+
+def write_lwd_conf(datadir, node_rpc_port):
+    """Write a minimal zcash.conf for lightwalletd to connect to a Zebrad node."""
+    conf_path = os.path.join(datadir, "zcash.conf")
+    with open(conf_path, "w", encoding="utf8") as f:
+        f.write("regtest=1\n")
+        f.write("rpcbind=127.0.0.1\n")
+        f.write(f"rpcport={node_rpc_port}\n")
+        f.write("rpcuser=test\n")
+        f.write("rpcpassword=test\n")
+    return conf_path
+
+def start_lightwalletds(num_nodes, dirname, binary=None):
+    """Start multiple lightwalletd instances, return list of gRPC port numbers."""
+    if binary is None:
+        binary = [None] * num_nodes
+    ports = []
+    try:
+        for i in range(num_nodes):
+            ports.append(start_lightwalletd(i, dirname, binary=binary[i]))
+    except:
+        stop_lightwalletds(ports)
+        raise
+    return ports
+
+def start_lightwalletd(i, dirname, binary=None, stderr=None):
+    """Start a lightwalletd instance and return its gRPC port number."""
+    datadir = os.path.join(dirname, "lwd" + str(i))
+    os.makedirs(datadir, exist_ok=True)
+
+    if binary is None:
+        binary = lightwalletd_binary()
+
+    conf = write_lwd_conf(datadir, rpc_port(i))
+    grpc_addr = f"127.0.0.1:{lwd_grpc_port(i)}"
+
+    args = [
+        binary,
+        "--grpc-bind-addr", grpc_addr,
+        "--no-tls-very-insecure",
+        "--zcash-conf-path", conf,
+        "--data-dir", datadir,
+        "--log-file", os.path.join(datadir, "lwd.log"),
+        "--log-level", "10",
+    ]
+
+    if os.getenv("PYTHON_DEBUG", ""):
+        print(f"start_lightwalletd: starting lightwalletd {i}")
+
+    lwd_processes[i] = subprocess.Popen(args, stderr=stderr)
+    wait_for_lwd_start(lwd_processes[i], lwd_grpc_port(i), i)
+
+    if os.getenv("PYTHON_DEBUG", ""):
+        print(f"start_lightwalletd: lightwalletd {i} ready on {grpc_addr}")
+
+    return lwd_grpc_port(i)
+
+def wait_for_lwd_start(process, port, i):
+    """Poll lightwalletd via GetLightdInfo until it responds or exits."""
+    import grpc
+    from test_framework.proto import service_pb2, service_pb2_grpc
+
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        if process.poll() is not None:
+            raise Exception(
+                f"lightwalletd {i} exited with status {process.returncode} during initialization"
+            )
+        try:
+            with grpc.insecure_channel(f"127.0.0.1:{port}") as ch:
+                stub = service_pb2_grpc.CompactTxStreamerStub(ch)
+                stub.GetLightdInfo(service_pb2.Empty(), timeout=2)
+            return
+        except grpc.RpcError:
+            pass
+        time.sleep(0.5)
+    raise Exception(f"lightwalletd {i} did not become ready within 60 seconds")
+
+def stop_lightwalletds(lwds):
+    del lwds[:]
+
+def wait_lightwalletds():
+    for proc in list(lwd_processes.values()):
+        try:
+            proc.terminate()
+            proc.wait(timeout=10)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    lwd_processes.clear()
+
+
+# zcashd utilities
+# Used for tests that need a full node with wallet to generate shielded transactions.
+
+# AuthServiceProxy defines its own JSONRPCException; import it here so
+# wait_for_zcashd_start can catch the warmup error (-28) raised by the proxy.
+from .authproxy import JSONRPCException as _AuthJSONRPCException
+
+zcashd_node_processes = {}
+
+ZCASHD_RPC_USER = "zcashrpc"
+ZCASHD_RPC_PASSWORD = "zcashrpc"
+
+
+def zcashd_node_binary():
+    return os.getenv("ZCASHD", os.path.join("src", "zcashd"))
+
+
+def zcashd_p2p_port(n):
+    assert n <= MAX_NODES
+    return PORT_MIN + (PORT_RANGE * 7) + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
+
+
+def zcashd_rpc_port(n):
+    return PORT_MIN + (PORT_RANGE * 8) + n + (MAX_NODES * PortSeed.n) % (PORT_RANGE - 1 - MAX_NODES)
+
+
+def zcashd_rpc_url(i):
+    return "http://%s:%s@127.0.0.1:%d" % (ZCASHD_RPC_USER, ZCASHD_RPC_PASSWORD, zcashd_rpc_port(i))
+
+
+def write_zcash_conf(datadir, node_rpc_port, node_p2p_port, miner_address=None, activation_heights=None):
+    """Write a zcash.conf for a standalone regtest zcashd node.
+
+    By default all network upgrades are activated from block 1 to preserve the
+    historical behavior of the standalone helper. Tests can override the
+    activation heights to match a validator's regtest configuration.
+
+    miner_address, if given, sets the coinbase recipient for `generate` calls.
+    setmineraddress has been removed from this zcashd version, so the address
+    must be set via the config file; restart zcashd between mining phases.
+    """
+    os.makedirs(datadir, exist_ok=True)
+    conf_path = os.path.join(datadir, "zcash.conf")
+    with open(conf_path, "w", encoding="utf8") as f:
+        f.write("regtest=1\n")
+        f.write("port=%d\n" % node_p2p_port)
+        f.write("rpcbind=127.0.0.1\n")
+        f.write("rpcport=%d\n" % node_rpc_port)
+        f.write("rpcuser=%s\n" % ZCASHD_RPC_USER)
+        f.write("rpcpassword=%s\n" % ZCASHD_RPC_PASSWORD)
+        if miner_address is not None:
+            f.write("mineraddress=%s\n" % miner_address)
+            f.write("minetolocalwallet=0\n")
+        if activation_heights is None:
+            activation_heights = {
+                '5ba81b19': 1,  # Overwinter
+                '76b809bb': 1,  # Sapling
+                '2bb40e60': 1,  # Blossom
+                'f5b9230b': 1,  # Heartwood
+                'e9ff75a6': 1,  # Canopy
+                'c2d6d0b4': 1,  # NU5
+                'c8e71055': 1,  # NU6
+            }
+        for branch_id, height in activation_heights.items():
+            f.write("nuparams=%s:%d\n" % (branch_id, height))
+        # Re-enable the deprecated getnewaddress RPC used to obtain a t-address
+        # for transparent coinbase mining.
+        f.write("allowdeprecated=getnewaddress\n")
+        f.write("allowdeprecated=z_getnewaddress\n")
+        f.write("regtestwalletsetbestchaineveryblock=1\n")
+        f.write("i-am-aware-zcashd-will-be-replaced-by-zebrad-and-zallet-in-2025=1\n")
+    return conf_path
+
+
+def start_zcashd_node(i, dirname, miner_address=None, activation_heights=None, binary=None, stderr=None):
+    """Start a standalone regtest zcashd node and return an RPC proxy."""
+    if binary is None:
+        binary = zcashd_node_binary()
+    datadir = os.path.join(dirname, "zcashd" + str(i))
+    conf = write_zcash_conf(
+        datadir,
+        zcashd_rpc_port(i),
+        zcashd_p2p_port(i),
+        miner_address=miner_address,
+        activation_heights=activation_heights,
+    )
+    args = [binary, "-conf=" + conf, "-datadir=" + datadir]
+    zcashd_node_processes[i] = subprocess.Popen(args, stderr=stderr)
+    url = zcashd_rpc_url(i)
+    wait_for_zcashd_start(zcashd_node_processes[i], url, i)
+    if os.getenv("PYTHON_DEBUG", ""):
+        print("start_zcashd_node: zcashd %d ready, pid %d" % (i, zcashd_node_processes[i].pid))
+    return get_rpc_auth_proxy(url, i)
+
+
+def stop_zcashd_node(i, node):
+    """Stop zcashd node i via RPC and wait for the process to exit."""
+    try:
+        node.stop()
+    except (_AuthJSONRPCException, http.client.CannotSendRequest):
+        pass
+    if i in zcashd_node_processes:
+        zcashd_node_processes[i].wait()
+        del zcashd_node_processes[i]
+
+
+def wait_for_zcashd_start(process, url, i):
+    """Poll zcashd RPC until ready or until the process exits."""
+    while True:
+        if process.poll() is not None:
+            raise Exception(
+                "zcashd node %d exited with status %d during initialization"
+                % (i, process.returncode)
+            )
+        try:
+            rpc = get_rpc_auth_proxy(url, i)
+            rpc.getblockcount()
+            break
+        except IOError as e:
+            if e.errno != errno.ECONNREFUSED:
+                raise
+        except _AuthJSONRPCException as e:
+            if e.error['code'] != -28:
+                raise
+        time.sleep(0.25)
+
+
+def stop_zcashd_nodes(nodes):
+    for node in nodes:
+        try:
+            node.stop()
+        except (http.client.CannotSendRequest, _AuthJSONRPCException) as e:
+            print("WARN: Unable to stop zcashd node: " + repr(e))
+    del nodes[:]
+
+
+def wait_zcashd_nodes():
+    for proc in list(zcashd_node_processes.values()):
+        proc.wait()
+    zcashd_node_processes.clear()
