@@ -12,6 +12,7 @@ class ZebraArgs:
     activation_heights: dict[str, int] = field(default_factory=dict)
     funding_streams: list[dict[str, Any]] = field(default_factory=list)
     lockbox_disbursements: list[dict[str, Any]] = field(default_factory=list)
+    checkpoints: Any = None
 
     def __add__(self, other):
         if other is None:
@@ -26,6 +27,8 @@ class ZebraArgs:
             self.funding_streams = other.funding_streams
         if other.lockbox_disbursements != defaults.lockbox_disbursements:
             self.lockbox_disbursements = other.lockbox_disbursements
+        if other.checkpoints != defaults.checkpoints:
+            self.checkpoints = other.checkpoints
         return self
 
 
@@ -50,6 +53,10 @@ class ZebraConfig:
         config_file['network']['testnet_parameters']['funding_streams'] = extra_args.funding_streams
         config_file['network']['testnet_parameters']['activation_heights'] = extra_args.activation_heights
         config_file['network']['testnet_parameters']['lockbox_disbursements'] = extra_args.lockbox_disbursements
+        if extra_args.checkpoints is not None:
+            config_file['network']['testnet_parameters']['checkpoints'] = extra_args.checkpoints
+        else:
+            config_file['network']['testnet_parameters'].pop('checkpoints', None)
 
         return config_file
 
@@ -59,6 +66,7 @@ class ZainoConfig:
     grpc_listen_address: str = "127.0.0.1:0"
     validator_grpc_listen_address: str = "127.0.0.1:0"
     validator_jsonrpc_listen_address: str = "127.0.0.1:0"
+    storage_database_path: str | None = None
 
     def update(self, config_file):
         # Base config updates
@@ -66,5 +74,9 @@ class ZainoConfig:
         config_file['grpc_settings']['grpc_listen_address'] = self.grpc_listen_address
         config_file['validator_settings']['validator_grpc_listen_address'] = self.validator_grpc_listen_address
         config_file['validator_settings']['validator_jsonrpc_listen_address'] = self.validator_jsonrpc_listen_address
+        if self.storage_database_path is not None:
+            config_file.setdefault('storage', {})
+            config_file['storage'].setdefault('database', {})
+            config_file['storage']['database']['path'] = self.storage_database_path
 
         return config_file

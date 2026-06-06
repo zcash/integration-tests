@@ -7,6 +7,9 @@ Zcash ecosystem. The following tests are provided:
 
 - Functional tests in Python of [`zebrad`], [`zainod`], and [`zallet`], using
   regtest mode and primarily their JSON-RPC interfaces.
+- gRPC parity tests that run [`zainod`] and [`lightwalletd`] side-by-side
+  against the same [`zebrad`] node and compare their
+  [lightwallet-protocol] gRPC responses.
 
 The functional tests and CI workflows were originally part of the [`zcashd`]
 codebase, with the Python test framework (and some of the tests) inherited from
@@ -15,6 +18,8 @@ codebase, with the Python test framework (and some of the tests) inherited from
 [`zebrad`]: https://github.com/ZcashFoundation/zebra
 [`zainod`]: https://github.com/zingolabs/zaino
 [`zallet`]: https://github.com/zcash/wallet
+[`lightwalletd`]: https://github.com/zcash/lightwalletd
+[lightwallet-protocol]: https://github.com/zcash/lightwallet-protocol
 [`zcashd`]: https://github.com/zcash/zcash
 [Bitcoin Core]: https://github.com/bitcoin/bitcoin
 <!-- ANCHOR_END: summary -->
@@ -46,6 +51,15 @@ On macOS or other platforms:
 
 See [the README for the functional tests][qa/README.md] for additional usage
 information.
+
+### Running the gRPC parity tests
+
+The gRPC parity tests additionally require the `lightwalletd` binary in `./src/`
+(or set `LIGHTWALLETD=/path/to/lightwalletd`).
+
+```bash
+uv run ./qa/zcash/grpc_comparison_tests.py
+```
 
 ### Writing tests
 
