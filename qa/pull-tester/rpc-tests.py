@@ -113,7 +113,7 @@ DISABLED_SCRIPTS = [
     'rawtransactions.py',
     'regtest_signrawtransaction.py',
     'remove_sprout_shielding.py',
-    'reorg_limit.py',
+    'reorg_limit.py',  # TODO: zebra reorg/sync differs (node ignores longer competing chain on reconnect)
     'rest.py',
     'rewind_index.py',
     'sapling_rewind_check.py',

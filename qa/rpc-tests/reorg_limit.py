@@ -7,6 +7,7 @@
 # Test reorg limit
 #
 
+from test_framework.config import ZebraArgs
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     check_node,
@@ -31,14 +32,21 @@ def check_stopped(i, timeout=10):
 
 class ReorgLimitTest(BitcoinTestFramework):
 
+    def __init__(self):
+        super().__init__()
+        # Node-only reorg test; no wallets needed.
+        self.num_wallets = 0
+
     def setup_nodes(self):
         self.log_stderr = tempfile.SpooledTemporaryFile(max_size=2**16)
 
+        # Activate NU5 at height 1 to match the shared chain cache.
+        args = ZebraArgs(activation_heights={"NU5": 1})
         nodes = []
-        nodes.append(start_node(0, self.options.tmpdir, stderr=self.log_stderr))
-        nodes.append(start_node(1, self.options.tmpdir))
-        nodes.append(start_node(2, self.options.tmpdir))
-        nodes.append(start_node(3, self.options.tmpdir))
+        nodes.append(start_node(0, self.options.tmpdir, args, stderr=self.log_stderr))
+        nodes.append(start_node(1, self.options.tmpdir, args))
+        nodes.append(start_node(2, self.options.tmpdir, args))
+        nodes.append(start_node(3, self.options.tmpdir, args))
 
         return nodes
 
