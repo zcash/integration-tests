@@ -228,3 +228,30 @@ Genuinely no zallet equivalent yet (not just a rename):
 - shielded key import/export: z_importkey, z_exportkey, z_exportviewingkey
 - resendwallettransactions, backupwallet
 - Sprout (deprecated/removed)
+
+## Trial migration outcome (wallet_unified_change.py)
+
+A one-test trial confirmed the "REWRITE-ABLE" group above is not a simple RPC
+rename. Even a test that already uses the modern account API needs a structural
+rewrite before it can run on the Z3 stack:
+
+1. Funding: insert a z_shieldcoinbase step. zallet z_sendmany cannot spend the
+   harness-mined coinbase (see "wallet funding" section); shield it into a
+   shielded address first, then z_sendmany from there.
+2. Account identity: use account_uuid from z_getnewaccount, not the integer
+   index (which is null). Pass the uuid to z_getaddressforaccount and match it
+   in z_getbalances.
+3. Balance asserts: reshape z_getbalanceforaccount's
+   {pools:{sapling:{valueZat}}, minimum_confirmations} to z_getbalances'
+   accounts[].{sapling,orchard}.spendable.valueZat.
+4. Fees: pass null to z_sendmany and assert against the ZIP 317 conventional
+   fee that zallet computes.
+5. Addresses: request explicit shielded receiver types from
+   z_getaddressforaccount to avoid the transparent gap limit.
+6. Wiring: route wallet RPCs to self.wallets[i] (not self.nodes[i]); take the
+   coinbase source from self.miner_addresses[i]; read confirmations via the
+   node's getrawtransaction (zallet has no gettransaction).
+
+The trial was stopped before completing the z_shieldcoinbase funding rewrite;
+wallet_unified_change.py remains disabled. The steps above are the recipe for
+whoever picks the wallet-test migration back up.
