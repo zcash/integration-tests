@@ -138,7 +138,7 @@ DISABLED_SCRIPTS = [
     'wallet_shieldingcoinbase.py',  # no zallet equiv yet: z_exportviewingkey
     'wallet_tarnished_5_6_0.py',  # needs ZebraArgs migration (list args)
     'wallet_treestate.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
-    'wallet_unified_change.py',  # deprecated; z_getbalanceforaccount->z_getbalances, gettransaction->z_viewtransaction
+    'wallet_unified_change.py',  # needs z_shieldcoinbase funding step: zallet z_sendmany cannot spend mined coinbase (have 0)
     'wallet_z_sendmany.py',  # no zallet equiv yet: z_exportviewingkey
     'wallet_z_shieldcoinbase.py',  # investigate
     'wallet_z_shieldcoinbase_multi_taddr.py',  # investigate

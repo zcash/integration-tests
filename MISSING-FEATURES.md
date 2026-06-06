@@ -36,6 +36,41 @@ decodescript, walletpassphrase, walletlock, help, stop.
 Note: wallet encryption exists via walletpassphrase/walletlock (not the
 zcashd `encryptwallet` RPC). No legacy aliases in the compatibility layer.
 
+## wallet funding: z_sendmany cannot spend mined coinbase (affects ~all wallet tests)
+
+Confirmed by migrating wallet_unified_change.py and probing the wallet state.
+The harness mines regtest coinbase to each wallet's miner address, which
+zallet derives as the account's internal (change) transparent address
+(generate_account_and_miner_address.rs: derive_internal_ivk().default_address(),
+birthday height 0). After syncing 200 cached blocks, wallet 0 reports:
+
+  z_getbalances(0) -> account 0 transparent.regular.spendable = 31875000000 zat
+  (~318.75 ZEC), but total.spendable = 0.
+
+A z_sendmany from the miner address with 'AllowRevealedSenders' fails with
+"Insufficient balance (have 0, need ...)". So the mined coinbase is visible in
+the transparent balance breakdown but is not spendable through z_sendmany. The
+canonical path is z_shieldcoinbase (which zallet implements) to shield coinbase
+into a shielded address first, then z_sendmany from there.
+
+Consequence: migrating any wallet test is not a simple RPC rename. Each test
+that funds accounts from coinbase needs an added z_shieldcoinbase funding step
+plus the account-model rewrite (account_uuid instead of integer index,
+z_getbalances reshape, null fee). Other zallet API specifics found while
+migrating wallet_unified_change.py:
+
+- z_getnewaccount requires an account_name argument (zcashd took none).
+- z_getnewaccount returns {account_uuid, account: null}; key everything by
+  account_uuid (the ZIP 32 index is not populated). z_getaddressforaccount and
+  z_getbalances both use account_uuid.
+- z_sendmany rejects an explicit fee ("the fee field must be null"); it always
+  computes the ZIP 317 fee internally. Pass null and assert against the
+  ZIP 317 conventional fee.
+- z_getaddressforaccount with default receiver types tries to derive a
+  transparent receiver and hits the transparent gap limit ("index 10") for a
+  fresh account with no transparent funds; request explicit shielded receiver
+  types (e.g. ['sapling','orchard']) instead.
+
 ## zebra: missing node RPCs
 
 - gettxoutsetinfo - blockchain.py, errors.py
