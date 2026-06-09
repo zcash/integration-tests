@@ -7,7 +7,7 @@
   "activation_height": 850,
   "phase_start_height": 850,
   "phase_end_height": 999,
-  "timestamp": "2026-04-10T19:28:20.242477+00:00",
+  "timestamp": "2026-06-09T13:18:48.786132+00:00",
   "nuparams": {
     "5ba81b19": 200,
     "76b809bb": 350,
@@ -18,22 +18,22 @@
   "addresses": {
     "transparent": [
       {
-        "address": "tmSddssjwtr5Zfz5vzNNnjLd6zeH4qHo25W",
+        "address": "tmQgNVg1P6RU5Q1tXWDHg89LwEWYkgbTGrW",
         "type": "p2pkh"
       },
       {
-        "address": "tmDimdasE3DF7oGSHVcJYkmYQrdLEvzPdTa",
+        "address": "tmHv1QFRTs6Tzcm7DmnWQdQg6JoyBcB7jAN",
         "type": "p2pkh"
       }
     ],
     "sprout": [],
     "sapling": [
       {
-        "address": "zregtestsapling1ps0fdytxwwyyz28s7yf7d7hsr5zjnv25tlljql4gkhn633ae9u89fjqtgq74qz0ae0pz6mzguxc",
+        "address": "zregtestsapling1u9dyz6u25wwlmtmh470f2wyaawpmxg7xm4weghyvjayhr3gg3j25gane9t7z89kuenyhqp2fx9j",
         "type": "sapling"
       },
       {
-        "address": "zregtestsapling1pu5np36kpe5djnllrhyvr0a65fzktnv92c6qzkajfzn2463740ttw20l2qnv94mdtq5rurfwkgu",
+        "address": "zregtestsapling1st2fww6qkk5wqfkjld5cqhe02405ee28np8zzzuq3ucv7xqz8uj0g3v9sgy5wspu0vfrqvv7uhl",
         "type": "sapling"
       }
     ],
@@ -43,14 +43,14 @@
   "external_addresses": {
     "transparent": [
       {
-        "address": "tmCPj3FEyzKwdEdR3765c6MEH1nPGyXXx8V",
+        "address": "tmLoJM4qm9wV9gWrXQcme7DvbC6KhnurtYq",
         "type": "p2pkh"
       }
     ],
     "sprout": [],
     "sapling": [
       {
-        "address": "zregtestsapling10ucdhp0a7q6qvh4aeh8ra0wjcr6a4h6l8ung3t037dxr34g4t6p2f2mfkruguelg4zpwgrq8nmu",
+        "address": "zregtestsapling1gfgv4c94mue9aaqpdmueuh5r0hx9scsrt9gxlqvm4ftq0kscxmkepwwrhmlgdyjh873r5du6j4y",
         "type": "sapling"
       }
     ],
@@ -61,94 +61,70 @@
     "sprout": [],
     "sapling": [
       {
-        "address": "zregtestsapling1ps0fdytxwwyyz28s7yf7d7hsr5zjnv25tlljql4gkhn633ae9u89fjqtgq74qz0ae0pz6mzguxc",
-        "viewing_key": "zxviewregtestsapling1qv39c2raqcqqpqqe4u6n30kfjtl4y42lg5r7k96862cy43784xajk06yu5j2m7kkqqzhv7c0ur282t4jj54nl5u5f2tlyylvnfd3u6qj8yfttctatteg4w6u43432ct6vkp6pwuae5m0k653clzejm5ygl8fxf82f64nzf3przpn7x9maez50qsxwkvfc6vysk884tj5v0pg37z7f86jkwf5dz6n7add2xtuvzlzgltw95c4d3csxaf2pzuqs4sn33xzf47axvrm3ec5wvg6p"
+        "address": "zregtestsapling1u9dyz6u25wwlmtmh470f2wyaawpmxg7xm4weghyvjayhr3gg3j25gane9t7z89kuenyhqp2fx9j",
+        "viewing_key": "zxviewregtestsapling1qv8mp7xgpgqqpqq8xsfyslu9645laxg53d4qsmyvz3qcz9z5hpn8v5r5wj927lhh9r429mzmq7n4s2h4rt6vhz97sanlsxuhz7k5jn9yzch9lxyj9h7ptf5fcmum2q49pd5ejf27gh40kz5xxjecxpvm0rt5kv87s0g7cj0snddrxxz02s0us7y88jzk35q2vnyrw0whxr40y9xgz5rvem00q0hmncsv55u45swe0shq75vu3jdutuksktkkf3dqryg0zcna3zpxwwg0endps"
       },
       {
-        "address": "zregtestsapling1pu5np36kpe5djnllrhyvr0a65fzktnv92c6qzkajfzn2463740ttw20l2qnv94mdtq5rurfwkgu",
-        "viewing_key": "zxviewregtestsapling1qv39c2raquqqpq8krnuqj98d08vu33k40e5mh2f7pe7u4c6lj4thk6l4waf3m6dvpt4kya3rp473cczg0rd690dh9na4v2fgral2gpay76j85035s0ta7xcph3wr2pjyev8c2mtt2hqd4pu2y26dfve8zap3ha8csvslvtrfzfuw27ayhqqeem33qwej3t8r7dzrq0e4kz5dsnxz0v2d2c4dj689mtqsevts4ejys7fe9euw76475gxl24jay3dhw4ecng6qtkn8wugul2g30"
+        "address": "zregtestsapling1st2fww6qkk5wqfkjld5cqhe02405ee28np8zzzuq3ucv7xqz8uj0g3v9sgy5wspu0vfrqvv7uhl",
+        "viewing_key": "zxviewregtestsapling1qv8mp7xgpvqqpqqehfucvlr50rmwgwk6cw6nd5ak5x6enhc5h9q38gnejmmfzlpljhmqjjhy7xnsl6w9dpkh6x5nkmn8fnp6jq4x648umr24229wpjyw3sawtfa9yr5petj5sr6v425pcessf056xn4h6p4s6jp36gm8r7szqxcweud6cyeevza9zn8jes0pmxezy8zrwwc89uq9h0hr7ylqdm5snkkz5xn4lm4jkhgu3qjv9w8werqsh4grau7v4jhyscqt2zp4vecdxm7te"
       }
     ],
     "orchard": []
   },
   "transactions": [
     {
-      "txid": "ee7807fee0ff3d515be627f2b2d904c99afcb38d63f617d818de6b41dbc1af98",
+      "txid": "b4d2897804fad95dd7030fdb2d651f3d4b127ed9862e596eef162334264fd59c",
       "mined_height": 950,
       "type": "z_shieldcoinbase",
       "from_pool": "transparent",
       "to_pool": "sapling",
       "from_address": "*",
-      "to_address": "zregtestsapling1ps0fdytxwwyyz28s7yf7d7hsr5zjnv25tlljql4gkhn633ae9u89fjqtgq74qz0ae0pz6mzguxc",
-      "amount_zec": "7.81250244",
+      "to_address": "zregtestsapling1u9dyz6u25wwlmtmh470f2wyaawpmxg7xm4weghyvjayhr3gg3j25gane9t7z89kuenyhqp2fx9j",
+      "amount_zec": "7.8125",
       "fee_zec": "0.0001",
       "description": "Shield 20 coinbase UTXOs to sapling"
     },
     {
-      "txid": "487014f02335874b5d0aa343bdfd815a217e88819abd766f2110ab29661f2d0b",
-      "mined_height": 958,
-      "type": "z_sendmany",
-      "from_pool": "sapling",
-      "to_pool": "sapling",
-      "from_address": "zregtestsapling1ps0fdytxwwyyz28s7yf7d7hsr5zjnv25tlljql4gkhn633ae9u89fjqtgq74qz0ae0pz6mzguxc",
-      "to_address": "zregtestsapling1pu5np36kpe5djnllrhyvr0a65fzktnv92c6qzkajfzn2463740ttw20l2qnv94mdtq5rurfwkgu",
-      "amount_zec": "0.1",
-      "fee_zec": "0.0001",
-      "description": "sapling -> sapling: 0.1 ZEC"
-    },
-    {
-      "txid": "a003576f7f5b8d0e2e1bb458481d4569999916f738fd519ab2c3cf16cab4659b",
-      "mined_height": 961,
-      "type": "z_sendmany",
+      "txid": "39ba0cb2d58891954c88c77536500932463e6d287202399fcee4e56a79ac33f2",
+      "mined_height": 956,
+      "type": "sendtoaddress",
       "from_pool": "transparent",
-      "to_pool": "sapling",
-      "from_address": "tmSddssjwtr5Zfz5vzNNnjLd6zeH4qHo25W",
-      "to_address": "zregtestsapling1ps0fdytxwwyyz28s7yf7d7hsr5zjnv25tlljql4gkhn633ae9u89fjqtgq74qz0ae0pz6mzguxc",
-      "amount_zec": "0.08",
-      "fee_zec": "0.0001",
-      "description": "transparent -> sapling: 0.08 ZEC"
-    },
-    {
-      "txid": "e96cea7b450f0fad59cd5b02b69067ba93bf5f13493566c4b45eaaa575ceb15c",
-      "mined_height": 962,
-      "type": "z_sendmany",
-      "from_pool": "sapling",
       "to_pool": "transparent",
-      "from_address": "zregtestsapling1ps0fdytxwwyyz28s7yf7d7hsr5zjnv25tlljql4gkhn633ae9u89fjqtgq74qz0ae0pz6mzguxc",
-      "to_address": "tmSddssjwtr5Zfz5vzNNnjLd6zeH4qHo25W",
-      "amount_zec": "0.08",
+      "from_address": "tmQgNVg1P6RU5Q1tXWDHg89LwEWYkgbTGrW",
+      "to_address": "tmHv1QFRTs6Tzcm7DmnWQdQg6JoyBcB7jAN",
+      "amount_zec": "0.2",
       "fee_zec": "0.0001",
-      "description": "sapling -> transparent: 0.08 ZEC"
+      "description": "transparent -> transparent: 0.2 ZEC"
     },
     {
-      "txid": "7eeed8e8a0391689efa63e2a7cbefa51e58bf107f18abfc4524d34564e18cbaa",
-      "mined_height": 965,
+      "txid": "a3a5f54a9e931ebcfde2c964605d7cdea64fd664b186a05fab64358a9e0f4b18",
+      "mined_height": 963,
       "type": "sendtoaddress",
       "from_pool": "transparent",
       "to_pool": "external_transparent",
-      "from_address": "tmSddssjwtr5Zfz5vzNNnjLd6zeH4qHo25W",
-      "to_address": "tmCPj3FEyzKwdEdR3765c6MEH1nPGyXXx8V",
+      "from_address": "tmQgNVg1P6RU5Q1tXWDHg89LwEWYkgbTGrW",
+      "to_address": "tmLoJM4qm9wV9gWrXQcme7DvbC6KhnurtYq",
       "amount_zec": "0.05",
       "fee_zec": "0.0001",
       "description": "External send: transparent to unknown address"
     },
     {
-      "txid": "d81b0b9e7b84a8c26d145cb888323dfe56e7a6e87bc4d9e9d1727318acf8ac80",
-      "mined_height": 968,
+      "txid": "ed0bb20fedb042c45a49b829473302e058d5fac703dbc6ed9641eba67bdf7fc4",
+      "mined_height": 964,
       "type": "z_sendmany",
       "from_pool": "sapling",
       "to_pool": "external_sapling",
-      "from_address": "zregtestsapling1ps0fdytxwwyyz28s7yf7d7hsr5zjnv25tlljql4gkhn633ae9u89fjqtgq74qz0ae0pz6mzguxc",
-      "to_address": "zregtestsapling10ucdhp0a7q6qvh4aeh8ra0wjcr6a4h6l8ung3t037dxr34g4t6p2f2mfkruguelg4zpwgrq8nmu",
+      "from_address": "zregtestsapling1u9dyz6u25wwlmtmh470f2wyaawpmxg7xm4weghyvjayhr3gg3j25gane9t7z89kuenyhqp2fx9j",
+      "to_address": "zregtestsapling1gfgv4c94mue9aaqpdmueuh5r0hx9scsrt9gxlqvm4ftq0kscxmkepwwrhmlgdyjh873r5du6j4y",
       "amount_zec": "0.05",
       "fee_zec": "0.0001",
       "description": "External send: sapling to unknown address"
     }
   ],
   "balances_at_phase_end": {
-    "transparent": "2450.78818225",
-    "sprout": "544.17455373",
-    "sapling": "180.44380470",
+    "transparent": "2674.5620897",
+    "sprout": "208.93170000",
+    "sapling": "239.87525000",
     "orchard": "0"
   },
   "note_counts": {
@@ -156,43 +132,43 @@
     "sapling": 0,
     "orchard": 0
   },
-  "utxo_count": 723,
-  "coinbase_utxo_count": 700,
+  "utxo_count": 761,
+  "coinbase_utxo_count": 741,
   "chain_info": {
     "blocks": 999,
-    "bestblockhash": "013dc7665c418ba280a111c8a0a34542ef8bbadcff7062e1c6c21f9e54bcfdfc",
+    "bestblockhash": "0d089b5dc026b59ecdbdc1e09bb5e1ee034d67b3c3fc8834242297721554a10e",
     "chain": "regtest",
-    "size_on_disk": 497658
+    "size_on_disk": 470526
   },
-  "notes": "Canopy disables Sprout deposits (ZIP 211) and introduces the development fund (ZIP 1014).",
+  "notes": "Canopy disables Sprout deposits (ZIP 211) and introduces the development fund (ZIP 1014). It also changes the note plaintext format for Sapling (ZIP 212).",
   "imported_keys": {
     "transparent_privkey": {
-      "address": "tmBN7ETLZ9hA88XYxhxw4ekVmKgBY4VuxDV",
-      "wif": "cNMUjxqqJaGPmL3fQ62zufKyBHnTzWcjbgFJE23Bz7w7WwuywZj3",
+      "address": "tmEpYNs3vYtnfh8u74Q3DGWb9dYZbRbLs18",
+      "wif": "cTBSuczJZPn9ode3GZXwxJ2EC3iisJT3uCB7DmjNbfHAs26KHkis",
       "label": "imported_privkey_phase5"
     },
     "transparent_watchonly": {
-      "address": "tmDtHZaN4PJnLoMx5wj8f3NguKvqMUGwpA4",
+      "address": "tmSZMcGJgwiqZtNJ8NMjhhzjgeN6ekVPjxE",
       "label": "imported_watchonly_phase5"
     },
     "transparent_p2sh": {
-      "address": "t2H1MwA4KrQZpGmew1BKVKYRLfWtq56nSYm",
-      "redeem_script": "512103213ef94b3325f6647ca0b7adabbf4419b82f74e4576eae5346a921eb990a15d751ae",
+      "address": "t2SC2ThWzT3HjsoamjRMzRiezPi3gsxTzEd",
+      "redeem_script": "5121038073966914e548af1e1e20493b97955d34e250798ecf4404d910841253b3ca5c51ae",
       "label": "imported_p2sh_phase5"
     },
     "transparent_pubkey": {
-      "address": "tmU6F58Y3oQkWRHKbU4GYo4YU6e1P2vVBvk",
-      "pubkey_hex": "03b3a1568a318be811d079341f21d7a334579e23115dc7c59e0ba4290dd5b11a70",
+      "address": "tmHcEmxSfBg14TL3mr4Yd3WXcVarG6e4qD2",
+      "pubkey_hex": "02ba09c110fd6a05a622db64216110bbf257dea415b8d02335a3356217b525de62",
       "label": "imported_pubkey_phase5"
     },
     "sapling_spending": {
-      "address": "zregtestsapling1tag5xkrj6ry2hhdc0kpa74sjz5tcn5veffyggn6qq6jvz8vk9ve46fdtll899zu745nt7cmc4tv",
-      "key": "secret-extended-key-regtest1q04uc7awqyqqpq83d8afmksp8wdzkvv3l7yg576rahkcl28ehdavqdca7n7nrfzd4ezata835fhueu5s3v8sedcv82ykdqljy00qhn39pag7hkst2qts8wv2e2ftzd94y6wzqe2cvlykpen4ktzc4fvvcuj3yqww9s3tjuqzd6hhl3gh9wnz2ses5mg9r59jnmpv4fr59shfxrrl0xvh3zv4ms0ddvccy9t4m7mhpf7dpkuvm5scxqefx5985lfxpkj9uuj2cy7p3ycau7g58",
+      "address": "zregtestsapling1mw4t5k9kc79375tuhzfd9xnp8pptmpu4nkrwh8p3269jxly6z5wt8yz9kqc37jx7cd43vy09waq",
+      "key": "secret-extended-key-regtest1qdqdg3mnqyqqpq808r30jejjfjzhlmrzz4y3wt9dk2fmrgavpz6lak72vard3gfvp04echdt08kll0a2d32wn9h8e0nyjaq25tmk23r5k3l8j2446rzqc3wpxlk6djvsp9el425c0nracqd5rmqn7hgz4fzyhwxcyxxse5cznhunz5sdrz0cm0p55sw4avpeau9gaz3t4uheuywlaqw80c89vmy0ht5l4ulexs898gaer46fk7e8h0wspd04pf8t44ufca22te9jekswyc7e4",
       "label": "imported_sapling_sk_phase5"
     },
     "sapling_viewing": {
-      "address": "zregtestsapling1d3dv7h47gfdg57sdcfparql57jf7qd5pwre6v8q4qmmdtpvya75qwxgpgzewj7kvxasxjudl9dk",
-      "key": "zxviewregtestsapling1q04uc7awqgqqpqrcpuv7vl2j3v0mkmfmqg66v74zhd9e68377084pyevcs90kaewmda9hun9753m2twwmrkz6u6ctwp3252w8cufmngu6eu48l9d8340znpcm89ukq6umadzt6kxq3kzhguygxes07pxau0zrz7krmaa3ukmf9vj7h9eefmxj06znpxgc06e9z2vq84zvrxqpyw3dnyv609hf39haj697qh2eg8vp2hnxnx8s7q0w2c2wuynr4d278c8vvqk72x6v8q6q3tmd",
+      "address": "zregtestsapling1k5gg8zyvq5rw5ac9aglfla0sadedz9zwkrmuckyj2k4pkt0mvds5w70hc2hd6vjg2zu4uw8fjel",
+      "key": "zxviewregtestsapling1qdqdg3mnqgqqpqq2ugdy5wswsklmzj9tkj7xhsfu2jgkphkwqeuqr0s7r9w8szvu7sh5tc7j8zwdfgrdtkmuuaul6g6vv7fw8r2hvtaqu5dsjvu6cf0ntyf3ff88wpx0xvsdgsjdv8yguu88unaq9tssgp6c8clhzcvm6ej937hrgurn63gmke3f7qgs9z8wm05002um68gev4m0ycptsfwpqdpmc68pc63qn7g5l9nfq7y0z9yc9q59fyav3qkgvd87gal08zee65quq6rjr",
       "label": "imported_sapling_vk_phase5"
     }
   }
