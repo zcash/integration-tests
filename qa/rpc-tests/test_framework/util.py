@@ -203,7 +203,6 @@ def initialize_datadir(dirname, n, clock_offset=0):
     datadir = node_dir(dirname, n)
     if not os.path.isdir(datadir):
         os.makedirs(datadir)
-    rpc_u, rpc_p = rpc_auth_pair(n)
     config_rpc_port = rpc_port(n)
     config_p2p_port = p2p_port(n)
     config_indexer_port = indexer_rpc_port(n)
@@ -231,9 +230,6 @@ def update_zebrad_conf(datadir, rpc_port, p2p_port, indexer_port, extra_args=Non
         toml.dump(config_file, f)
 
     return config_path
-
-def rpc_auth_pair(n):
-    return 'rpcuser💻' + str(n), 'rpcpass🔑' + str(n)
 
 def rpc_url(i, rpchost=None):
     host = '127.0.0.1'
