@@ -171,6 +171,7 @@ NEW_SCRIPTS= [
     'feature_nu6_1.py',
     'nuparams.py',
     'getmininginfo.py',
+    'wallet_z_exportviewingkey.py',
 ]
 
 ZMQ_SCRIPTS = [
