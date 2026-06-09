@@ -20,6 +20,7 @@ class ZebraArgs:
     )
     funding_streams: list[dict[str, Any]] = field(default_factory=list)
     lockbox_disbursements: list[dict[str, Any]] = field(default_factory=list)
+    should_allow_unshielded_coinbase_spends: bool | None = None
 
     def __add__(self, other):
         if other is None:
@@ -34,6 +35,8 @@ class ZebraArgs:
             self.funding_streams = other.funding_streams
         if other.lockbox_disbursements != defaults.lockbox_disbursements:
             self.lockbox_disbursements = other.lockbox_disbursements
+        if other.should_allow_unshielded_coinbase_spends != defaults.should_allow_unshielded_coinbase_spends:
+            self.should_allow_unshielded_coinbase_spends = other.should_allow_unshielded_coinbase_spends
         return self
 
 
