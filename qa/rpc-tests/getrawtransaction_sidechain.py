@@ -15,6 +15,7 @@ from test_framework.proxy import JSONRPCException
 class GetRawTransactionSideChainTest(BitcoinTestFramework):
     def __init__(self):
         super().__init__()
+        self.activation_heights = {}
         self.num_nodes = 1
         self.num_wallets = 0
         self.cache_behavior = 'clean'
