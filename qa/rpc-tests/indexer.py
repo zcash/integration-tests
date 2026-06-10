@@ -12,6 +12,7 @@ class IndexerTest (BitcoinTestFramework):
     def __init__(self):
         super().__init__()
         self.cache_behavior = 'clean'
+        self.activation_heights = {}
         self.num_nodes = 1
         self.num_indexers = 1
         self.num_wallets = 0
