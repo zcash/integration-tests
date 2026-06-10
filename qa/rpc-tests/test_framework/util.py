@@ -161,7 +161,7 @@ def hex_str_to_bytes(hex_str):
 def str_to_b64str(string):
     return b64encode(string.encode('utf-8')).decode('ascii')
 
-def sync_blocks(rpc_connections, wait=0.125, timeout=60, allow_different_tips=False):
+def sync_blocks(nodes, wallets=None, wait=0.125, timeout=60, allow_different_tips=False):
     """
     Wait until everybody has the same tip, and has notified
     all internal listeners of them.
@@ -171,31 +171,72 @@ def sync_blocks(rpc_connections, wait=0.125, timeout=60, allow_different_tips=Fa
     """
     while timeout > 0:
         if allow_different_tips:
-            tips = [ x.getblockcount() for x in rpc_connections ]
+            tips = [ x.getblockcount() for x in nodes ]
         else:
-            tips = [ x.getbestblockhash() for x in rpc_connections ]
+            tips = [ x.getbestblockhash() for x in nodes ]
         if tips == [ tips[0] ]*len(tips):
+            if not wallets:
+                return True
             break
         time.sleep(wait)
         timeout -= wait
-    return True
 
-def sync_mempools(rpc_connections, wait=0.5, timeout=60):
+    if wallets:
+        # Now that the block counts are in sync, wait for the internal
+        # notifications to finish. `getwalletstatus` omits `wallet_tip` until
+        # the wallet has a committed tip, so treat its absence as "not synced
+        # yet" and keep polling instead of raising KeyError.
+        while timeout > 0:
+            wallet_status = [ x.getwalletstatus() for x in wallets ]
+            if all('wallet_tip' in w for w in wallet_status):
+                key = 'height' if allow_different_tips else 'blockhash'
+                wallet_node_tips = [ w['node_tip'][key] for w in wallet_status ]
+                wallet_tips = [ w['wallet_tip'][key] for w in wallet_status ]
+                if tips == wallet_node_tips and tips == wallet_tips:
+                    return True
+            time.sleep(wait)
+            timeout -= wait
+
+    print('Node tips:', tips)
+    print('Wallet statuses:', wallet_status)
+    raise AssertionError("Block sync failed")
+
+def sync_mempools(nodes, wallets=None, wait=0.5, timeout=60):
     """
     Wait until everybody has the same transactions in their memory
     pools, and has notified all internal listeners of them
+
+    Returns `True` when all wallets are in synced, or if no wallet is given.
     """
     while timeout > 0:
-        pool = set(rpc_connections[0].getrawmempool())
+        pool = set(nodes[0].getrawmempool())
         num_match = 1
-        for i in range(1, len(rpc_connections)):
-            if set(rpc_connections[i].getrawmempool()) == pool:
+        for i in range(1, len(nodes)):
+            if set(nodes[i].getrawmempool()) == pool:
                 num_match = num_match+1
-        if num_match == len(rpc_connections):
+        if num_match == len(nodes):
+            if not wallets:
+                return True
             break
         time.sleep(wait)
         timeout -= wait
-    return True
+
+    if wallets:
+        # Now that the mempools are in sync, wait for the internal
+        # notifications to finish. `getwalletstatus` omits `wallet_tip` until
+        # the wallet has a committed tip, so treat its absence as "not synced
+        # yet" and keep polling instead of raising KeyError.
+        while timeout > 0:
+            wallet_status = [ x.getwalletstatus() for x in wallets ]
+            if all('wallet_tip' in w for w in wallet_status):
+                tips = [ (w['node_tip']['blockhash'], w['wallet_tip']['blockhash']) for w in wallet_status ]
+                if tips == [ tips[0] ]*len(tips) and tips[0][0] == tips[0][1]:
+                    return True
+            time.sleep(wait)
+            timeout -= wait
+
+    print('Wallet view of tips:', wallet_status)
+    raise AssertionError("Mempool sync failed")
 
 bitcoind_processes = {}
 
@@ -438,10 +479,15 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                 sys.stderr.write("Error connecting to "+rpc_url_wallet(i)+"\n")
                 sys.exit(1)
 
-        # Wait for zallets to synchronize with the nodes
-        # TODO: Use `getwalletstatus` in all sync issues
-        # https://github.com/zcash/wallet/issues/316
-        time.sleep(10)
+        # Wait for zallets to synchronize with the nodes. `getwalletstatus`
+        # omits `wallet_tip` until the wallet has a committed tip.
+        while True:
+            wallet_status = [ x.getwalletstatus() for x in wallets ]
+            if all('wallet_tip' in w for w in wallet_status):
+                tips = [ (w['node_tip']['blockhash'], w['wallet_tip']['blockhash']) for w in wallet_status ]
+                if tips == [ tips[0] ]*len(tips) and tips[0][0] == tips[0][1]:
+                    break
+            time.sleep(0.25)
 
         # Shut them down, and clean up cache directories:
         stop_wallets(wallets)

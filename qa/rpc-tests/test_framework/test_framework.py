@@ -12,7 +12,6 @@ import os
 import sys
 import shutil
 import tempfile
-import time
 import traceback
 
 from .config import ZebraArgs
@@ -131,21 +130,15 @@ class BitcoinTestFramework(object):
 
     def sync_all(self, do_mempool_sync = True):
         if self.is_network_split:
-            sync_blocks(self.nodes[:2])
-            sync_blocks(self.nodes[2:])
+            sync_blocks(self.nodes[:2], None if self.wallets is None else self.wallets[:2])
+            sync_blocks(self.nodes[2:], None if self.wallets is None else self.wallets[2:])
             if do_mempool_sync:
-                sync_mempools(self.nodes[:2])
-                sync_mempools(self.nodes[2:])
+                sync_mempools(self.nodes[:2], None if self.wallets is None else self.wallets[:2])
+                sync_mempools(self.nodes[2:], None if self.wallets is None else self.wallets[2:])
         else:
-            sync_blocks(self.nodes)
+            sync_blocks(self.nodes, self.wallets)
             if do_mempool_sync:
-                sync_mempools(self.nodes)
-
-        # TODO: Sync wallets inside `sync_blocks`
-        # TODO: Use `getwalletstatus` in all sync issues
-        # https://github.com/zcash/wallet/issues/316
-        if self.num_wallets > 0:
-            time.sleep(2)
+                sync_mempools(self.nodes, self.wallets)
 
     def join_network(self):
         """

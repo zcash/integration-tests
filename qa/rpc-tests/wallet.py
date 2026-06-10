@@ -5,7 +5,6 @@
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #from decimal import Decimal
-import time
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, assert_true
@@ -26,6 +25,9 @@ class WalletTest (BitcoinTestFramework):
         node_balance = self.nodes[0].getaddressbalance(transparent_address)
         assert_equal(node_balance['balance'], 625000000)
 
+        # Wait for the wallet to scan and commit the coinbase block.
+        self.sync_all()
+
         # Zallet can see the balance.
         wallet_balance = self.wallets[0].z_gettotalbalance(1, True)
         # TODO: Result is a string (https://github.com/zcash/wallet/issues/15)
@@ -34,8 +36,8 @@ class WalletTest (BitcoinTestFramework):
         # Mine another block
         self.nodes[0].generate(1)
 
-        # Wait for the wallet to sync
-        time.sleep(1)
+        # Wait for the wallet to scan and commit the new block.
+        self.sync_all()
 
         node_balance = self.nodes[0].getaddressbalance(transparent_address)
         assert_equal(node_balance['balance'], 1250000000)
