@@ -1,0 +1,327 @@
+{
+  "generated_at": "2026-06-09T13:23:46.577123+00:00",
+  "total_phases": 10,
+  "total_transactions": 97,
+  "final_chain_height": 1866,
+  "phases": [
+    {
+      "phase": 0,
+      "network_upgrade": "Sprout",
+      "zcashd_version": "2.1.0-1",
+      "activation_height": 0,
+      "transaction_count": 2,
+      "balances_at_end": {
+        "transparent": "987.49998437",
+        "sprout": "0",
+        "sapling": "0",
+        "orchard": "0"
+      }
+    },
+    {
+      "phase": 1,
+      "network_upgrade": "Overwinter",
+      "zcashd_version": "2.1.0-1",
+      "activation_height": 200,
+      "transaction_count": 2,
+      "balances_at_end": {
+        "transparent": "2111.49999001",
+        "sprout": "0",
+        "sapling": "0",
+        "orchard": "0"
+      }
+    },
+    {
+      "phase": 2,
+      "network_upgrade": "Sapling",
+      "zcashd_version": "2.1.0-1",
+      "activation_height": 350,
+      "transaction_count": 15,
+      "balances_at_end": {
+        "transparent": "2432.11468529",
+        "sprout": "151.57960000",
+        "sapling": "153.80460000",
+        "orchard": "0"
+      }
+    },
+    {
+      "phase": 3,
+      "network_upgrade": "Blossom",
+      "zcashd_version": "2.1.0-1",
+      "activation_height": 500,
+      "transaction_count": 15,
+      "balances_at_end": {
+        "transparent": "2640.39393675",
+        "sprout": "193.53700000",
+        "sapling": "216.31815000",
+        "orchard": "0"
+      }
+    },
+    {
+      "phase": 4,
+      "network_upgrade": "Heartwood",
+      "zcashd_version": "3.0.0",
+      "activation_height": 700,
+      "transaction_count": 14,
+      "balances_at_end": {
+        "transparent": "2623.82954214",
+        "sprout": "208.93170000",
+        "sapling": "232.11285000",
+        "orchard": "0"
+      }
+    },
+    {
+      "phase": 5,
+      "network_upgrade": "Canopy",
+      "zcashd_version": "4.1.1",
+      "activation_height": 850,
+      "transaction_count": 4,
+      "balances_at_end": {
+        "transparent": "2674.5620897",
+        "sprout": "208.93170000",
+        "sapling": "239.87525000",
+        "orchard": "0"
+      }
+    },
+    {
+      "phase": 6,
+      "network_upgrade": "NU5",
+      "zcashd_version": "5.0.0",
+      "activation_height": 1000,
+      "transaction_count": 18,
+      "balances_at_end": {
+        "transparent": "2708.12123836",
+        "sprout": "205.93140000",
+        "sapling": "331.35002500",
+        "orchard": "1.96592500"
+      }
+    },
+    {
+      "phase": 7,
+      "network_upgrade": "NU6",
+      "zcashd_version": "6.0.0",
+      "activation_height": 1200,
+      "transaction_count": 9,
+      "balances_at_end": {
+        "transparent": "2738.201325",
+        "sprout": "205.93140000",
+        "sapling": "332.30958750",
+        "orchard": "2.94468750"
+      }
+    },
+    {
+      "phase": 8,
+      "network_upgrade": "NU6.1",
+      "zcashd_version": "6.10.0",
+      "activation_height": 1400,
+      "transaction_count": 9,
+      "balances_at_end": {
+        "transparent": "2756.5609",
+        "sprout": "205.93140000",
+        "sapling": "332.87852500",
+        "orchard": "3.53242500"
+      }
+    },
+    {
+      "phase": 9,
+      "network_upgrade": "NU6.2",
+      "zcashd_version": "6.20.0",
+      "activation_height": 1600,
+      "transaction_count": 9,
+      "balances_at_end": {
+        "transparent": "2769.59780814",
+        "sprout": "205.93140000",
+        "sapling": "333.25214999",
+        "orchard": "3.92524999"
+      }
+    }
+  ],
+  "all_addresses": {
+    "transparent": [
+      "tmBfXuNzJVUDwvtyBjjWEuRviCGYcsybX68",
+      "tmCjKQz7RHYHRRp6MAqn3tH6kVstW4T7Mbw",
+      "tmDxkhKVwUwVYdVaTRdbAmpFR6jrghuGfKL",
+      "tmHv1QFRTs6Tzcm7DmnWQdQg6JoyBcB7jAN",
+      "tmJfS7dHvbZ63uSQ55NZMV4y61fmnYQDQJL",
+      "tmKsSa2GhDpoTc7AKLYzFHoi7Bgsv1Xm4fY",
+      "tmPnsUTbmae3oZLDhzUcoUJ47vh4EKLA6e6",
+      "tmQgNVg1P6RU5Q1tXWDHg89LwEWYkgbTGrW",
+      "tmSG4EBKBG71KZqunxQme98dJh4W4fCm6ch",
+      "tmTeGzmbszHEH4uCupHkhqqFXxJk3KXvHAj",
+      "tmUJh7Tgky5x5f3v6ghPKoGVy1j2SL6i3tn",
+      "tmUkLgiZNy4BF2GPECYtEtkKHoQo5hidqz6",
+      "tmVRFgift2CoFyNbPuxuQcBN41CosLpq96p",
+      "tmVyshZjoGjxTAC2YiWYVKj2bbe7BuB3hwT",
+      "tmWXRBBoSnPMgTjsFGQNEudZMqygtYfiD4U",
+      "tmWZMfScvhUg76Y5ZqZUuiS3saxm2j5MMNa",
+      "tmX1VNNC4nDQigCqZczgDz4FnFE7UmUMua7",
+      "tmXKshtQLqovbXAzw4FFxo8uJotMkUeyUZz",
+      "tmYVMTYvwNJixZ6kpo6QyFnESRUz3tWpzDL",
+      "tmZ2FCG7zVUMkkouqA3ppHFzSjs2ef3cWnp"
+    ],
+    "sprout": [
+      "zregtestsapling15edw9q8egucypyy6shg57xfxq8j5xjatmp70z69xlndteq9nlyktcsxp5qdxrddmlevmsujx4rm",
+      "zregtestsapling1664803hru5skzkzyjgueagdfutpj5027rd6s6c3ymz0q5pmvgx4ck0zlf2t46usav7zmqmulnt0",
+      "zregtestsapling18an7gx9mvypcelwhm720yzg98etcgh60v8c9g6245r52a0ngsexmnnmdwg9ylwtk4z4lxte20u4",
+      "zregtestsapling1zwvpmvaj0y7m2uymqyrdzg888jyvuugq383cln9a2ya8u7wpmvkhllsrw92gz7mpamnzxtykg89",
+      "ztP5UUABvNkNBd36XPCKnddmeZUv4qa5SKCcp39ZC3wJctnrGVLoKGK9CCpMJQs4otFhhCnZwGHpLBE8TvjHfyt5R3oxodT",
+      "ztSUBaQDDwjkSKjAyhYk25jZRF92M66kKhLGWSJS6SqNqhfe5ZQ2tTPcr5TpNyp5KrmNaUjR75WAgHZNFupaia4QovJWAcz",
+      "ztTniBXmjxSEWoXj1NkNPPJDJxKGfyyiH8xejofZtCVFTUgwSWjcTNmnxCGFzboioYvzSbTZsixKKJ2Cc5L928d5J2eHvZV",
+      "ztXYpCFyyJ7GYFGW3H1F1rYcwrUEtVJGGQP6UDyJJqkPgpxFV4vmJCeFjQVwFkxBB8ZJeyeSjRPY6hvpCHAREqegBwwSrcs",
+      "ztZbJecKMEXgi79mqYoau4ygBsuopwwYwrtCBBmwBHZynVJRR5eKC1TBZ7WY66VGFskwTDHb4adtH6EXUteneHBJPTs9JKZ",
+      "ztqtVJ5KXKHdvM5cojSDqNmwCsLwCMBgEBmq4sfHQUUCASnfPqUVPaUNBZvs2uqhV6eDE2aVKATV6Y6QnpZSeuQWVGgVPnn"
+    ],
+    "sapling": [
+      "zregtestsapling17aepmywy8q94cqkxxwxkxc4cec2x45tu4ljex0ut4xks7gsaf8cnws7ny8zcw47g79qaww56kqw",
+      "zregtestsapling1ckfsg37607wqvgjsjh79qgaw72zy4taand2zx0h3wm9r0mpcufmt0g3ft700xc3ggkh25jag40g",
+      "zregtestsapling1d5hr8mkp8rz0sxz33vwz8hqp5r06chje333mjsxsufusk56pzjtsl46h205w94e863epkxpqum3",
+      "zregtestsapling1de2c22zyut0je3nnmt92ehclykh6lsu7cwhk4yekx06nwanshw4et4dujgu3mrqprwfp2nkwpwm",
+      "zregtestsapling1dvxhy60dfpareke9efes54zqm6qwx90qk4k5wqwrrsnu5kkgwm78ggulg9lh56ynrz2f73tqwa3",
+      "zregtestsapling1fzrcfamtqa0zgrdmq9e3jlvgll3eyat5m798pvxc0gujkcmxnj6rz4y3nj3t5ttg4569kmcv02f",
+      "zregtestsapling1gmd0lzejdwmulzlk6qrhczxc5w488nfzds5800kztjsf43n9h57c67d74rr95cvffg4kcgj2lk5",
+      "zregtestsapling1la967fuhtqlew9k639vvt0g5yfx4fe3f5yzjvh956n4ktgm7ryvjnt3w70ftuhraxa7qxfvjclg",
+      "zregtestsapling1ms5rggvqcqmc8xpdmkahcpnhnharwu63lxzf02vj6fhzqafmhnyuy6gsakahk4t3qr0akh47vjp",
+      "zregtestsapling1ph670llfequvwp3877rj3mptnasrae9kvlasctxkyj7ucegfsd8dem8vw0q4w04ypg455xte434",
+      "zregtestsapling1r0eu9vrtttq86vsv6pyxsl8mzchae67dwk8e9zwasg8t4pqjqgtpq7fudvz3cuyqw2xy2k9yjax",
+      "zregtestsapling1rjtxqucq85zvucv6jgjr4nfsq58mvlzdfl82s4lm5wr9ad3a8a4s8j7mfefv3c29aedk2geknfg",
+      "zregtestsapling1st2fww6qkk5wqfkjld5cqhe02405ee28np8zzzuq3ucv7xqz8uj0g3v9sgy5wspu0vfrqvv7uhl",
+      "zregtestsapling1u9dyz6u25wwlmtmh470f2wyaawpmxg7xm4weghyvjayhr3gg3j25gane9t7z89kuenyhqp2fx9j",
+      "zregtestsapling1xxl33x5gstqwxxe573ay3ehdrlw4rdnzhfcgj0s6v36tsrm2ghzfq4rsjk88xnhpuhmdgzy8y3e",
+      "zregtestsapling1z5m48cygzjp0e9a3lxjfjgjk0qe48x4u38tu8hy4q35zxmw5kvds5p9eeplvfr0rpsyevymau2a"
+    ],
+    "orchard": [
+      "uregtest10l3s7t08y44grzpr462x6kmvt3g4nsd8gmy69ags72c9hdr28t62k3fg9e5x8ayfu5cg2rvwk4ytm06fqvs092zeytx9f5kcer38lztz50janztazqxq0vn5jxll8tjqshsvexqdxpw2548x9j6y0cm2vw9dud30khupf57gj7tk6eyrxxf7ycvaddv9gyrjal0s8dpnafl7qghqat7",
+      "uregtest128xe9ppu4p3aaq37c20lthwhcyzxqumlvvawwzeaahxqfwvgns3dg9shqmn6pjdpqm6jun03z4f47v03y6dpahrpksvze7g6t0slry20zr7heuvvkqjxaxn5vyjdk3w6uppne75h49qhzxnd3qg4a34xawnsh2f9j6qa9r2pxq6l66yxug0aw9lglrg0yc8nq6dp728a0klau9uhsf8",
+      "uregtest16w28073u3yrakas6vzs9v63fvp8vh9gvhyujg37cfgtsvj9yg9tq9v5ak5m9tjapanq56encwmcnryp5ery5c5qysumrnckageh36nfmf77kdfukcgkldrjeyqterx3sr7g305me82ca4c72yq0gqdt9gv8u27ydzq2k8s89wl3654dsxy56dgrwx0pr6vmt9au6ahwjj0j72w7m9r5",
+      "uregtest1cm68amq5ypytxx2s7y5u298q3yjjvyd4l86wt0lwxf0k64vsc9a5nlm4ryznzwlzyevanvsucdkm7vm7r7xrsu7hsgvyf06lsud5etvfnkkmsqx6mhpc4f5tuxsnxdzrckyfutjpnex83sylecpjyaschflmfnxrnlxefs9nrny9xvqv35y3556apghqmjakhspuj2cje0l662g0skw",
+      "uregtest1f7jxz9x0etpqr9cgtmdm2xf6dtcgy9q6s9l5ht70qnqpccj40dykcq4645hvasnwshxy8fnuppl9r3swcxtnuxzgh599tpnwlnrzudjc8jduz2tlk75g4elgefpc706dg9sf942wf5mk9fg33qe9c0rqr2hy2x7auyagypmlw5d784rczzr3sk43h5rm6l6p655df6dnth4fjllz37c",
+      "uregtest1rdhz2ge0h8520gta25swyhlxxhezlswwat7ga70anzzrsu96t9rgqgm89xs7rj5zqvk6ytcpw2mjmzmp3vugafk0hgcf3wtj800r44wjzn7yurnvymwgnphuq8fln5xl6cgtxx0ucxzyzlheg9pm2rchc43tgam5ug2ev98nnruur0lfcqq473nmhvu206d286003u2tsp3w72mvknh",
+      "uregtest1t7x6pzlm6lf47n5vcxz726ryg8taxvy83r5h8z6nljp45feltkae7sczds2puplnpy9ucp5m50r7p7glt6pkacsxma87yxdstdscsl4twxcwa7czar2pvpr0yr32jj0ngkuu9pzr6e3k2hmcj8py4wsw3araq8jmen6ldmldmra23nvfz2hef8z2d59ssumkmkknnduh3srzc458m5w",
+      "uregtest1up7wxqt8vahw09dq0zyu9wr9hhq85cwpwpdd5kds8y6r04nf9t95hcyvunvay2res8utfqa3tzgldddunxpqcwzcfnn7ltrzcwjnwwnpwg09mgvnqqpx6ve7eqsarkqfdyeend2ggc0tf0v4ann0cyxjhdax369q9ycxthnghjkarawkgytjndak6uqc9aa8gvlpfxmm6wlus9pscqd"
+    ]
+  },
+  "all_viewing_keys": {
+    "sprout": [
+      {
+        "address": "ztqtVJ5KXKHdvM5cojSDqNmwCsLwCMBgEBmq4sfHQUUCASnfPqUVPaUNBZvs2uqhV6eDE2aVKATV6Y6QnpZSeuQWVGgVPnn",
+        "viewing_key": "ZiVtqExsLG8PY4x1akLxKpjHhdG7zmrDdiDqCd7Rntt1z84ab7AoHdWARzVhwmGzAuvpSNN2XSySM89AfvtyAeG2SqKu9Bao2"
+      },
+      {
+        "address": "ztXYpCFyyJ7GYFGW3H1F1rYcwrUEtVJGGQP6UDyJJqkPgpxFV4vmJCeFjQVwFkxBB8ZJeyeSjRPY6hvpCHAREqegBwwSrcs",
+        "viewing_key": "ZiVtWuHmWvaNMhZumdaVtqumUK1785YMkJG3otWn6unPGKaxRFn2rxzGeS7WBD3pnq71ZUSrEHHtsrQwBVD15DjtnVfaaEwvA"
+      },
+      {
+        "address": "ztZbJecKMEXgi79mqYoau4ygBsuopwwYwrtCBBmwBHZynVJRR5eKC1TBZ7WY66VGFskwTDHb4adtH6EXUteneHBJPTs9JKZ",
+        "viewing_key": "ZiVtYwnDsFxJn7jmeuNmhBnyuNF8ZeUpPawWJzDjuYeq5ugcinYenGgdWTkkdXhMZ3umkfAWzikfx8gZuKwUijmGtQ5czPZzX"
+      },
+      {
+        "address": "ztTniBXmjxSEWoXj1NkNPPJDJxKGfyyiH8xejofZtCVFTUgwSWjcTNmnxCGFzboioYvzSbTZsixKKJ2Cc5L928d5J2eHvZV",
+        "viewing_key": "ZiVtT9BkniM2gfYU2rYbdyHJDuNCy7KrRkGnPSnMoBMk1BMdD2ZsUXB9jyfhXbya2MNxELijDzLUQYLzD2ZEpNUbS1FNnnF5B"
+      },
+      {
+        "address": "ztP5UUABvNkNBd36XPCKnddmeZUv4qa5SKCcp39ZC3wJctnrGVLoKGK9CCpMJQs4otFhhCnZwGHpLBE8TvjHfyt5R3oxodT",
+        "viewing_key": "ZiVtNRx3R8XSzoDHYE4c5vgYZThp8kii27RxdQrbHAfbTEX2mWtfE9VJHgT6yapJqJgiR5jeyhNdGHYgvU8iE9KUCs6e2ddLT"
+      },
+      {
+        "address": "ztSUBaQDDwjkSKjAyhYk25jZRF92M66kKhLGWSJS6SqNqhfe5ZQ2tTPcr5TpNyp5KrmNaUjR75WAgHZNFupaia4QovJWAcz",
+        "viewing_key": "ZiVtRpf9f9q1zBTzEJWvSLuzfFUVnrzxYnKLm4YzS3ZzMJjrvimBVg5T47eFQ2oukZ3x4jnz2azxkJbWak69Bqe4nbuMekeXQ"
+      }
+    ],
+    "sapling": [
+      {
+        "address": "zregtestsapling1de2c22zyut0je3nnmt92ehclykh6lsu7cwhk4yekx06nwanshw4et4dujgu3mrqprwfp2nkwpwm",
+        "viewing_key": "zxviewregtestsapling1qv8mp7xgpqqqpq93lgz93td8ruf9wlshqvvhvhmuk25tu7qpzc3u85kml7t6se722c9mpurn6jxjl3frgpqp9hs0wmcp5z0s022x49lx45tz7g652gqz3hnx8xftvmx5le47xcsg67k5senree9v90wjd05plssmh3kaws9pw8jwr7eea6j3zdwjszms9ffef6d2vlcr7u9xj6ttg7vemnyst9tu3nlnp8p08nlhghppv0ml4nsf87xgavyu74hz45656gxw3khqlqgaxldea"
+      },
+      {
+        "address": "zregtestsapling1fzrcfamtqa0zgrdmq9e3jlvgll3eyat5m798pvxc0gujkcmxnj6rz4y3nj3t5ttg4569kmcv02f",
+        "viewing_key": "zxviewregtestsapling1qv8mp7xgpyqqpq982gln73cwfqn78mh83ka7s7dqzvn299sw8jv8fgwkpuzavxysjq68u3c8c279hzrdxmq888kjtcv7njcjnv9p3nmpsscqryw5qpwt75tdw97aevvyfwhtz0fwl4q3hgx2qp04ut04k74g9f6jtx8g0p9cp36mxlqc3qt6hz86et52a6phs39zfa479mhz9zkzkp589r5v7uh7l7hqxs2cthg2r6vadyk60qsp7tqf00haa4pfcxr35legrca2knqumrhgn"
+      },
+      {
+        "address": "zregtestsapling1u9dyz6u25wwlmtmh470f2wyaawpmxg7xm4weghyvjayhr3gg3j25gane9t7z89kuenyhqp2fx9j",
+        "viewing_key": "zxviewregtestsapling1qv8mp7xgpgqqpqq8xsfyslu9645laxg53d4qsmyvz3qcz9z5hpn8v5r5wj927lhh9r429mzmq7n4s2h4rt6vhz97sanlsxuhz7k5jn9yzch9lxyj9h7ptf5fcmum2q49pd5ejf27gh40kz5xxjecxpvm0rt5kv87s0g7cj0snddrxxz02s0us7y88jzk35q2vnyrw0whxr40y9xgz5rvem00q0hmncsv55u45swe0shq75vu3jdutuksktkkf3dqryg0zcna3zpxwwg0endps"
+      },
+      {
+        "address": "zregtestsapling1st2fww6qkk5wqfkjld5cqhe02405ee28np8zzzuq3ucv7xqz8uj0g3v9sgy5wspu0vfrqvv7uhl",
+        "viewing_key": "zxviewregtestsapling1qv8mp7xgpvqqpqqehfucvlr50rmwgwk6cw6nd5ak5x6enhc5h9q38gnejmmfzlpljhmqjjhy7xnsl6w9dpkh6x5nkmn8fnp6jq4x648umr24229wpjyw3sawtfa9yr5petj5sr6v425pcessf056xn4h6p4s6jp36gm8r7szqxcweud6cyeevza9zn8jes0pmxezy8zrwwc89uq9h0hr7ylqdm5snkkz5xn4lm4jkhgu3qjv9w8werqsh4grau7v4jhyscqt2zp4vecdxm7te"
+      },
+      {
+        "address": "zregtestsapling1r0eu9vrtttq86vsv6pyxsl8mzchae67dwk8e9zwasg8t4pqjqgtpq7fudvz3cuyqw2xy2k9yjax",
+        "viewing_key": "zxviewregtestsapling1qjrqxnzzqqqqpqymljaaz05fthtkcspmh35lk7cc6qx3yu9kdszha3zapvgkjnkjrxsuugklfq4scvrr76lrslmyj5axjvqstqc0ksre58fjsfd9e8de6vzr6huzp256h8p7fcdrxlgks9nmjkwu6m940grrqu3vwhm0pscj2l9pakdcztwms26rn3hgdm74ptwymyv96dvlw73uvjxajfzvma9ks0xxxda0wwk3krymmmwhnpjr7w6cyytngml52tamam6k8l7sm4cdmgfen"
+      },
+      {
+        "address": "zregtestsapling1z5m48cygzjp0e9a3lxjfjgjk0qe48x4u38tu8hy4q35zxmw5kvds5p9eeplvfr0rpsyevymau2a",
+        "viewing_key": "zxviewregtestsapling1qjrqxnzzqyqqpqzw2u0ptmzaqyzjvwrfgxzrhxxu8gnatm3423ekezjwgfvef2ylx83xlw3htan3ecvsd3aa5zhn3m5awrxj74r9zpxe0cdg6pm7n5vye4k5k6d2hsj2l3artp0w8afd5nau3cwd3y2unwj8m69ckrz4fgzjwq06a6x9l5hdkazemppxc47u2g4uq7lzdtpr5q6dtjd0pg48hjxt3rksxdqaqpaeh5gharzsntk0s2kr50l9tjznppxd0p6fscgs9kqdvhzsz"
+      },
+      {
+        "address": "zregtestsapling1ph670llfequvwp3877rj3mptnasrae9kvlasctxkyj7ucegfsd8dem8vw0q4w04ypg455xte434",
+        "viewing_key": "zxviewregtestsapling1qjrqxnzzqgqqpqzkupnregvz9ecclwt4j4868hyf3wzwmgau26rp2ystzz43ehtatat0pw059fp35jexhpu74nhdy4w2x504zxx3rr399n6cr4cln93m4h8py0a0gpv62lj2shtalqatz57ztyegmc6d807pt4c2uacnc0ef2c275yghdcevt933xeuf8rn3lfdfvv5evh22yur9jr54n8znqpqhw98gxlj06e4lpnzkrvdcx27k90wfsrz63gatzxdvtzge65u9wjg7tkcew"
+      },
+      {
+        "address": "zregtestsapling1d5hr8mkp8rz0sxz33vwz8hqp5r06chje333mjsxsufusk56pzjtsl46h205w94e863epkxpqum3",
+        "viewing_key": "zxviewregtestsapling1qjrqxnzzqvqqpqrttt4y9egdz0qnt5rmy65rhnfkn7qnwngjrgp2mtfgdds8l202fq3yht8szlum3gnnqktdpnp92c0yjaal5kscaawus5yudkxwa36skfrczs4a7kzceh7rlxa77eafpfncc9cx300jf69p9q5rpfqp7838d37yg7lr68xhgn967ffumh2sqrdxcds0qvp5h3v852z0t7prm3ftf4mtss5cmxktmsd37qxvwekujhvt3594ayf7rcp7577ztqngymc9rq3aj"
+      },
+      {
+        "address": "zregtestsapling1ckfsg37607wqvgjsjh79qgaw72zy4taand2zx0h3wm9r0mpcufmt0g3ft700xc3ggkh25jag40g",
+        "viewing_key": "zxviewregtestsapling1qjrqxnzzqsqqpqpu77qcugmqqz6ydhr7z3t9cvu7s9p42rzz5ke623wk3ekczk7x0c8948uw82e8zqvg8mf33jn0cwcemd50jr0jns8fhg3jnjcqvsxs9d9t0nsrz683hzfwpsevd0z4x0wzv0gfxefeze3pujae8yyjjugr85wj50qwru6yemhkwt7avjf78e788was6em4vdj62ef8j5qq2e8tvmpzzqjwgcjtaf5mjn5djsn8yz4p6veh8gfvveq3wrztp26mhxgmg56xt"
+      },
+      {
+        "address": "zregtestsapling1dvxhy60dfpareke9efes54zqm6qwx90qk4k5wqwrrsnu5kkgwm78ggulg9lh56ynrz2f73tqwa3",
+        "viewing_key": "zxviewregtestsapling1qjrqxnzzq5qqpqpdryd472xfjka3cvquw02lv0rkntfrmkr3rhpyn9av0juw54fwc3vaydnuhx7altrkxy95hmleck9z0kcfvcp2w9vjyfdppgasva4nnz0m345t3p7nlv9xh4fwe04c2vpyss2wwek70dchvczl2kwttjduu52pmqswr9jl5se0tzl5cxemdxfthkz9yve3dsvenxzj786e77398gh8rs5xr449cxpshy6p3pvlpmmmn53qz09qn6m2x0dygewkrpqk2eh0l"
+      },
+      {
+        "address": "zregtestsapling17aepmywy8q94cqkxxwxkxc4cec2x45tu4ljex0ut4xks7gsaf8cnws7ny8zcw47g79qaww56kqw",
+        "viewing_key": "zxviewregtestsapling1qjrqxnzzqcqqpqrf2u2y3pm2sywjtfl6j7hmrufh8kskuz70zfzumq00k2lffurc6enclqpswrkp3yfjmkwr96yju9vtw0r62uz2kk450tdn9tp9lwn4zvvvrt4mlp2rucmkdekufrhwlrcz8vjah6m360wwwn0wuq6fahp6f3curjg3vpg0ye83jdc3hm9jevwmrwusqad9n74d7grc97l07q96rfh47pr04a72fglkut87udzde2grx0saarx6z9p5n3j77dggnwqp30xz0"
+      },
+      {
+        "address": "zregtestsapling1ms5rggvqcqmc8xpdmkahcpnhnharwu63lxzf02vj6fhzqafmhnyuy6gsakahk4t3qr0akh47vjp",
+        "viewing_key": "zxviewregtestsapling1qjrqxnzzquqqpqy7qsn775zv73z7rvka05u8zl6mqhtmyz5xlvdcwxtx0dmzu9xl6yhxmjrldlf3cp32kn6ypmq8celkkxm5tzu9kdnz7zwdrc8j0xfhxc4tn799me6jq6klau7hypaw5py685zdrdkg2fahfdy6y8zvvhy7ctwgtnmz99khsqx20swn6vevq7fkm422y9gavcufza28c93ej3znztwxkwr6feqs56zaglh4dl44ey5q6s3xdhzgezytezakpkhyspqw8sz4u"
+      }
+    ],
+    "orchard": [
+      {
+        "address": "uregtest1cm68amq5ypytxx2s7y5u298q3yjjvyd4l86wt0lwxf0k64vsc9a5nlm4ryznzwlzyevanvsucdkm7vm7r7xrsu7hsgvyf06lsud5etvfnkkmsqx6mhpc4f5tuxsnxdzrckyfutjpnex83sylecpjyaschflmfnxrnlxefs9nrny9xvqv35y3556apghqmjakhspuj2cje0l662g0skw",
+        "viewing_key": "uviewregtest19v4qrwsvdw6fl6njyd9esayxvwpts9qrkq5y9hpunqy4qy0r3rmvw7hkdn8km3azhr68lwfvp99t8a6x0akkm4lg3eygrduj33l93cr5l7wavagknudjh5ae35j8rj4eejmetk02jd8c8pe6q3e3gvxy7jgfxz67n2ka5s9pn0zwshhdzusqps32tafm8z4hwk49lhgzd0crmm8ftg9agta2f0vd4jk7su87p9f6xtfq9xpdqz9xpjsnerkuqptfenjs646r3r9h3tqyhw7ezn4lfwce4vsv08qsxxjy2y9zjgc35mt9mafrlym4wafp2huvrz0dg7hnjtzfas7g9f20mmfz7phu8lwh0yawycp02sw0hdzgn7q6wwjvkc3cnkpsj37999rway7ecc23ajeuyj97949mhv08akf628lq9qql7t2uhlq4p50p5uvehaggw3p3428ds8t3jdpf4dmgj0n85hkyjmutmg3njcw4v3dtmsea3xdj"
+      },
+      {
+        "address": "uregtest128xe9ppu4p3aaq37c20lthwhcyzxqumlvvawwzeaahxqfwvgns3dg9shqmn6pjdpqm6jun03z4f47v03y6dpahrpksvze7g6t0slry20zr7heuvvkqjxaxn5vyjdk3w6uppne75h49qhzxnd3qg4a34xawnsh2f9j6qa9r2pxq6l66yxug0aw9lglrg0yc8nq6dp728a0klau9uhsf8",
+        "viewing_key": "uviewregtest1esdwyqhev3av8h9cxqz04elh6jx47skglshg6lmqu732qkqramftlulwgz8vh0rj4amxndlcdj3tyjm4ay44cxej4usf35ntg0nn9xjvvseyxkffu5md8djn6m2ahnc3dz5smp25rc5nsne5j88l6636rps3v73vt2mtkaf8dyzt9e3h8vhjxe96t9u9qw4egcaazjqnulp25xd90duewxa88wpew8wwcs7cl3m7xdyqlntmrwmm0ws9ejc66l7n4r9k4d4vx8jv6f9yhudgv56g4z8s55uujjjarz6p4eqy7d8mhhtxjdxv4rvur354g0l26hmg3gtaseqtzcdpl4acs54wqp2nqsngafpu96kjrn47km9wujjn34qjqwp3s8n2q9psdu0fy77la9c48l8995kj770utaj6zd3kzkd2jlmxnz6ylkacfjp07hdlrz7evafnljawsnmy62xczprc87rhpmqy5r4ry5w6m96vwlfefvkct6uy"
+      },
+      {
+        "address": "uregtest1t7x6pzlm6lf47n5vcxz726ryg8taxvy83r5h8z6nljp45feltkae7sczds2puplnpy9ucp5m50r7p7glt6pkacsxma87yxdstdscsl4twxcwa7czar2pvpr0yr32jj0ngkuu9pzr6e3k2hmcj8py4wsw3araq8jmen6ldmldmra23nvfz2hef8z2d59ssumkmkknnduh3srzc458m5w",
+        "viewing_key": "uviewregtest1pkdjspu6wzt0759m7sd5lk9xnkxtydkpckfvv0uau4dhjmuy8cm7t4gsrpzhvla3kevv3mns3x58fpx669f444guwq8kz5zhf4ep4c9uu3c6uqxrn57p4wxyrcx0uwh7cp8d3fda79jflnz8079q639j3lu3vuhtvzkddu6cwv09vfmtps96klqsg6yyelfkyfsa4039zaewh3s5nku9egk5g6rdytx3m405jp40u5tpn34pgljhe6ewfpwgse3xq3gdz4slsnt6wwg70k3xykmscfpcxc0mg48lvyu87tcc8ta2skfv80rysghvul8l2zshjw0xuleurtt6z3tv4h7pca43x0l7d2mxu8axs34k3nxz059qc5w3dphyqygrea0x7evt055dkmkqhns9njx608ngjtrmjxaeyd6z54c9pcqqlfm9schhqnw9mfc4gp4lfevdtrg5z62zdmylkh6sr39hv2jkp8s90akd2lmuaa0r7v2tlhqh"
+      },
+      {
+        "address": "uregtest1rdhz2ge0h8520gta25swyhlxxhezlswwat7ga70anzzrsu96t9rgqgm89xs7rj5zqvk6ytcpw2mjmzmp3vugafk0hgcf3wtj800r44wjzn7yurnvymwgnphuq8fln5xl6cgtxx0ucxzyzlheg9pm2rchc43tgam5ug2ev98nnruur0lfcqq473nmhvu206d286003u2tsp3w72mvknh",
+        "viewing_key": "uviewregtest1vg3p9wq5zkntyn503xa8ndmdlte7zph7gx6fj2fsx2ylxlseekp6htdye5ecll9sch9uasp4wsxxjk0mxsv67lw87nmmntlwhhwwff707fevg2eeuyz2s8mnfykw9kje5wkceq7cxdcxfprtagumx5dxpq669z4xjlfkqfqwdx8nj3faspg06cfemcy533aafg57ewucdm9hxwhk0mxn3yyqkjsvfq0r37qdv6u2k8nn3d0rka6q2c6fng2zw8dl7esh6edg5j4etpkzcfuth6ep9ll375m700f4yqt2727kf6y3zgc8hffwcsvtksrdwgd9n60ce7vvt94v96x8dnwccslfgd8r2ksnfyjtz5v3dxhadqpqu0l6qkxn04x5ft20pjll00wmt2c74fy9ey83j2xayppks4u2yc7ressms8yxsgxn0vd9fa4hdcfykgg94tfwaehk66gf86ps2euqlp9nt7ggyezs7cmgmy8wm79qzqlhykfw"
+      },
+      {
+        "address": "uregtest1up7wxqt8vahw09dq0zyu9wr9hhq85cwpwpdd5kds8y6r04nf9t95hcyvunvay2res8utfqa3tzgldddunxpqcwzcfnn7ltrzcwjnwwnpwg09mgvnqqpx6ve7eqsarkqfdyeend2ggc0tf0v4ann0cyxjhdax369q9ycxthnghjkarawkgytjndak6uqc9aa8gvlpfxmm6wlus9pscqd",
+        "viewing_key": "uviewregtest1vz06yrht33r5ey2tq2ywcq03adv0cr9t4prr6k5lwxkzfdcy4ckx9j5wdpqjmcq2dtva7mtjdv9z62z4hvq2ml4kn7dq5cepgxf9qvsx0xhxqsxdz47x45zeg7dekclllnexfh8ay9cf2muwz2kcukklz4zn455ad4xa4hg6yujxnw233vfxvs5camwpps0rc2hwca0lrg2udxjhslkedm3j7zzxuvxtjnqy8xmll8jczju3vj6hgnz73uvjwd9psam3s2x25z2lj8jetcktal5yyprycfprkcn5dq2dfq59luhlmw629ey2wgg0t8haumwn6q0w7zhh9ezpu4lc7dqcg96y8a2xaxnc0nfgqs9j86nxkldu6xfjx3dq5ys7lhx2gdchsj67d69wsnavchgskysz870femk6zdjjsjfzqxmcafkczplmrls5jsfeu4g2kl2qqnghjw0n7n7uew6emthk8knauqnq07jcvdgwq5udugfxndll"
+      },
+      {
+        "address": "uregtest1f7jxz9x0etpqr9cgtmdm2xf6dtcgy9q6s9l5ht70qnqpccj40dykcq4645hvasnwshxy8fnuppl9r3swcxtnuxzgh599tpnwlnrzudjc8jduz2tlk75g4elgefpc706dg9sf942wf5mk9fg33qe9c0rqr2hy2x7auyagypmlw5d784rczzr3sk43h5rm6l6p655df6dnth4fjllz37c",
+        "viewing_key": "uviewregtest1mkgpt8syra4vcnrxunhpey0as76hkyv6q2z4h8w3zhnj7mvfakmwdgv7ku72vc84jg6ew4j38q8nyy5e0zuw7qqkcg0yxenzj5qhwhj5djfxnyuk5hjrdctv0p0l97mzv6z5cw4dzc8h9mvw6q2x8vt5yq4zzxpnau5xha26eewrjl5znastxgc76xsugn9k23hmqu6c5dh226tgalffq2fe30mxpr6v4l3p3mpwxya79q3h0d9n892thjdg53vu3757sqcge45yv3lqrjm4d6jczptppn65xytzp6r3c23kwf0e5ma4fuh0kekwfvfwq4fcg8gkgmgvuarta85xt8y73n3nhwys2faahgwdkm260ldk8p5c24cjzq5g4eeua7sx5pgl2yvdfvtg2sjwn4zpmy8tflxhh9ylqkeqffzyq9nnhmpdk7fq6hssg63a3d8czh9fpfqfsw62tlj4rp2ysfzxwluydcfqp6flyml872w5cus3nl0r"
+      },
+      {
+        "address": "uregtest10l3s7t08y44grzpr462x6kmvt3g4nsd8gmy69ags72c9hdr28t62k3fg9e5x8ayfu5cg2rvwk4ytm06fqvs092zeytx9f5kcer38lztz50janztazqxq0vn5jxll8tjqshsvexqdxpw2548x9j6y0cm2vw9dud30khupf57gj7tk6eyrxxf7ycvaddv9gyrjal0s8dpnafl7qghqat7",
+        "viewing_key": "uviewregtest1lev7aaq4zz63582yaxlwvsfs026rn2e05fkmewlg6arrcees8x7duthrne77uwxyh4zsc9d65z88zgtpwmaq76tml50mkz5myu87mcly4j8nuurmwqnj0gntdtnqnmmj2yrc9qhmhvmttyyte8qmf0lpfkg20epkskj6qjlzs4wnymsldamgqmrz72ch6cpd3lwmj266haljtt3q6rm8wxcmn6uan6m2e7t4x269hf8a79lzr0a6k83u7clkkuradx6r7jss7fj0nzqu5g7st5gyypp8m638fmczxkv3thlfet80dsa72raafglz8lfhndctfkqqc7d66n4mhwzsvnue7xastk506aydjky5uqgtug4w2tqp8le403fw5944rnd39ed0x0sqmuhq2phak9wlql69xp6f028zysmf2kmu706y4x9ztt0t3jsen9wzphk8vjpgy9wqz28egpvf69xqcjkjd3fnpukppvjnekrsnn58jq44ynvv"
+      },
+      {
+        "address": "uregtest16w28073u3yrakas6vzs9v63fvp8vh9gvhyujg37cfgtsvj9yg9tq9v5ak5m9tjapanq56encwmcnryp5ery5c5qysumrnckageh36nfmf77kdfukcgkldrjeyqterx3sr7g305me82ca4c72yq0gqdt9gv8u27ydzq2k8s89wl3654dsxy56dgrwx0pr6vmt9au6ahwjj0j72w7m9r5",
+        "viewing_key": "uviewregtest1kwy4vat0dkv8ntpkm56sl7qmjexhdqzyc9ud9f7x3a0a4ezhc3veh8tmqlj8sqng9d5rg5jmjx54axg7pmmtr27m09sg7xuu5evdpw9qk4r52vj7v9vhtx7ph9qamt6dvrvps6zlkmuqzufn9vl2k2t76hjgrf7g4ze602zpptsm9k9mhpweu4sf6jrq3s62vdtxsm4fuh5uwdue7l69wf7ktp6w6xj54nlla29u3yuvejcg5vnkgz0zavp63rm8pe6f2r8tn9kjk6558ajxcvx27cwygcjjsrllvk52fw22vxsmqzpwemsxzk9c0jmjk744e67phxzsf3ed9x75fc33kx8xf0lahkellwdll83sexvlka978el3vlepzgrxuqe7ulady5fwxzp3c2zqgygzcxlv779sauhmwsxcxum0ln3wfgh0end5xljl2g6ueypyz8y9mstzt4uj2hlfqys3v09vu7laxds3kh47gq8wgfw8fq6mwn53"
+      }
+    ]
+  },
+  "final_balances": {
+    "transparent": "2769.59780814",
+    "sprout": "205.93140000",
+    "sapling": "333.25214999",
+    "orchard": "3.92524999"
+  },
+  "final_note_counts": {
+    "sprout": 9,
+    "sapling": 31,
+    "orchard": 12
+  },
+  "final_utxo_count": 1560,
+  "final_coinbase_utxo_count": 1534
+}

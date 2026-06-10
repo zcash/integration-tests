@@ -1,0 +1,123 @@
+{
+  "phase": 1,
+  "network_upgrade": "overwinter",
+  "network_upgrade_name": "Overwinter",
+  "zcashd_version": "2.1.0-1",
+  "zcashd_commit": "/MagicBean:2.1.0-1/",
+  "activation_height": 200,
+  "phase_start_height": 200,
+  "phase_end_height": 349,
+  "timestamp": "2026-06-09T13:12:29.340353+00:00",
+  "nuparams": {
+    "5ba81b19": 200
+  },
+  "addresses": {
+    "transparent": [
+      {
+        "address": "tmWZMfScvhUg76Y5ZqZUuiS3saxm2j5MMNa",
+        "type": "p2pkh"
+      },
+      {
+        "address": "tmJfS7dHvbZ63uSQ55NZMV4y61fmnYQDQJL",
+        "type": "p2pkh"
+      }
+    ],
+    "sprout": [
+      {
+        "address": "zregtestsapling18an7gx9mvypcelwhm720yzg98etcgh60v8c9g6245r52a0ngsexmnnmdwg9ylwtk4z4lxte20u4",
+        "type": "sprout"
+      },
+      {
+        "address": "zregtestsapling15edw9q8egucypyy6shg57xfxq8j5xjatmp70z69xlndteq9nlyktcsxp5qdxrddmlevmsujx4rm",
+        "type": "sprout"
+      }
+    ],
+    "sapling": [],
+    "orchard": [],
+    "unified": []
+  },
+  "external_addresses": {
+    "transparent": [
+      {
+        "address": "tmVbSngxxc9m1pAyotwaJTuGyW85TD4SGU1",
+        "type": "p2pkh"
+      }
+    ],
+    "sprout": [
+      {
+        "address": "zregtestsapling1e4jpevkgvcm64gpxpdle6ea7v9yfw93e4u7k5s8akdjgmfpml6lnqh8n230xxc70hj78xtmwlnm",
+        "type": "sprout"
+      }
+    ],
+    "sapling": [],
+    "orchard": [],
+    "unified": []
+  },
+  "viewing_keys": {
+    "sprout": [],
+    "sapling": [],
+    "orchard": []
+  },
+  "transactions": [
+    {
+      "txid": "fe930137551b5cd447e9aa1fb052df692113da7e4ebd3166701858d9764cf1d2",
+      "mined_height": 305,
+      "type": "sendtoaddress",
+      "from_pool": "transparent",
+      "to_pool": "transparent",
+      "from_address": "tmWZMfScvhUg76Y5ZqZUuiS3saxm2j5MMNa",
+      "to_address": "tmJfS7dHvbZ63uSQ55NZMV4y61fmnYQDQJL",
+      "amount_zec": "4.0",
+      "fee_zec": "0.0001",
+      "description": "transparent -> transparent: 4.0 ZEC"
+    },
+    {
+      "txid": "4310744eef07f7ee4097e433dc15ad788291f823a96445fd08ca8540e456e70a",
+      "mined_height": 310,
+      "type": "sendtoaddress",
+      "from_pool": "transparent",
+      "to_pool": "external_transparent",
+      "from_address": "tmWZMfScvhUg76Y5ZqZUuiS3saxm2j5MMNa",
+      "to_address": "tmVbSngxxc9m1pAyotwaJTuGyW85TD4SGU1",
+      "amount_zec": "1.0",
+      "fee_zec": "0.0001",
+      "description": "External send: transparent to unknown address"
+    }
+  ],
+  "balances_at_phase_end": {
+    "transparent": "2111.49999001",
+    "sprout": "0",
+    "sapling": "0",
+    "orchard": "0"
+  },
+  "note_counts": {
+    "sprout": 0,
+    "sapling": 0,
+    "orchard": 0
+  },
+  "utxo_count": 245,
+  "coinbase_utxo_count": 239,
+  "chain_info": {
+    "blocks": 349,
+    "bestblockhash": "0751675c09a5757b8b99f9838589589d9457cf09e1563c217d62710d607a356a",
+    "chain": "regtest",
+    "size_on_disk": 131072
+  },
+  "notes": "Overwinter introduces transaction format v3 and replay protection. No new pools, but the transaction format change is significant for wallet database testing.",
+  "imported_keys": {
+    "transparent_privkey": {
+      "address": "tmKeUMSEPfxXwZ5Fi7gG9exnJHKR3dDGCjw",
+      "wif": "cMyU9bHxzUJ5fmMTKYW64w5dPok91BTM3bv4u5jsuEEubDaA62Ns",
+      "label": "imported_privkey_phase1"
+    },
+    "transparent_watchonly": {
+      "address": "tmHpUdzq8FJKMmJzLGMHScHcPWYVBGSvUC6",
+      "label": "imported_watchonly_phase1"
+    },
+    "sprout_spending": {
+      "address": "zregtestsapling19cgq05hd2zdtrnr97hdrgd4tt0vg4fjp3cq5a22hmn507ahtezq4uvwt7tg30gpq9amqcdhuasy",
+      "key": "secret-extended-key-regtest1qvg3ymqjqyqqpqp39qtvs59thsl7hj7hf0265rdk7zucy32xqxj2hw0d5tz7lgkuzrku3ut8zt65yt39lekrdxjxxhfeejquw6cfjkwzvngwp8kt9k0q4p7qfsnr30uss6dadwleumcyp0sl2vectsa4ak8fj8j9k906znqgx8zs66ytqnl8q4qdnpq4ag32gdm0q7vlkkudpwrvkwq4mwcdg6lnvt9cvqu2z8dr2tswfj8v6ah702pmn6t73cdhlnyu6jucs6cz2wc5fr04v",
+      "label": "imported_sprout_sk_phase1"
+    }
+  }
+}

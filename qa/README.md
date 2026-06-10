@@ -19,7 +19,7 @@ OS X
 ------
 
 ```
-pip3 install pyzmq base58 toml
+pip3 install pyzmq base58 toml embit
 ```
 
 Setup

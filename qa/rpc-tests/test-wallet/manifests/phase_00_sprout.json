@@ -1,0 +1,121 @@
+{
+  "phase": 0,
+  "network_upgrade": "sprout",
+  "network_upgrade_name": "Sprout",
+  "zcashd_version": "2.1.0-1",
+  "zcashd_commit": "/MagicBean:2.1.0-1/",
+  "activation_height": 0,
+  "phase_start_height": 0,
+  "phase_end_height": 199,
+  "timestamp": "2026-06-09T13:12:06.640881+00:00",
+  "nuparams": {},
+  "addresses": {
+    "transparent": [
+      {
+        "address": "tmCjKQz7RHYHRRp6MAqn3tH6kVstW4T7Mbw",
+        "type": "p2pkh"
+      },
+      {
+        "address": "tmDxkhKVwUwVYdVaTRdbAmpFR6jrghuGfKL",
+        "type": "p2pkh"
+      }
+    ],
+    "sprout": [
+      {
+        "address": "zregtestsapling1zwvpmvaj0y7m2uymqyrdzg888jyvuugq383cln9a2ya8u7wpmvkhllsrw92gz7mpamnzxtykg89",
+        "type": "sprout"
+      },
+      {
+        "address": "zregtestsapling1664803hru5skzkzyjgueagdfutpj5027rd6s6c3ymz0q5pmvgx4ck0zlf2t46usav7zmqmulnt0",
+        "type": "sprout"
+      }
+    ],
+    "sapling": [],
+    "orchard": [],
+    "unified": []
+  },
+  "external_addresses": {
+    "transparent": [
+      {
+        "address": "tmJoNfidpWDBxxBispLAWUFhAninkxgPy3n",
+        "type": "p2pkh"
+      }
+    ],
+    "sprout": [
+      {
+        "address": "zregtestsapling1a9vx78gn8vc9mwnkv9zhpr7r5e26xw3jeqecp57eljua0y3ngvmaqt9fakuj3nk8030jupsrc9u",
+        "type": "sprout"
+      }
+    ],
+    "sapling": [],
+    "orchard": [],
+    "unified": []
+  },
+  "viewing_keys": {
+    "sprout": [],
+    "sapling": [],
+    "orchard": []
+  },
+  "transactions": [
+    {
+      "txid": "5e8a511b73b4e047de78bd68db2a9e42370077f9230d26eb2337724d50ba57d4",
+      "mined_height": 155,
+      "type": "sendtoaddress",
+      "from_pool": "transparent",
+      "to_pool": "transparent",
+      "from_address": "tmCjKQz7RHYHRRp6MAqn3tH6kVstW4T7Mbw",
+      "to_address": "tmDxkhKVwUwVYdVaTRdbAmpFR6jrghuGfKL",
+      "amount_zec": "10.0",
+      "fee_zec": "0.0001",
+      "description": "transparent -> transparent: 10.0 ZEC"
+    },
+    {
+      "txid": "dbe8a1dc5f6750cb3df5a29cb4929a4054a0523be1aa6b402f23cf9b5dcdba08",
+      "mined_height": 160,
+      "type": "sendtoaddress",
+      "from_pool": "transparent",
+      "to_pool": "external_transparent",
+      "from_address": "tmCjKQz7RHYHRRp6MAqn3tH6kVstW4T7Mbw",
+      "to_address": "tmJoNfidpWDBxxBispLAWUFhAninkxgPy3n",
+      "amount_zec": "2.5",
+      "fee_zec": "0.0001",
+      "description": "External send: transparent to unknown address"
+    }
+  ],
+  "balances_at_phase_end": {
+    "transparent": "987.49998437",
+    "sprout": "0",
+    "sapling": "0",
+    "orchard": "0"
+  },
+  "note_counts": {
+    "sprout": 0,
+    "sapling": 0,
+    "orchard": 0
+  },
+  "utxo_count": 95,
+  "coinbase_utxo_count": 92,
+  "chain_info": {
+    "blocks": 199,
+    "bestblockhash": "0ba81a9b22c542348feaaff67bb4b26770ee4cfc5d67941bd9312504953695a8",
+    "chain": "regtest",
+    "size_on_disk": 76246
+  },
+  "notes": "Genesis era. Mine aggressively here to build the transparent 'bank' (~1500 ZEC) that funds operations in later NUs where coinbase rewards are small due to halving.",
+  "imported_keys": {
+    "transparent_privkey": {
+      "address": "tmYCc1kLkE5aCsF4adVP3WhgNv6acUmbwcq",
+      "wif": "cTWHNk5yX5CDGzkHRoRzWfuzACV3GKgV8HVcrmL2mwm67EEtB3ae",
+      "label": "imported_privkey_phase0"
+    },
+    "transparent_watchonly": {
+      "address": "tmYkyJFRQxWi6qYWdwdzR5dttLvLN8Ebaxn",
+      "label": "imported_watchonly_phase0"
+    },
+    "sprout_spending": {
+      "address": "zregtestsapling1j5cyxq20vkhz3gvf7vh32nq42gcq98ljnx2f0xv020rd8v2svpzs806yfx789xxc9aftqt0tdjc",
+      "key": "secret-extended-key-regtest1qdsnza9lqyqqpq83fewxer6yss9eeq2gxxnzf3tdl4r768wdwvy53ayf9nkg8xrnxmg8u7rncmaplefvmeq3j8s35hznl2kxawny0x30txmk3njs0e3saew8qs096sj33laffna4hqxkf5gl4l6w92mhwwhwwvn947z284q264c8cq9he7jr2yfjeyaj2pdgerrfnfvacn63w7qjym0f6l8f5czuuve2znpe0muvs78lrplg4432jrwr22fxupaz04mrqynx3pejcug5m6cwz",
+      "label": "imported_sprout_sk_phase0"
+    }
+  }
+}
