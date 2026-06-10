@@ -347,7 +347,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 print("grpc_comparison: ignoring incompatible stage-1 cache: %s" % str(e))
 
     def _load_cached_metadata(self, cache_path):
-        with open(os.path.join(cache_path, 'chain_metadata.json')) as f:
+        with open(os.path.join(cache_path, 'chain_metadata.json'), encoding='utf8') as f:
             meta = json.load(f)
 
         if meta.get('cache_version') != _GRPC_CACHE_VERSION:
@@ -362,7 +362,7 @@ class GrpcComparisonTest(BitcoinTestFramework):
     def _write_cached_metadata(self, cache_path):
         meta = {field: getattr(self, field) for field in _grpc_metadata_fields()}
         meta['cache_version'] = _GRPC_CACHE_VERSION
-        with open(os.path.join(cache_path, 'chain_metadata.json'), 'w') as f:
+        with open(os.path.join(cache_path, 'chain_metadata.json'), 'w', encoding='utf8') as f:
             json.dump(meta, f, indent=2)
 
     def _persist_framework_cache(self):
