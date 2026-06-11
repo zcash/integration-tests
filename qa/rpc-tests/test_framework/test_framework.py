@@ -42,6 +42,7 @@ from .util import (
 class BitcoinTestFramework(object):
 
     def __init__(self):
+        self.activation_heights = {"NU5": 1}
         self.num_nodes = 4
         self.num_indexers = 0
         self.num_wallets = 4
@@ -67,10 +68,10 @@ class BitcoinTestFramework(object):
 
     def setup_nodes(self):
         if self.miner_addresses is None:
-            args = None
+            args = [ZebraArgs(activation_heights=self.activation_heights) for _ in range(self.num_nodes)]
         else:
-            args = [ZebraArgs(miner_address=addr) for addr in self.miner_addresses]
-        return start_nodes(self.num_nodes, self.options.tmpdir, args)
+            args = [ZebraArgs(miner_address=addr, activation_heights=self.activation_heights) for addr in self.miner_addresses]
+        return start_nodes(self.num_nodes, self.options.tmpdir, extra_args=args)
 
     def prepare_chain(self):
         if self.num_indexers > 0:

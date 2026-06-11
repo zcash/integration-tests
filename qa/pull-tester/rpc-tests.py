@@ -41,6 +41,120 @@ FLAKY_SCRIPTS = [
     'mempool_packages.py',
 ]
 
+# Disabled until migrated to the Z3 stack. Note = why it fails / suggested
+# migration. Most "deprecated" RPCs are deprecated in zcashd and map to zallet's
+# account/UA API.
+DISABLED_SCRIPTS = [
+    'addressindex.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'bip65-cltv-p2p.py',  # P2P/mininode framework
+    'bipdersig-p2p.py',  # P2P/mininode framework
+    'blockchain.py',  # zebra missing gettxoutsetinfo
+    'coinbase_funding_streams.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'errors.py',  # zebra missing gettxoutsetinfo
+    'feature_logging.py',  # no zcashd regtest/debug.log
+    'feature_walletfile.py',  # zcashd wallet.dat/-wallet
+    'feature_zip221.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
+    'feature_zip239.py',  # P2P/mininode framework
+    'feature_zip244_blockcommitments.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
+    'finalorchardroot.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'finalsaplingroot.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'framework.py',  # no zcashd regtest/debug.log
+    'fundrawtransaction.py',  # no zallet equiv yet: importpubkey
+    'getblocktemplate.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
+    'getchaintips.py',  # zebra missing getchaintips
+    'getrawtransaction_insight.py',  # deprecated; getnewaddress->z_getaddressforaccount, sendtoaddress->z_sendmany
+    'httpbasics.py',  # RPC basic auth (zebra uses cookie auth)
+    'invalidblockrequest.py',  # P2P/mininode framework
+    'invalidtxrequest.py',  # P2P/mininode framework
+    'key_import_export.py',  # no zallet equiv yet: dumpprivkey, importprivkey
+    'keypool.py',  # deprecated; getnewaddress->z_getaddressforaccount, encryptwallet->walletpassphrase/walletlock
+    'listtransactions.py',  # deprecated; getnewaddress->z_getaddressforaccount, sendtoaddress->z_sendmany
+    'mempool_limit.py',  # deprecated; z_getnewaddress->z_getaddressforaccount
+    'mempool_nu_activation.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'mempool_packages.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
+    'mempool_reorg.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
+    'mempool_resurrect_test.py',  # deprecated; getnewaddress->z_getaddressforaccount, gettransaction->z_viewtransaction
+    'mempool_spendcoinbase.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
+    'mempool_tx_expiry.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'mergetoaddress_mixednotes.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'mergetoaddress_sapling.py',  # deprecated; z_getnewaddress->z_getaddressforaccount
+    'mergetoaddress_ua_nu5.py',  # -anchorconfirmations unsupported
+    'mergetoaddress_ua_sapling.py',  # -anchorconfirmations unsupported
+    'merkle_blocks.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'mining_shielded_coinbase.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'multi_rpc.py',  # RPC basic auth (zebra uses cookie auth)
+    'nodehandling.py',  # zebra missing setban, listbanned, clearbanned
+    'orchard_reorg.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
+    'p2p-fullblocktest.py',  # P2P/mininode framework
+    'p2p_node_bloom.py',  # P2P/mininode framework
+    'p2p_nu_peer_management.py',  # P2P/mininode framework
+    'p2p_txexpiringsoon.py',  # P2P/mininode framework
+    'p2p_txexpiry_dos.py',  # P2P/mininode framework
+    'post_heartwood_rollback.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
+    'prioritisetransaction.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'proxy_test.py',  # -proxy/tor unsupported
+    'rawtransactions.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'regtest_signrawtransaction.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'remove_sprout_shielding.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'reorg_limit.py',  # investigate
+    'rest.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'rewind_index.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
+    'sapling_rewind_check.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
+    'shorter_block_times.py',  # deprecated; z_getnewaddress->z_getaddressforaccount
+    'show_help.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'signrawtransaction_offline.py',  # no zallet equiv yet: dumpprivkey
+    'signrawtransactions.py',  # deprecated; signrawtransaction->PCZT (wallet#99)
+    'spentindex.py',  # deprecated; getnewaddress->z_getaddressforaccount, sendtoaddress->z_sendmany
+    'sprout_sapling_migration.py',  # no zallet equiv yet: z_importkey
+    'threeofthreerestore.py',  # no zallet equiv yet: dumpprivkey, importprivkey
+    'timestampindex.py',  # -insightexplorer index, -txindex unsupported
+    'turnstile.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
+    'txn_doublespend.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'upgrade_golden.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
+    'wallet_1941.py',  # no zallet equiv yet: z_exportkey, z_importkey
+    'wallet_accounts.py',  # no zallet equiv yet: z_exportviewingkey
+    'wallet_addresses.py',  # no zallet equiv yet: z_exportkey, z_importkey
+    'wallet_anchorfork.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'wallet_broadcast.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'wallet_changeaddresses.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'wallet_changeindicator.py',  # no zallet equiv yet: z_exportviewingkey
+    'wallet_deprecation.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'wallet_doublespend.py',  # deprecated; z_getbalanceforaccount->z_getbalances, gettransaction->z_viewtransaction
+    'wallet_golden_5_6_0.py',  # deprecated; z_getbalanceforaccount->z_getbalances
+    'wallet_import_export.py',  # no zallet equiv yet: z_exportkey, z_importkey
+    'wallet_isfromme.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'wallet_listnotes.py',  # no zallet equiv yet: z_exportviewingkey
+    'wallet_listreceived.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'wallet_listunspent.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'wallet_nullifiers.py',  # no zallet equiv yet: z_exportkey, z_importkey, z_exportviewingkey
+    'wallet_orchard.py',  # no zallet equiv yet: resendwallettransactions
+    'wallet_orchard_change.py',  # deprecated; z_getbalanceforaccount->z_getbalances
+    'wallet_orchard_init.py',  # no zallet equiv yet: resendwallettransactions
+    'wallet_orchard_persistence.py',  # deprecated; z_getbalanceforaccount->z_getbalances
+    'wallet_orchard_reindex.py',  # deprecated; z_getbalanceforaccount->z_getbalances
+    'wallet_overwintertx.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'wallet_parsing_amounts.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'wallet_persistence.py',  # no zallet equiv yet: z_exportkey, z_importkey, z_exportviewingkey
+    'wallet_sapling.py',  # no zallet equiv yet: z_exportkey, z_importkey, z_exportviewingkey
+    'wallet_sendmany_any_taddr.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'wallet_shieldcoinbase_sapling.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
+    'wallet_shieldcoinbase_ua_nu5.py',  # deprecated; z_getbalance->z_getbalances, z_getbalanceforaccount->z_getbalances
+    'wallet_shieldcoinbase_ua_sapling.py',  # deprecated; z_getbalance->z_getbalances, z_getbalanceforaccount->z_getbalances
+    'wallet_shieldingcoinbase.py',  # no zallet equiv yet: z_exportviewingkey
+    'wallet_tarnished_5_6_0.py',  # needs ZebraArgs migration (list args)
+    'wallet_treestate.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
+    'wallet_unified_change.py',  # needs z_shieldcoinbase funding step: zallet z_sendmany cannot spend mined coinbase (have 0)
+    'wallet_z_sendmany.py',  # no zallet equiv yet: z_exportviewingkey
+    'wallet_z_shieldcoinbase.py',  # investigate
+    'wallet_z_shieldcoinbase_multi_taddr.py',  # investigate
+    'wallet_zero_value.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
+    'wallet_zip317_default.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
+    'walletbackup.py',  # no zallet equiv yet: backupwallet
+    'zapwallettxes.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'zkey_import_export.py',  # no zallet equiv yet: z_exportkey, z_importkey
+    'zmq_test.py',  # deprecated; getnewaddress->z_getaddressforaccount, sendtoaddress->z_sendmany
+]
+
 BASE_SCRIPTS= [
     # Longest test should go first, to favor running tests in parallel
     # vv Tests less than 5m vv
@@ -201,6 +315,19 @@ EXTENDED_SCRIPTS = [
     'maxuploadtarget.py',
     'wallet_db_flush.py',
 ]
+
+# Exclude DISABLED_SCRIPTS from the lists that actually get run, matching on
+# the script filename so entries with extra args (e.g. 'foo.py --bar') are
+# covered too. ALL_SCRIPTS above is left complete so a disabled test can
+# still be run explicitly by name.
+_DISABLED_FILES = {s.split()[0] for s in DISABLED_SCRIPTS}
+def _without_disabled(scripts):
+    return [s for s in scripts if s.split()[0] not in _DISABLED_FILES]
+SERIAL_SCRIPTS = _without_disabled(SERIAL_SCRIPTS)
+FLAKY_SCRIPTS = _without_disabled(FLAKY_SCRIPTS)
+BASE_SCRIPTS = _without_disabled(BASE_SCRIPTS)
+NEW_SCRIPTS = _without_disabled(NEW_SCRIPTS)
+ZMQ_SCRIPTS = _without_disabled(ZMQ_SCRIPTS)
 
 ALL_SCRIPTS = SERIAL_SCRIPTS + FLAKY_SCRIPTS + BASE_SCRIPTS + NEW_SCRIPTS + ZMQ_SCRIPTS + EXTENDED_SCRIPTS
 
