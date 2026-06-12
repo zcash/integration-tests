@@ -45,6 +45,7 @@ FLAKY_SCRIPTS = [
 # migration. Most "deprecated" RPCs are deprecated in zcashd and map to zallet's
 # account/UA API.
 DISABLED_SCRIPTS = [
+    'addnode.py',  # flaky: zebra regtest block broadcast/peering stalls in multi-peer topologies (cf zebra #10332/#10329)
     'addressindex.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
     'bip65-cltv-p2p.py',  # P2P/mininode framework
     'bipdersig-p2p.py',  # P2P/mininode framework
