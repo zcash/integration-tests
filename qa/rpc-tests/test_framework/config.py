@@ -9,8 +9,15 @@ from typing import Any
 @dataclass
 class ZebraArgs:
     miner_address: str = "tmSRd1r8gs77Ja67Fw1JcdoXytxsyrLTPJm"
-    # Match zallet.toml's regtest NU5@height-1, else create_cache.py hits "Missing Orchard tree state".
-    activation_heights: dict[str, int] = field(default_factory=lambda: {"NU5": 1})
+    # Explicitly activate every network upgrade at height 1, matching zallet.toml's
+    # regtest defaults. Zebra only activates the NU5+ upgrades that are listed here
+    # (it does not imply later ones), so each must be named or zallet will reject the
+    # coinbase that zebra mines: zallet expects the latest upgrade's consensus branch
+    # ID while zebra commits to a lower one. Omitting NU5 also makes create_cache.py
+    # fail with "Missing Orchard tree state".
+    activation_heights: dict[str, int] = field(
+        default_factory=lambda: {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1}
+    )
     funding_streams: list[dict[str, Any]] = field(default_factory=list)
     lockbox_disbursements: list[dict[str, Any]] = field(default_factory=list)
 

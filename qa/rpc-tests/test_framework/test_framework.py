@@ -42,7 +42,7 @@ from .util import (
 class BitcoinTestFramework(object):
 
     def __init__(self):
-        self.activation_heights = {"NU5": 1}
+        self.activation_heights = {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1}
         self.num_nodes = 4
         self.num_indexers = 0
         self.num_wallets = 4
