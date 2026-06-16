@@ -151,6 +151,8 @@ DISABLED_SCRIPTS = [
     'wallet_zip317_default.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'walletbackup.py',  # no zallet equiv yet: backupwallet
     'zapwallettxes.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
+    'zcashd_key_import.py',  # needs a BDB-6.2 db_dump not on CI runners (wallet.dat is BDB 6.2 / Btree v10; Ubuntu ships only db5.3). upstream zcash/wallet doesn't CI-test this path either. passes locally (80/80) with a zcashd-bundled db_dump on PATH
+    'zcashd_key_import_db.py',  # ditto; passes locally (76/76) with a zcashd-bundled db_dump on PATH
     'zkey_import_export.py',  # no zallet equiv yet: z_exportkey, z_importkey
     'zmq_test.py',  # deprecated; getnewaddress->z_getaddressforaccount, sendtoaddress->z_sendmany
 ]
