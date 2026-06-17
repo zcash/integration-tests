@@ -41,6 +41,7 @@ from test_framework.util import (
 from test_framework.zcashd_migration import (
     CheckReporter,
     ImportedKeyKind,
+    extract_listed_addresses,
     load_manifest,
     load_phase_manifests,
     run_migration,
@@ -136,57 +137,6 @@ class ZcashdKeyImportTest(BitcoinTestFramework):
             # Sprout keys intentionally skipped - not supported by zallet.
 
         reporter.finish()
-
-
-def extract_listed_addresses(wallet):
-    """
-    Collect the set of all address strings from the listaddresses RPC.
-
-    Handles the source-grouped format returned by zallet:
-      [{"source": "mnemonic_seed",
-        "transparent": {"addresses": [...], "changeAddresses": [...]},
-        "derived_transparent": [{"addresses": [...], "changeAddresses": [...]}],
-        "sapling": [{"addresses": [...]}],
-        "unified": [{"addresses": [{"address": ...}]}]}, ...]
-
-    For unified addresses, also decomposes each UA via z_listunifiedreceivers
-    and adds the individual typed receivers (p2pkh, sapling, orchard) to the
-    result set. This allows matching against bare sapling/transparent addresses
-    in the manifest, since zallet wraps legacy sapling keys in sapling-only UAs.
-    """
-    result = set()
-    for group in wallet.listaddresses():
-        # Non-derived transparent addresses and change addresses
-        t_section = group.get('transparent', {})
-        if isinstance(t_section, dict):
-            for addr in t_section.get('addresses', []):
-                result.add(addr)
-            for addr in t_section.get('changeAddresses', []):
-                result.add(addr)
-
-        # Derived transparent addresses (BIP 44)
-        for dt_group in group.get('derived_transparent', []):
-            for addr in dt_group.get('addresses', []):
-                result.add(addr)
-            for addr in dt_group.get('changeAddresses', []):
-                result.add(addr)
-
-        # Sapling addresses
-        for sapling_group in group.get('sapling', []):
-            for addr in sapling_group.get('addresses', []):
-                result.add(addr)
-
-        # Unified addresses - add the UA itself, plus decomposed receivers
-        for ua_group in group.get('unified', []):
-            for addr_entry in ua_group.get('addresses', []):
-                ua_addr = addr_entry.get('address', '')
-                if ua_addr:
-                    result.add(ua_addr)
-                    receivers = wallet.z_listunifiedreceivers(ua_addr)
-                    for receiver_addr in receivers.values():
-                        result.add(receiver_addr)
-
-    return result
 
 
 if __name__ == '__main__':

@@ -45,6 +45,21 @@ def test_wallet_path():
                         '..', 'test-wallet')
 
 
+def ancient_test_wallet_path():
+    """
+    Resolve the path to the "ancient" test wallet data directory.
+
+    This fixture is a pre-Sapling, HD-seedless zcashd `wallet.dat` (a
+    transparent-only wallet with no `hdseed`/mnemonic) produced by the
+    regtest wallet builder. It exercises zallet's seedless import path,
+    where the migration mints a fresh recovery seed to back the legacy
+    transparent account. See zcash/zcash#7196 for the builder support and
+    zcash/integration-tests#135 for the test itself.
+    """
+    return os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                        '..', 'test-ancient-wallet')
+
+
 def load_manifest(output_path):
     manifest_path = os.path.join(output_path, 'full_manifest.json')
     with open(manifest_path, 'r', encoding='utf-8') as f:
@@ -109,6 +124,57 @@ def run_migration(zallet_binary, datadir, wallet_dat_path):
         print("STDERR: %s" % result.stderr)
     assert_equal(result.returncode, 0,
         "migrate-zcashd-wallet failed: %s" % result.stderr)
+
+
+def extract_listed_addresses(wallet):
+    """
+    Collect the set of all address strings from the listaddresses RPC.
+
+    Handles the source-grouped format returned by zallet:
+      [{"source": "mnemonic_seed",
+        "transparent": {"addresses": [...], "changeAddresses": [...]},
+        "derived_transparent": [{"addresses": [...], "changeAddresses": [...]}],
+        "sapling": [{"addresses": [...]}],
+        "unified": [{"addresses": [{"address": ...}]}]}, ...]
+
+    For unified addresses, also decomposes each UA via z_listunifiedreceivers
+    and adds the individual typed receivers (p2pkh, sapling, orchard) to the
+    result set. This allows matching against bare sapling/transparent addresses
+    in the manifest, since zallet wraps legacy sapling keys in sapling-only UAs.
+    """
+    result = set()
+    for group in wallet.listaddresses():
+        # Non-derived transparent addresses and change addresses
+        t_section = group.get('transparent', {})
+        if isinstance(t_section, dict):
+            for addr in t_section.get('addresses', []):
+                result.add(addr)
+            for addr in t_section.get('changeAddresses', []):
+                result.add(addr)
+
+        # Derived transparent addresses (BIP 44)
+        for dt_group in group.get('derived_transparent', []):
+            for addr in dt_group.get('addresses', []):
+                result.add(addr)
+            for addr in dt_group.get('changeAddresses', []):
+                result.add(addr)
+
+        # Sapling addresses
+        for sapling_group in group.get('sapling', []):
+            for addr in sapling_group.get('addresses', []):
+                result.add(addr)
+
+        # Unified addresses - add the UA itself, plus decomposed receivers
+        for ua_group in group.get('unified', []):
+            for addr_entry in ua_group.get('addresses', []):
+                ua_addr = addr_entry.get('address', '')
+                if ua_addr:
+                    result.add(ua_addr)
+                    receivers = wallet.z_listunifiedreceivers(ua_addr)
+                    for receiver_addr in receivers.values():
+                        result.add(receiver_addr)
+
+    return result
 
 
 class CheckReporter:
