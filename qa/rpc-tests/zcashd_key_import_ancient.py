@@ -9,11 +9,22 @@
 #
 # Companion to `zcashd_key_import.py`. That test covers a modern wallet
 # that spans all network upgrades and carries an HD seed (mnemonic). This
-# test covers the opposite extreme: an "ancient" wallet produced by a
-# pre-Sapling zcashd binary (v1.0.15 / v1.1.1) that has NO `hdseed` and
-# NO mnemonic - only transparent keys generated from system randomness
-# plus a handful of `importprivkey` / `importpubkey` / `importaddress`
-# imports. See the wallet builder's "ancient wallet" mode [2].
+# test covers the opposite extreme: an "ancient" wallet produced by the
+# pre-Sapling zcashd binary v1.1.1 that has NO `hdseed` and NO mnemonic -
+# only transparent keys generated from system randomness, plus imported
+# foreign keys. See the wallet builder's "ancient wallet" mode (`make
+# ancient`) [2].
+#
+# The pre-Sapling binary only supports a subset of the import RPCs, so the
+# fixture's per-phase `imported_keys` carry just `transparent_privkey`
+# (`importprivkey`, spendable) and `transparent_watchonly` (`importaddress
+# <addr>`, watch-only-by-hash). `importpubkey` and P2SH `importaddress`
+# did not exist until Blossom-era zcashd (v2.1.0-1), which also introduced
+# the HD seed - so a genuinely seedless wallet structurally cannot carry
+# `transparent_pubkey` or `transparent_p2sh` imports. The per-phase loop
+# below still tolerates them (in case a future ancient build uses a
+# different pre-Sapling binary), but they are absent from this fixture;
+# the pubkey/P2SH import paths are exercised by `zcashd_key_import.py`.
 #
 # This exercises zallet's seedless import path [3]: with no seed in the
 # source wallet, the migration mints a fresh recovery seed and creates a
@@ -26,11 +37,19 @@
 #   * the migration succeeds;
 #   * a legacy account with a seed fingerprint now exists
 #     (existence only - the fingerprint is non-deterministic);
-#   * `listaddresses` contains the imported transparent (privkey),
-#     watch-only pubkey, and P2SH addresses;
+#   * `listaddresses` contains the imported spendable transparent
+#     (`importprivkey`) address(es);
 #   * watch-only-by-hash transparent imports (zcashd `importaddress
-#     <addr>`), if present, are recorded as SKIPPED - zallet has no plans
-#     to support importing watch-only addresses by script-hash alone.
+#     <addr>`) are recorded as SKIPPED - zallet has no plans to support
+#     importing watch-only addresses by script-hash alone.
+#
+# NOTE: this test is disabled in qa/pull-tester/rpc-tests.py. The fixture
+# parses as a genuinely seedless pre-Sapling wallet, but the migration
+# stack cannot yet consume it: `zewif-zcashd` unconditionally requires the
+# `networkinfo` and `orchard_note_commitment_tree` records (both added in
+# a later wallet.dat version and absent from pre-Sapling wallets), and
+# zallet's seedless legacy-account logic (wallet#384) is not yet merged.
+# See test-ancient-wallet/README.md.
 #
 # [1] https://github.com/zcash/zcash/tree/master/qa/zcash/wallet-builder
 # [2] https://github.com/zcash/zcash/issues/7196
@@ -119,7 +138,10 @@ class ZcashdKeyImportAncientTest(BitcoinTestFramework):
 
         # === Imported transparent keys ===
         # An ancient wallet has no HD-derived addresses; everything of
-        # interest arrives through the per-phase `imported_keys` records:
+        # interest arrives through the per-phase `imported_keys` records.
+        # For this pre-Sapling (v1.1.1) fixture only the first and last
+        # apply; the pubkey/P2SH kinds are listed for robustness but are
+        # absent (see module docstring):
         #   * transparent_privkey   -> importprivkey   (spendable)
         #   * transparent_pubkey    -> importpubkey    (watch-only pubkey)
         #   * transparent_p2sh      -> importaddress <redeemScript>
