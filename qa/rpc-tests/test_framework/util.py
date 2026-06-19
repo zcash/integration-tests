@@ -202,6 +202,43 @@ def sync_blocks(nodes, wallets=None, wait=0.125, timeout=60, allow_different_tip
     print('Wallet statuses:', wallet_status)
     raise AssertionError("Block sync failed")
 
+def sync_blocks_with_reconnect(rpcs, peer_idx, max_attempts=3, reconnect_pause=2):
+    """Retry-wrapped `sync_blocks` that re-issues `addnode` between attempts.
+
+    The 8-node mesh in `rebuild_cache` sometimes fails to converge on a single
+    tip within `sync_blocks`'s 60s timeout, particularly after the stop/restart
+    dance that runs between mining batches. The retries here recover from peer
+    connections that didn't survive the restart, or block-propagation gossip
+    that didn't complete in time.
+
+    See:
+    - https://github.com/ZcashFoundation/zebra/issues/10329
+    - https://github.com/ZcashFoundation/zebra/issues/10332
+    """
+    last_err = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            sync_blocks(rpcs)
+            return
+        except AssertionError as e:
+            last_err = e
+            if attempt < max_attempts:
+                print(
+                    "sync_blocks attempt {}/{} timed out; reconnecting peers "
+                    "to node {} and retrying".format(attempt, max_attempts, peer_idx)
+                )
+                for i in range(len(rpcs)):
+                    if i != peer_idx:
+                        try:
+                            connect_nodes_bi(rpcs, i, peer_idx)
+                        except Exception:
+                            # Connection may already exist or peer may not yet
+                            # be ready; the next sync_blocks attempt will surface
+                            # it as a real failure if it persists.
+                            pass
+                time.sleep(reconnect_pause)
+    raise last_err
+
 def sync_mempools(nodes, wallets=None, wait=0.5, timeout=60):
     """
     Wait until everybody has the same transactions in their memory
@@ -431,8 +468,12 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                 for j in range(25):
                     rpcs[peer].generate(1)
                     block_time += PRE_BLOSSOM_BLOCK_TARGET_SPACING
-                # Must sync before next peer starts generating blocks
-                sync_blocks(rpcs)
+                # Must sync before next peer starts generating blocks. Use the
+                # reconnect-aware retry variant because the 8-node mesh
+                # occasionally fails to converge within sync_blocks's 60s
+                # timeout on its first attempt; a re-`addnode` between attempts
+                # recovers the most common transient case.
+                sync_blocks_with_reconnect(rpcs, peer)
                 # Shut down and restart every zebrad node.
                 # This works around a zebrad problem where it won't broadcast
                 # received blocks to other connected nodes, and is a workaround
@@ -482,12 +523,44 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
 
         # Wait for zallets to synchronize with the nodes. `getwalletstatus`
         # omits `wallet_tip` until the wallet has a committed tip.
+        #
+        # Bounded with a hard deadline so a stuck 8-node mesh (cf. ZcashFoundation/zebra
+        # issues #10329 and #10332) surfaces as a fast failure instead of hanging until
+        # the CI job's 6-hour cap. Print to stderr so the timeline survives the
+        # `subprocess.check_output` stdout-capture that wraps `create_cache.py`.
+        sync_deadline = time.time() + 300
+        loop_start = time.time()
+        last_log = loop_start
         while True:
             wallet_status = [ x.getwalletstatus() for x in wallets ]
             if all('wallet_tip' in w for w in wallet_status):
                 tips = [ (w['node_tip']['blockhash'], w['wallet_tip']['blockhash']) for w in wallet_status ]
                 if tips == [ tips[0] ]*len(tips) and tips[0][0] == tips[0][1]:
+                    print(
+                        "[rebuild_cache] wallets converged after {:.1f}s".format(
+                            time.time() - loop_start
+                        ),
+                        file=sys.stderr,
+                    )
                     break
+            now = time.time()
+            if now - last_log >= 30:
+                heights = [w.get('node_tip', {}).get('height') for w in wallet_status]
+                print(
+                    "[rebuild_cache] waiting for wallets to converge "
+                    "({:.0f}s elapsed, heights={})".format(now - loop_start, heights),
+                    file=sys.stderr,
+                )
+                last_log = now
+            if now > sync_deadline:
+                heights = [w.get('node_tip', {}).get('height') for w in wallet_status]
+                print(
+                    "[rebuild_cache] wallet sync did not converge in {:.0f}s; "
+                    "final heights={}".format(now - loop_start, heights),
+                    file=sys.stderr,
+                )
+                print('Wallet statuses:', wallet_status)
+                raise AssertionError("Wallet sync did not converge within deadline")
             time.sleep(0.25)
 
         # Shut them down, and clean up cache directories:
