@@ -602,12 +602,27 @@ jobs:
         run: cargo build --release --target ${{ matrix.rust_target }} ${{ matrix.name != 'mingw32' && '--features zcashd-import' || '' }} --bin zallet
         working-directory: ./zallet
 
+      # Ship the BDB 6.2 db_dump vendored by zewif-zcashd alongside zallet:
+      # its build.rs writes the path via cargo:rustc-env, which doesn't survive
+      # the build->test runner hop, and Ubuntu's PATH db_dump is BDB 5.3.
+      - name: Stage vendored db_dump
+        if: matrix.name != 'mingw32' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          db_dump=$(find ./zallet/target/${{ matrix.rust_target }}/release/build \
+                      -path '*/zewif-zcashd-*/out/db_dump' -type f -print -quit)
+          [ -n "$db_dump" ] || { echo "Vendored db_dump not found under target/.../zewif-zcashd-*/out/" >&2; exit 1; }
+          cp "$db_dump" ./zallet/target/${{ matrix.rust_target }}/release/db_dump
+
       - name: Upload zallet
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: zallet-${{ matrix.name }}
           path: |
               ${{ format('./zallet/target/{0}/release/zallet{1}', matrix.rust_target, matrix.file_ext) }}
+              ${{ format('./zallet/target/{0}/release/db_dump', matrix.rust_target) }}
+          if-no-files-found: warn
 
       - uses: ./integration-tests/.github/actions/finish-interop
         if: always()
@@ -825,6 +840,17 @@ jobs:
           chmod +x ${{ format('./src/zebrad{0}', matrix.file_ext) }}
           chmod +x ${{ format('./src/zainod{0}', matrix.file_ext) }}
           chmod +x ${{ format('./src/zallet{0}', matrix.file_ext) }}
+
+      # Vendored BDB 6.2 db_dump (shipped in the zallet artifact) goes on PATH
+      # so zallet's which::which("db_dump") finds it instead of Ubuntu's 5.3.
+      - name: Make db_dump available
+        if: matrix.name != 'mingw32' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ -f ./src/db_dump ]; then
+            chmod +x ./src/db_dump
+            echo "$PWD/src" >> "$GITHUB_PATH"
+          fi
 
       - name: Get Sprout parameters
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
