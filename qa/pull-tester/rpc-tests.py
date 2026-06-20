@@ -149,7 +149,6 @@ DISABLED_SCRIPTS = [
     'wallet_z_shieldcoinbase_multi_taddr.py',  # ditto
     'wallet_zero_value.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
     'addnode.py',  # flaky: zebra regtest block broadcast/peering stalls in multi-peer topologies (cf zebra #10332/#10329)
-    'converttex.py',  # triggers rebuild_cache via default cache_behavior='current'; same zebra regtest propagation fragility as addnode.py (mesh stalls with one wallet 1 block behind)
     'wallet.py',  # expects zcashd-style `z_gettotalbalance` (immature coinbase included); zallet only counts mature coinbase, so the 6.25 ZEC assertion at chain tip 1 returns 0.00. needs upstream alignment between zallet's balance semantics and the test's expectations
     'wallet_zip317_default.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'walletbackup.py',  # no zallet equiv yet: backupwallet
