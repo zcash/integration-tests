@@ -462,8 +462,9 @@ _CACHE_BEHAVIOR_RE = re.compile(r"^\s*self\.cache_behavior\s*=\s*['\"]([^'\"]+)[
 
 
 def _test_uses_cache(script_path):
-    """True if the test reads `qa/cache` (cache_behavior='current', the
-    default). Conservative: returns True on read/parse failures."""
+    """True if the test touches `qa/cache`. Both 'current' (read) and
+    'fresh' (force-rebuild then read) consume the shared cachedir.
+    Conservative: returns True on read/parse failures."""
     try:
         with open(script_path, "r", encoding="utf8") as f:
             source = f.read()
@@ -472,7 +473,7 @@ def _test_uses_cache(script_path):
     match = _CACHE_BEHAVIOR_RE.search(source)
     if match is None:
         return True
-    return match.group(1) == 'current'
+    return match.group(1) in ('current', 'fresh')
 
 
 def run_tests(test_handler, test_list, src_dir, build_dir, exeext, jobs=1, enable_coverage=False, deterministic=False, args=[]):

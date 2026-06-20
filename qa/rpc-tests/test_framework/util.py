@@ -543,7 +543,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                     "final heights={}".format(now - loop_start, heights),
                     file=sys.stderr,
                 )
-                print('Wallet statuses:', wallet_status)
+                print('Wallet statuses:', wallet_status, file=sys.stderr)
                 raise AssertionError("Wallet sync did not converge within deadline")
             time.sleep(0.25)
 
