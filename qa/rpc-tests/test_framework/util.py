@@ -182,6 +182,7 @@ def sync_blocks(nodes, wallets=None, wait=0.125, timeout=60, allow_different_tip
         time.sleep(wait)
         timeout -= wait
 
+    wallet_status = None
     if wallets:
         # Now that the block counts are in sync, wait for the internal
         # notifications to finish. `getwalletstatus` omits `wallet_tip` until
@@ -199,7 +200,8 @@ def sync_blocks(nodes, wallets=None, wait=0.125, timeout=60, allow_different_tip
             timeout -= wait
 
     print('Node tips:', tips)
-    print('Wallet statuses:', wallet_status)
+    if wallet_status is not None:
+        print('Wallet statuses:', wallet_status)
     raise AssertionError("Block sync failed")
 
 def sync_blocks_with_reconnect(rpcs, peer_idx, max_attempts=3, reconnect_pause=2):

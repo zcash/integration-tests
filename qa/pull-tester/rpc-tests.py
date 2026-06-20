@@ -145,13 +145,12 @@ DISABLED_SCRIPTS = [
     'wallet_treestate.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
     'wallet_unified_change.py',  # needs z_shieldcoinbase funding step: zallet z_sendmany cannot spend mined coinbase (have 0)
     'wallet_z_sendmany.py',  # no zallet equiv yet: z_exportviewingkey
-    'wallet_z_shieldcoinbase.py',  # investigate
-    'wallet_z_shieldcoinbase_multi_taddr.py',  # investigate
+    'wallet_z_shieldcoinbase.py',  # maturity-semantics mismatch — relies on immature coinbase being available to shield via `z_gettotalbalance`
+    'wallet_z_shieldcoinbase_multi_taddr.py',  # ditto
     'wallet_zero_value.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
     'addnode.py',  # flaky: zebra regtest block broadcast/peering stalls in multi-peer topologies (cf zebra #10332/#10329)
+    'converttex.py',  # triggers rebuild_cache via default cache_behavior='current'; same zebra regtest propagation fragility as addnode.py (mesh stalls with one wallet 1 block behind)
     'wallet.py',  # expects zcashd-style `z_gettotalbalance` (immature coinbase included); zallet only counts mature coinbase, so the 6.25 ZEC assertion at chain tip 1 returns 0.00. needs upstream alignment between zallet's balance semantics and the test's expectations
-    'wallet_z_shieldcoinbase.py',  # same maturity-semantics mismatch — relies on immature coinbase being available to shield via `z_gettotalbalance`
-    'wallet_z_shieldcoinbase_multi_taddr.py',  # ditto
     'wallet_zip317_default.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'walletbackup.py',  # no zallet equiv yet: backupwallet
     'zapwallettxes.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
