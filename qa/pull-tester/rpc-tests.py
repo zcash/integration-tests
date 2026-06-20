@@ -145,11 +145,10 @@ DISABLED_SCRIPTS = [
     'wallet_treestate.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
     'wallet_unified_change.py',  # needs z_shieldcoinbase funding step: zallet z_sendmany cannot spend mined coinbase (have 0)
     'wallet_z_sendmany.py',  # no zallet equiv yet: z_exportviewingkey
-    'wallet_z_shieldcoinbase.py',  # same maturity mismatch as wallet.py
-    'wallet_z_shieldcoinbase_multi_taddr.py',  # ditto
+    'wallet_z_shieldcoinbase.py',  # zallet startup crashes with "coinbase tx's claimed height doesn't match its consensus branch ID" when NU5 is activated at height 1; consensus-branch alignment between zebra and zallet needed
+    'wallet_z_shieldcoinbase_multi_taddr.py',  # JSON-RPC error during z_getaddressforaccount(["sapling","orchard"]); likely shielded-pool activation height issue
     'wallet_zero_value.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
     'addnode.py',  # zebra regtest peering stalls in multi-peer topologies (zebra #10329, #10332)
-    'wallet.py',  # zallet's z_gettotalbalance excludes immature coinbase; zcashd's didn't. needs upstream alignment
     'wallet_zip317_default.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'walletbackup.py',  # no zallet equiv yet: backupwallet
     'zapwallettxes.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances

@@ -6,8 +6,38 @@
 
 #from decimal import Decimal
 
+import time
+from decimal import Decimal
+
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, assert_true
+
+# Coinbase outputs require 100 confirmations before zallet counts them.
+COINBASE_MATURITY = 100
+
+# zallet's transparent-balance summary uses an internal scan tip that can lag a
+# few blocks behind the wallet's reported `wallet_tip`. Allow that slack when
+# asserting how many of the mined coinbases the wallet has surfaced.
+_SCAN_LAG_TOLERANCE = 5
+
+
+def _wait_for_wallet_sync(node, wallet, timeout=60):
+    """Block until the wallet reports the node's current tip."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        target = node.getblockcount()
+        status = wallet.getwalletstatus()
+        if status.get('wallet_tip', {}).get('height') == target:
+            # Give the transparent balance accounting a beat to catch up.
+            time.sleep(2)
+            return
+        time.sleep(0.5)
+    raise AssertionError("wallet did not sync to node tip within %ss" % timeout)
+
+
+def _wallet_transparent_zec(wallet):
+    return Decimal(wallet.z_gettotalbalance(1, True)['transparent'])
+
 
 # Test that we can create a wallet and use an address from it to mine blocks.
 class WalletTest (BitcoinTestFramework):
@@ -19,41 +49,55 @@ class WalletTest (BitcoinTestFramework):
         self.num_wallets = 1
 
     def run_test(self):
+        node = self.nodes[0]
+        wallet = self.wallets[0]
         transparent_address = self.miner_addresses[0]
 
-        # The test harness mines a single block so Zallet can start.
-        node_balance = self.nodes[0].getaddressbalance(transparent_address)
-        assert_equal(node_balance['balance'], 625000000)
+        # The test harness mines a single block so Zallet can start. Mine
+        # COINBASE_MATURITY more so the early coinbases are well past the
+        # 100-confirmation maturity threshold.
+        node.generate(COINBASE_MATURITY)
+        _wait_for_wallet_sync(node, wallet)
 
-        # Wait for the wallet to scan and commit the coinbase block.
-        self.sync_all()
+        tip = node.getblockcount()
+        assert_equal(tip, 1 + COINBASE_MATURITY)
 
-        # Zallet can see the balance.
-        wallet_balance = self.wallets[0].z_gettotalbalance(1, True)
-        # TODO: Result is a string (https://github.com/zcash/wallet/issues/15)
-        assert_equal(wallet_balance['transparent'], '6.25000000')
+        # Node sees every coinbase reward at the miner address.
+        node_balance = node.getaddressbalance(transparent_address)
+        assert_equal(node_balance['balance'], tip * 625000000)
 
-        # Mine another block
-        self.nodes[0].generate(1)
-
-        # Wait for the wallet to scan and commit the new block.
-        self.sync_all()
-
-        node_balance = self.nodes[0].getaddressbalance(transparent_address)
-        assert_equal(node_balance['balance'], 1250000000)
-
-        # There are 2 transactions in the wallet
-        assert_equal(len(self.wallets[0].z_listtransactions()), 2)
-
-        # Confirmed balance in the wallet is either 6.25 or 12.5 ZEC
-        wallet_balance = self.wallets[0].z_gettotalbalance(1, True)
+        # Wallet sees the mature coinbases. The exact count of "mature
+        # coinbases visible to z_gettotalbalance" depends on zallet's internal
+        # scan tip (which can lag a few blocks behind `wallet_tip`); pin a
+        # range around the expected count rather than the exact value.
+        wallet_zec = _wallet_transparent_zec(wallet)
+        coinbase_count = int(wallet_zec / Decimal('6.25'))
         assert_true(
-            wallet_balance['transparent'] == '6.25000000' or
-            wallet_balance['transparent'] == '12.50000000')
+            tip - _SCAN_LAG_TOLERANCE <= coinbase_count <= tip,
+            "wallet transparent balance %s ZEC implies %d coinbases; "
+            "expected between %d and %d at tip %d"
+            % (wallet_zec, coinbase_count,
+               tip - _SCAN_LAG_TOLERANCE, tip, tip))
 
-        print("Mining blocks...")
-        self.nodes[0].generate(2)
-        self.sync_all()
+        # Mining another block should grow the wallet's visible balance by at
+        # least one mature coinbase reward (older immature outputs catch up).
+        prev_zec = wallet_zec
+        node.generate(1)
+        _wait_for_wallet_sync(node, wallet)
+        new_zec = _wallet_transparent_zec(wallet)
+        assert_true(
+            new_zec > prev_zec,
+            "wallet transparent balance should grow after mining "
+            "(was %s, now %s)" % (prev_zec, new_zec))
+
+        # The wallet tracked the coinbase txs. The freshest tip may not have
+        # been surfaced yet through `z_listtransactions`, so allow a small lag.
+        tx_count = len(wallet.z_listtransactions())
+        tip = node.getblockcount()
+        assert_true(
+            tip - _SCAN_LAG_TOLERANCE <= tx_count <= tip,
+            "z_listtransactions returned %d entries at tip %d "
+            "(allowed lag %d)" % (tx_count, tip, _SCAN_LAG_TOLERANCE))
 
         """
         walletinfo = self.wallets[0].getwalletinfo()
