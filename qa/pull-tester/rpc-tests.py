@@ -145,11 +145,11 @@ DISABLED_SCRIPTS = [
     'wallet_treestate.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
     'wallet_unified_change.py',  # needs z_shieldcoinbase funding step: zallet z_sendmany cannot spend mined coinbase (have 0)
     'wallet_z_sendmany.py',  # no zallet equiv yet: z_exportviewingkey
-    'wallet_z_shieldcoinbase.py',  # maturity-semantics mismatch — relies on immature coinbase being available to shield via `z_gettotalbalance`
+    'wallet_z_shieldcoinbase.py',  # same maturity mismatch as wallet.py
     'wallet_z_shieldcoinbase_multi_taddr.py',  # ditto
     'wallet_zero_value.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
-    'addnode.py',  # flaky: zebra regtest block broadcast/peering stalls in multi-peer topologies (cf zebra #10332/#10329)
-    'wallet.py',  # expects zcashd-style `z_gettotalbalance` (immature coinbase included); zallet only counts mature coinbase, so the 6.25 ZEC assertion at chain tip 1 returns 0.00. needs upstream alignment between zallet's balance semantics and the test's expectations
+    'addnode.py',  # zebra regtest peering stalls in multi-peer topologies (zebra #10329, #10332)
+    'wallet.py',  # zallet's z_gettotalbalance excludes immature coinbase; zcashd's didn't. needs upstream alignment
     'wallet_zip317_default.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'walletbackup.py',  # no zallet equiv yet: backupwallet
     'zapwallettxes.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
@@ -463,14 +463,8 @@ _CACHE_BEHAVIOR_RE = re.compile(r"^\s*self\.cache_behavior\s*=\s*['\"]([^'\"]+)[
 
 
 def _test_uses_cache(script_path):
-    """Best-effort check: does the test at `script_path` need the shared cache?
-
-    Tests that set `self.cache_behavior` to something other than 'current' build
-    their own chain state and don't read from `qa/cache`. We return True (i.e.
-    fall back to populating the cache) on any read/parse failure to preserve
-    the conservative pre-existing behaviour for tests we can't statically
-    inspect.
-    """
+    """True if the test reads `qa/cache` (cache_behavior='current', the
+    default). Conservative: returns True on read/parse failures."""
     try:
         with open(script_path, "r", encoding="utf8") as f:
             source = f.read()
@@ -478,7 +472,6 @@ def _test_uses_cache(script_path):
         return True
     match = _CACHE_BEHAVIOR_RE.search(source)
     if match is None:
-        # Test didn't override; default `BitcoinTestFramework` behaviour is 'current'.
         return True
     return match.group(1) == 'current'
 
@@ -511,15 +504,8 @@ def run_tests(test_handler, test_list, src_dir, build_dir, exeext, jobs=1, enabl
         coverage = None
 
     if len(test_list) > 1 and jobs > 1:
-        # Pre-populate the shared cache, but only if at least one test in the
-        # list will actually consume it. Tests that override
-        # `self.cache_behavior` to anything other than the default `'current'`
-        # build their own chain via `initialize_chain_clean` or the persistent
-        # cache loaders, so calling `create_cache.py` would just spend several
-        # minutes spinning up 8 zebrads + 8 zallets to mine 200 blocks that
-        # nobody reads. The 8-node mesh `rebuild_cache` uses is also a known
-        # source of flakiness (cf. ZcashFoundation/zebra #10329, #10332), so
-        # skipping when unneeded both speeds CI up and removes a failure mode.
+        # Only run create_cache.py if some test will actually read it. Its
+        # 8-node mesh is slow (~minutes) and flaky (zebra #10329, #10332).
         if any(_test_uses_cache(tests_dir + t.split()[0]) for t in test_list):
             subprocess.check_output([tests_dir + 'create_cache.py'] + flags)
 

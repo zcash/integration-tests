@@ -184,10 +184,8 @@ def sync_blocks(nodes, wallets=None, wait=0.125, timeout=60, allow_different_tip
 
     wallet_status = None
     if wallets:
-        # Now that the block counts are in sync, wait for the internal
-        # notifications to finish. `getwalletstatus` omits `wallet_tip` until
-        # the wallet has a committed tip, so treat its absence as "not synced
-        # yet" and keep polling instead of raising KeyError.
+        # `getwalletstatus` omits `wallet_tip` until the wallet has committed;
+        # poll instead of raising KeyError.
         while timeout > 0:
             wallet_status = [ x.getwalletstatus() for x in wallets ]
             if all('wallet_tip' in w for w in wallet_status):
@@ -205,17 +203,10 @@ def sync_blocks(nodes, wallets=None, wait=0.125, timeout=60, allow_different_tip
     raise AssertionError("Block sync failed")
 
 def sync_blocks_with_reconnect(rpcs, peer_idx, max_attempts=3, reconnect_pause=2):
-    """Retry-wrapped `sync_blocks` that re-issues `addnode` between attempts.
+    """`sync_blocks` wrapped in retries that re-issue `addnode` between attempts.
 
-    The 8-node mesh in `rebuild_cache` sometimes fails to converge on a single
-    tip within `sync_blocks`'s 60s timeout, particularly after the stop/restart
-    dance that runs between mining batches. The retries here recover from peer
-    connections that didn't survive the restart, or block-propagation gossip
-    that didn't complete in time.
-
-    See:
-    - https://github.com/ZcashFoundation/zebra/issues/10329
-    - https://github.com/ZcashFoundation/zebra/issues/10332
+    Works around the 8-node `rebuild_cache` mesh sometimes failing to converge
+    within `sync_blocks`'s 60s timeout (zebra #10329, #10332).
     """
     last_err = None
     for attempt in range(1, max_attempts + 1):
@@ -234,9 +225,7 @@ def sync_blocks_with_reconnect(rpcs, peer_idx, max_attempts=3, reconnect_pause=2
                         try:
                             connect_nodes_bi(rpcs, i, peer_idx)
                         except Exception:
-                            # Connection may already exist or peer may not yet
-                            # be ready; the next sync_blocks attempt will surface
-                            # it as a real failure if it persists.
+                            # Best-effort; next sync_blocks will surface real failures.
                             pass
                 time.sleep(reconnect_pause)
     raise last_err
@@ -470,11 +459,8 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                 for j in range(25):
                     rpcs[peer].generate(1)
                     block_time += PRE_BLOSSOM_BLOCK_TARGET_SPACING
-                # Must sync before next peer starts generating blocks. Use the
-                # reconnect-aware retry variant because the 8-node mesh
-                # occasionally fails to converge within sync_blocks's 60s
-                # timeout on its first attempt; a re-`addnode` between attempts
-                # recovers the most common transient case.
+                # Must sync before next peer mines; retry variant handles the
+                # 8-node mesh occasionally missing sync_blocks's 60s window.
                 sync_blocks_with_reconnect(rpcs, peer)
                 # Shut down and restart every zebrad node.
                 # This works around a zebrad problem where it won't broadcast
@@ -523,13 +509,9 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                 sys.stderr.write("Error connecting to "+rpc_url_wallet(i)+"\n")
                 sys.exit(1)
 
-        # Wait for zallets to synchronize with the nodes. `getwalletstatus`
-        # omits `wallet_tip` until the wallet has a committed tip.
-        #
-        # Bounded with a hard deadline so a stuck 8-node mesh (cf. ZcashFoundation/zebra
-        # issues #10329 and #10332) surfaces as a fast failure instead of hanging until
-        # the CI job's 6-hour cap. Print to stderr so the timeline survives the
-        # `subprocess.check_output` stdout-capture that wraps `create_cache.py`.
+        # Wait for zallets to catch up to their nodes. Bounded so a stuck
+        # 8-node mesh (zebra #10329, #10332) fails fast instead of hitting the
+        # CI 6h cap. stderr survives `create_cache.py`'s stdout capture.
         sync_deadline = time.time() + 300
         loop_start = time.time()
         last_log = loop_start
