@@ -145,9 +145,10 @@ DISABLED_SCRIPTS = [
     'wallet_treestate.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
     'wallet_unified_change.py',  # needs z_shieldcoinbase funding step: zallet z_sendmany cannot spend mined coinbase (have 0)
     'wallet_z_sendmany.py',  # no zallet equiv yet: z_exportviewingkey
-    'wallet_z_shieldcoinbase.py',  # investigate
-    'wallet_z_shieldcoinbase_multi_taddr.py',  # investigate
+    'wallet_z_shieldcoinbase.py',  # zallet startup crashes with "coinbase tx's claimed height doesn't match its consensus branch ID" when NU5 is activated at height 1; consensus-branch alignment between zebra and zallet needed
+    'wallet_z_shieldcoinbase_multi_taddr.py',  # JSON-RPC error during z_getaddressforaccount(["sapling","orchard"]); likely shielded-pool activation height issue
     'wallet_zero_value.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
+    'addnode.py',  # zebra regtest peering stalls in multi-peer topologies (zebra #10329, #10332)
     'wallet_zip317_default.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'walletbackup.py',  # no zallet equiv yet: backupwallet
     'zapwallettxes.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
@@ -457,6 +458,24 @@ def main():
         passon_args)
     sys.exit(not all_passed)
 
+_CACHE_BEHAVIOR_RE = re.compile(r"^\s*self\.cache_behavior\s*=\s*['\"]([^'\"]+)['\"]", re.MULTILINE)
+
+
+def _test_uses_cache(script_path):
+    """True if the test touches `qa/cache`. Both 'current' (read) and
+    'fresh' (force-rebuild then read) consume the shared cachedir.
+    Conservative: returns True on read/parse failures."""
+    try:
+        with open(script_path, "r", encoding="utf8") as f:
+            source = f.read()
+    except (OSError, UnicodeDecodeError):
+        return True
+    match = _CACHE_BEHAVIOR_RE.search(source)
+    if match is None:
+        return True
+    return match.group(1) in ('current', 'fresh')
+
+
 def run_tests(test_handler, test_list, src_dir, build_dir, exeext, jobs=1, enable_coverage=False, deterministic=False, args=[]):
     BOLD = ("","")
     if os.name == 'posix':
@@ -485,8 +504,10 @@ def run_tests(test_handler, test_list, src_dir, build_dir, exeext, jobs=1, enabl
         coverage = None
 
     if len(test_list) > 1 and jobs > 1:
-        # Populate cache
-        subprocess.check_output([tests_dir + 'create_cache.py'] + flags)
+        # Only run create_cache.py if some test will actually read it. Its
+        # 8-node mesh is slow (~minutes) and flaky (zebra #10329, #10332).
+        if any(_test_uses_cache(tests_dir + t.split()[0]) for t in test_list):
+            subprocess.check_output([tests_dir + 'create_cache.py'] + flags)
 
     #Run Tests
     time_sum = 0

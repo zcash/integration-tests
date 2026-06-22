@@ -14,7 +14,7 @@ import json
 import os
 import subprocess
 
-from enum import StrEnum
+from enum import Enum
 
 from test_framework.util import assert_equal
 
@@ -22,11 +22,12 @@ from test_framework.util import assert_equal
 _MIGRATION_TIMEOUT_SECS = 120
 
 
-class ImportedKeyKind(StrEnum):
+class ImportedKeyKind(str, Enum):
     """
-    Keys of the `imported_keys` object in a phase manifest. Backed by the
-    raw manifest strings (`StrEnum`), so members compare equal to those
-    strings and can index the manifest dict directly.
+    Keys of the `imported_keys` object in a phase manifest. `str`-backed so
+    members compare equal to (and hash like) the raw manifest strings, and can
+    index the manifest dict directly. (Plain `str, Enum` rather than 3.11's
+    `StrEnum` so the framework runs on the CI interpreter, Python 3.10.)
     """
     TRANSPARENT_PRIVKEY = 'transparent_privkey'
     TRANSPARENT_WATCHONLY = 'transparent_watchonly'
