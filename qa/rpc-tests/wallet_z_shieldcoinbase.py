@@ -51,8 +51,13 @@ BOGUS_ACCOUNT_UUID = "00000000-0000-0000-0000-000000000001"
 
 
 def mature_transparent_utxos(wallet):
-    """Return the wallet's mature transparent coinbase UTXOs."""
-    utxos = wallet.z_listunspent(COINBASE_MATURITY + 1)
+    """Return the wallet's mature transparent coinbase UTXOs.
+
+    minconf=COINBASE_MATURITY matches the proposal (coinbase is spendable at
+    exactly 100 confirmations); minconf+1 misses a boundary UTXO the sweep
+    selects.
+    """
+    utxos = wallet.z_listunspent(COINBASE_MATURITY)
     return [u for u in utxos if u.get('pool') == 'transparent']
 
 
@@ -151,13 +156,15 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         self.cache_behavior = 'clean'
 
     def setup_nodes(self):
-        # NU5 is the consensus floor for Zallet's Orchard change strategy
-        # used inside z_shieldcoinbase. The default zallet.toml activates
-        # NU5 at height 1; mirror that on the zebrad side.
+        # All later NUs must also be listed at height 1; otherwise zebra mines
+        # a coinbase committing to NU5's consensus branch ID while zallet's
+        # network params expect the latest NU's branch ID, and zallet rejects
+        # the coinbase on the first block sync. See ZebraArgs default in
+        # test_framework/config.py.
         args = [
             ZebraArgs(
                 miner_address=addr,
-                activation_heights={"NU5": 1},
+                activation_heights={"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1},
             ) for addr in self.miner_addresses
         ]
         return start_nodes(self.num_nodes, self.options.tmpdir, args)
@@ -328,7 +335,10 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
     def run_functional_tests(self, node, w0, w0_taddr, w0_account_uuid,
                              w0_zaddr, w0_extra_zaddr):
         # Expected unspent-mature COUNT before each sweep: all coinbase goes
-        # to w0_taddr, so it's (tip - COINBASE_MATURITY) minus what we've spent.
+        # to w0_taddr, so it's (tip - COINBASE_MATURITY + 1) minus what we've spent
+        # — a block at height H has (tip - H + 1) confirmations, so a block is
+        # mature when tip - H + 1 >= 100, i.e. H <= tip - 99, giving
+        # (tip - 99) mature coinbases = (tip - COINBASE_MATURITY + 1).
         # Counts are reliable; VALUES are not derived from the snapshot:
         # z_listunspent and the proposal use different maturity tips, so across
         # the regtest subsidy halving (6.25 -> 3.125) a summed snapshot can
@@ -337,7 +347,7 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         mature_spent = 0
 
         def expected_unspent_mature():
-            return node.getblockcount() - COINBASE_MATURITY - mature_spent
+            return node.getblockcount() - COINBASE_MATURITY + 1 - mature_spent
 
         def confirm_and_check_balance(txid, pre_private, shielding_value):
             """Confirm the sweep and assert balance grew by value - fee.
@@ -587,6 +597,12 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
 
         w0_taddr = self.miner_addresses[0]
 
+        # Wait for the wallet to sync to the node tip. z_getnewaccount (and
+        # other account-mutating RPCs) reject with "Wallet sync required"
+        # until the wallet has committed at least one block, since they need
+        # a chain height to anchor the new account's birthday.
+        self.sync_all()
+
         # Identify account 0 on wallet 0.
         accounts = w0.z_listaccounts()
         assert_true(len(accounts) >= 1, "Wallet 0 should have at least one account")
@@ -620,7 +636,7 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         # re-checks this exact count via its `expected_unspent_mature`
         # bookkeeping.
         node.generate(COINBASE_MATURITY + 20)
-        expected_initial_mature = node.getblockcount() - COINBASE_MATURITY
+        expected_initial_mature = node.getblockcount() - COINBASE_MATURITY + 1
         wait_for_mature_coinbase_count(w0, expected_initial_mature)
         print("  Mature coinbase UTXOs: {}".format(expected_initial_mature))
         print("  Account 0 UUID:      {}".format(w0_account_uuid))
