@@ -599,7 +599,25 @@ jobs:
         # zcashd-import is disabled on mingw32: its pqcrypto-mlkem dep fails
         # to cross-compile to windows-gnu, and the tests needing it are
         # Linux-only. See this commit's message for the full rationale.
-        run: cargo build --release --target ${{ matrix.rust_target }} ${{ matrix.name != 'mingw32' && '--features zcashd-import' || '' }} --bin zallet
+        #
+        # The wallet under test declares its chain-backend build args in
+        # zallet/ci/integration-features (e.g. pinning the Zaino backend, since
+        # the default zebra-state backend does not support regtest, the network
+        # these tests use). Read them here, ignoring comment lines; fall back to
+        # the default build when the file is absent (wallets predating the
+        # backend split). zebra-state regtest support is tracked in
+        # zcash/wallet#495.
+        shell: bash
+        run: |
+          # Read the wallet's declared backend flags into an array (ignoring
+          # comment lines); stays empty when the file is absent.
+          backend=()
+          if [ -f zallet/ci/integration-features ]; then
+            read -ra backend <<< "$(grep -vhE '^[[:space:]]*#' zallet/ci/integration-features | tr '\n' ' ' || true)" || true
+          fi
+          cargo build --release --target ${{ matrix.rust_target }} \
+            "${backend[@]}" ${{ matrix.name != 'mingw32' && '--features zcashd-import' || '' }} \
+            --bin zallet
         working-directory: ./zallet
 
       # Ship the BDB 6.2 db_dump vendored by zewif-zcashd alongside zallet:
