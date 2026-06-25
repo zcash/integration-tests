@@ -16,33 +16,28 @@
 # coinbase address, and instead only generates blocks with the miner address
 # specified in the zebrad config. So, producing coinbase on two transparent
 # receivers in the same account requires switching zebrad's
-# `mining.miner_address` mid-test. A naive stop+restart leaves the wallet's
-# SQLite block records pointing at the pre-restart non-finalized tail (lost
-# when zebrad drops its in-memory state on shutdown, per
-# `MAX_BLOCK_REORG_HEIGHT = 99`). Re-mining the same heights with a different
-# miner address produces different block hashes, and the wallet then upserts
-# those heights with conflicting data and errors out with
-# `SqliteClientError::BlockConflict`.
+# `mining.miner_address` mid-test, which means a stop+restart.
 #
-# To avoid that, the test:
-#   1. Mines enough blocks at miner_address_A to push block 1 (the
-#      one zallet-startup block) past the finalization horizon — so
-#      A's coinbase output at block 1 survives zebrad restart.
-#   2. Stops zallet and zebrad.
-#   3. Truncates the wallet's block-scan state via
-#      `zallet repair truncate-wallet` to discard the wallet's stale
-#      view of the non-finalized tail that zebrad will drop.
-#   4. Restarts zebrad with `mining.miner_address = B`, then restarts
-#      zallet. The wallet re-scans the chain from a fresh slate; no
-#      records conflict.
-#   5. Mines coinbase to B until both A's and B's coinbase outputs
-#      are mature.
-#   6. Sweeps via the UUID form and asserts that the sweep covered
-#      coinbase across BOTH receivers.
+# The wallet's SQLite block records must not end up referencing a chain state
+# that zebrad no longer has after the restart, or the wallet upserts conflicting
+# block hashes (`SqliteClientError::BlockConflict`) or fails history recovery
+# fetching transactions that no longer exist. The robust way to guarantee that
+# is to keep the pre-restart chain exactly ONE block long:
+#   1. `prepare_chain` mines block 1 (coinbase to A); the wallet syncs to it.
+#   2. Wait for zebrad to persist block 1 to its non-finalized-state backup —
+#      the only thing that carries a non-finalized block across a restart, since
+#      MAX_BLOCK_REORG_HEIGHT = 1000 leaves block 1 far from finalized.
+#   3. Stop zallet and zebrad, restart zebrad with `mining.miner_address = B`.
+#      zebrad restores exactly block 1, so the wallet's single scanned block is
+#      unchanged and mining at B only EXTENDS the chain — no height the wallet
+#      holds is rewritten, so no truncate and no conflict.
+#   4. Mine coinbase to B until both A's (block 1) and B's (block 2) coinbase
+#      outputs are mature.
+#   5. Sweep via the UUID form and assert the sweep covered coinbase across
+#      BOTH receivers.
 #
 
 import os
-import subprocess
 import time
 
 from decimal import Decimal
@@ -51,6 +46,7 @@ from test_framework.config import ZebraArgs
 from test_framework.util import (
     assert_equal,
     assert_true,
+    node_dir,
     start_node,
     start_nodes,
     start_wallets,
@@ -59,17 +55,10 @@ from test_framework.util import (
     wait_and_assert_operationid_status,
     wait_bitcoinds,
     wait_zallets,
-    wallet_dir,
-    zallet_binary,
 )
 
 # Coinbase outputs require 100 confirmations before they can be spent.
 COINBASE_MATURITY = 100
-
-# zebra-state's MAX_BLOCK_REORG_HEIGHT. Blocks at depth >= this value
-# are committed to the finalized state and persist across zebrad
-# restart; shallower blocks live in memory and are lost on shutdown.
-ZEBRA_MAX_REORG_HEIGHT = 99
 
 # Seconds the 1+1 mature-coinbase state must hold steady before a sweep.
 # z_listunspent shows new coinbase before zallet's recover_history scan
@@ -98,10 +87,15 @@ class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
         self.cache_behavior = 'clean'
 
     def setup_nodes(self):
+        # All later NUs must also be listed at height 1; otherwise zebra mines
+        # a coinbase committing to NU5's consensus branch ID while zallet's
+        # network params expect the latest NU's branch ID, and zallet rejects
+        # the coinbase on the first block sync. See ZebraArgs default in
+        # test_framework/config.py.
         args = [
             ZebraArgs(
                 miner_address=addr,
-                activation_heights={"NU5": 1},
+                activation_heights={"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1},
             ) for addr in self.miner_addresses
         ]
         return start_nodes(self.num_nodes, self.options.tmpdir, args)
@@ -121,6 +115,12 @@ class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
         # stdout; normalize for string comparison against
         # `z_listunspent`'s canonical encoding.
         taddr_a = self.miner_addresses[0].strip()
+
+        # Wait for the wallet to sync to the node tip. z_getaddressforaccount
+        # (and other account RPCs) reject with "chain height is unknown" until
+        # the wallet has committed at least one block, since they anchor the
+        # address derivation to a chain height.
+        self.sync_all()
 
         accounts = w0.z_listaccounts()
         assert_true(len(accounts) >= 1, "Wallet 0 should have at least one account")
@@ -146,67 +146,61 @@ class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
         print("  miner_address A:   {}".format(taddr_a))
         print("  second receiver B: {}".format(taddr_b))
 
-        # ---- Phase 1: mine to A, finalizing exactly block 1. -------
-        # `prepare_chain` already mined block 1 (coinbase to A). Mine
-        # ZEBRA_MAX_REORG_HEIGHT (99) more to push block 1 to depth 99
-        # — the finalization horizon — and leave blocks 2..100 at
-        # depth 0..97, all non-finalized. zebrad will drop the
-        # non-finalized tail on restart, leaving exactly one A
-        # coinbase output (block 1) preserved across the miner switch.
-        print("Mining {} blocks at miner=A to finalize block 1...".format(
-            ZEBRA_MAX_REORG_HEIGHT))
-        node.generate(ZEBRA_MAX_REORG_HEIGHT)
-        # Chain tip = 1 + 99 = 100. Block 1 depth 99 → finalized.
+        # ---- Phase 1: persist block 1 (A's coinbase) for the restart. ----
+        # `prepare_chain` mined block 1 (coinbase to A) and run_test synced the
+        # wallet to it. We deliberately mine NOTHING more before the miner
+        # switch: keeping the pre-restart chain exactly one block long means the
+        # wallet never scans a height that zebrad won't still have after the
+        # restart, so there are no orphaned wallet records to conflict or to
+        # choke history recovery.
+        #
+        # MAX_BLOCK_REORG_HEIGHT = 1000, so block 1 is nowhere near finalized;
+        # zebrad carries it across the restart only via its non-finalized-state
+        # backup, written at most every MIN_DURATION_BETWEEN_BACKUP_UPDATES (5s)
+        # and NOT flushed on clean shutdown. Wait for block 1's backup file to
+        # appear (named by block hash, in display order) before stopping, so the
+        # restored chain is guaranteed to contain it.
+        assert_equal(node.getblockcount(), 1,
+                     "Expected exactly block 1 before the miner switch")
+        block1_hash = node.getbestblockhash()
+        backup_dir = os.path.join(
+            node_dir(self.options.tmpdir, 0), "non_finalized_state", "regtest")
+        print("Waiting for zebra to back up block 1 ({}...)".format(block1_hash[:16]))
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            if os.path.exists(os.path.join(backup_dir, block1_hash)):
+                break
+            time.sleep(0.5)
+        else:
+            raise AssertionError(
+                "zebra did not persist block 1 to its non-finalized backup "
+                "within 60s; cannot guarantee it survives the restart")
 
-        # ---- Phase 2: stop, truncate, switch miner to B. -----------
-        print("Stopping wallet and node before truncate...")
+        # ---- Phase 2: stop, switch miner to B, restart. ----
+        # No wallet truncate and no zcash/wallet#447 workaround are needed: the
+        # wallet has only scanned block 1, which zebrad restores unchanged, so
+        # mining at B only EXTENDS the chain (blocks 2+). No height the wallet
+        # already holds is rewritten -> no BlockConflict, and no orphaned
+        # transaction for history recovery to fetch.
+        print("Stopping wallet and node before the miner switch...")
         stop_wallets(self.wallets)
         wait_zallets()
         stop_node(self.nodes[0], 0)
         wait_bitcoinds()
 
-        # Truncate the wallet's block-scan state so it no longer holds
-        # records for heights zebrad is about to lose. After shutdown
-        # zebrad only persists blocks at depth >= ZEBRA_MAX_REORG_HEIGHT;
-        # the rest live in memory and are discarded. Re-mining those
-        # heights with a different miner address produces different
-        # block hashes; without truncate, the wallet upserts mismatched
-        # hashes -> `BlockConflict`.
-        #
-        # Truncate to 1: matches what zebrad still has post-restart
-        # (block 1), discards records for the about-to-be-lost tail.
-        # 1 is the lowest usable target — there is no `blocks` row at
-        # height 0.
-        datadir = wallet_dir(self.options.tmpdir, 0)
-        print("Truncating wallet block-scan state to height 1...")
-        result = subprocess.run(
-            [zallet_binary(), "-d=" + datadir,
-             "repair", "truncate-wallet", "1"],
-            capture_output=True, text=True)
-        if result.returncode != 0:
-            raise AssertionError(
-                "zallet repair truncate-wallet failed (rc={}):\n"
-                "stdout:\n{}\nstderr:\n{}".format(
-                    result.returncode, result.stdout, result.stderr))
-
-        # Workaround for zcash/wallet#447: the post-restart wallet
-        # would otherwise query the un-mined transactions truncate
-        # left behind, get a "no such tx" response, and exit. Pre-
-        # retire those rows here so the query skips them. Remove once
-        # zcash/wallet#447 is resolved.
-        wallet_db = os.path.join(datadir, "wallet.db")
-        subprocess.run(
-            ["sqlite3", wallet_db,
-             "UPDATE transactions SET confirmed_unmined_at_height = 2000000000 "
-             "WHERE mined_height IS NULL;"],
-            check=True, capture_output=True, text=True)
-
         print("Restarting zebrad with miner=B...")
         self.nodes[0] = start_node(
             0, self.options.tmpdir,
             ZebraArgs(miner_address=taddr_b,
-                      activation_heights={"NU5": 1}))
+                      activation_heights={"NU5": 1, "NU6": 1,
+                                          "NU6.1": 1, "NU6.2": 1}))
         node = self.nodes[0]
+        # zebra must have restored exactly block 1 (A's coinbase). If the backup
+        # had not captured it, the restored tip would be genesis and the premise
+        # (one preserved A coinbase) would be invalid — fail loudly rather than
+        # silently re-mining height 1 under miner B.
+        assert_equal(node.getblockcount(), 1,
+                     "Post-restart zebra should have restored exactly block 1")
         self.wallets = start_wallets(self.num_wallets, self.options.tmpdir)
         w0 = self.wallets[0]
 
