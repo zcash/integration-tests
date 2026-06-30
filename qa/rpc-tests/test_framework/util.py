@@ -9,6 +9,8 @@
 # Helpful routines for regression testing
 #
 
+from __future__ import annotations
+
 import os
 import sys
 
@@ -27,9 +29,18 @@ import toml
 import re
 import errno
 
+from enum import Enum
+from typing import Callable
+
 from . import coverage
 from .proxy import ServiceProxy, JSONRPCException
 from .authproxy import AuthServiceProxy
+from .authproxy import JSONRPCException as AuthJSONRPCException
+
+# Node and wallet proxies raise different JSONRPCException classes (proxy.py
+# for nodes, authproxy.py for wallets); helpers that catch RPC errors must
+# accept either.
+_RPC_EXCEPTIONS = (JSONRPCException, AuthJSONRPCException)
 
 from test_framework.config import (
     ZainoConfig,
@@ -1363,3 +1374,371 @@ def stop_all_processes():
         for p in list(processes.values()):
             wait_or_kill(p)
         processes.clear()
+
+
+# ---------------------------------------------------------------------------
+# Z3-stack (zebrad + zaino + zallet) wallet-test helpers.
+#
+# Shared by the zallet wallet tests (wallet_z_shieldcoinbase.py,
+# wallet_z_shieldcoinbase_multi_taddr.py, wallet_z_sendfromaccount.py, ...).
+# These wrap the timing quirks of driving a real wallet against a live chain:
+# the wallet's scan tip can lag the node tip, so spendability and scanned
+# views must be polled rather than assumed.
+# ---------------------------------------------------------------------------
+
+# Coinbase outputs require 100 confirmations before zallet counts them spendable.
+COINBASE_MATURITY = 100
+
+# Seconds a mature-coinbase count must hold steady before a spend.
+# z_listunspent (tip-change-driven) surfaces new coinbase before zallet's
+# recover_history scan task (30s idle tick, not woken on tip change) makes it
+# spendable to the proposal builder, so the window must outlast that tick.
+# Drop once recover_history wakes on tip change / a sync RPC lands
+# (zcash/wallet#316).
+COINBASE_SETTLE_SECS = 35
+
+# Wallets and nodes handed to tests are RPC proxies (see `get_rpc_proxy`): a
+# coverage wrapper around an AuthServiceProxy that dispatches arbitrary RPC
+# method names via `__getattr__`.
+RpcProxy = coverage.AuthServiceProxyWrapper
+
+
+class Pool(str, Enum):
+    """A value pool a note or UTXO can belong to, as reported in the `pool`
+    field of z_listunspent / z_getbalances. Being `str`-valued, a member
+    compares equal to (and serializes as) its wire string, so it can be used
+    directly in RPC arguments, dict lookups, and equality checks against RPC
+    output."""
+    TRANSPARENT = 'transparent'
+    SAPLING = 'sapling'
+    ORCHARD = 'orchard'
+
+
+class FundSource(str, Enum):
+    """The `fund_source` selector accepted by z_sendfromaccount /
+    z_proposetransaction, naming where an account's funds may be drawn from.
+    The two shielded values coincide with `Pool` names; `ANY_TRANSPARENT` is a
+    keyword with no `Pool` equivalent. (An array of transparent address strings
+    is also accepted, but that is not an enumerable constant.) Being
+    `str`-valued, a member can be passed straight to the RPC."""
+    ORCHARD = 'orchard'
+    SAPLING = 'sapling'
+    ANY_TRANSPARENT = 'any_transparent'
+
+
+class PrivacyPolicy(str, Enum):
+    """A zallet privacy policy, ordered from strictest (FullPrivacy) to most
+    permissive (NoPrivacy). Each names the information leakage a send is
+    allowed to incur. Being `str`-valued, a member can be passed straight to an
+    RPC and compared against the `privacy_policy` an RPC returns."""
+    FULL_PRIVACY = 'FullPrivacy'
+    ALLOW_REVEALED_AMOUNTS = 'AllowRevealedAmounts'
+    ALLOW_REVEALED_RECIPIENTS = 'AllowRevealedRecipients'
+    ALLOW_REVEALED_SENDERS = 'AllowRevealedSenders'
+    ALLOW_FULLY_TRANSPARENT = 'AllowFullyTransparent'
+    ALLOW_LINKING_ACCOUNT_ADDRESSES = 'AllowLinkingAccountAddresses'
+    NO_PRIVACY = 'NoPrivacy'
+
+
+def transparent_utxos(wallet: RpcProxy, minconf: int = 1) -> list[dict]:
+    """The wallet's transparent UTXOs with at least `minconf` confirmations."""
+    return [u for u in wallet.z_listunspent(minconf)
+            if u.get('pool') == Pool.TRANSPARENT]
+
+
+def mature_transparent_utxos(wallet: RpcProxy) -> list[dict]:
+    """The wallet's mature transparent coinbase UTXOs (>= COINBASE_MATURITY
+    confirmations)."""
+    return transparent_utxos(wallet, COINBASE_MATURITY)
+
+
+def wait_for_stable_transparent(wallet: RpcProxy, min_count: int = 1,
+                                minconf: int = 1, timeout: int = 300,
+                                settle_secs: int = COINBASE_SETTLE_SECS) -> list[dict]:
+    """
+    Return the wallet's transparent UTXOs (>= `minconf` confirmations) once the
+    count is at least `min_count` and has held steady for `settle_secs`
+    consecutive seconds. This is the signal the proposal builder's transparent
+    input selection tracks (`z_listunspent`), which lags a fresh UTXO becoming
+    visible to it (zcash/wallet#316).
+    """
+    deadline = time.time() + timeout
+    last_count = -1
+    stable_secs = 0
+    utxos: list[dict] = []
+    while time.time() < deadline:
+        try:
+            utxos = transparent_utxos(wallet, minconf)
+            count = len(utxos)
+            if count >= min_count and count == last_count:
+                stable_secs += 1
+            else:
+                stable_secs = 0
+            last_count = count
+            if count >= min_count and stable_secs >= settle_secs:
+                return utxos
+        except Exception:
+            pass
+        time.sleep(1)
+    raise AssertionError(
+        "wait_for_stable_transparent: timeout after {}s; last saw {} transparent "
+        "UTXOs (wanted >= {} stable for {}s)".format(
+            timeout, last_count, min_count, settle_secs))
+
+
+def wait_for_mature_coinbase_count(wallet: RpcProxy, expected_count: int,
+                                   timeout: int = 300,
+                                   settle_secs: int = COINBASE_SETTLE_SECS) -> list[dict]:
+    """
+    Return the wallet's mature transparent coinbase UTXOs once the count has
+    held at `expected_count` for `settle_secs` consecutive seconds.
+
+    The steady-count requirement is the sync barrier: z_listunspent reaches a
+    new tip before the proposal builder's spendable view does, so we wait for
+    the views to converge (no getwalletstatus RPC yet, zcash/wallet#316).
+    """
+    deadline = time.time() + timeout
+    last_count = -1
+    stable_secs = 0
+    transparent = []
+    while time.time() < deadline:
+        try:
+            transparent = mature_transparent_utxos(wallet)
+            count = len(transparent)
+            if count == expected_count and last_count == expected_count:
+                stable_secs += 1
+            else:
+                stable_secs = 0
+            last_count = count
+            if count == expected_count and stable_secs >= settle_secs:
+                return transparent
+        except Exception:
+            pass
+        time.sleep(1)
+
+    raise AssertionError(
+        "wait_for_mature_coinbase_count: timeout after {}s; last saw {} mature "
+        "transparent UTXOs (wanted exactly {} stable for {}s)".format(
+            timeout, last_count, expected_count, settle_secs))
+
+
+def wait_for_stable_mature_coinbase(wallet: RpcProxy, min_count: int = 1,
+                                    timeout: int = 300,
+                                    settle_secs: int = COINBASE_SETTLE_SECS) -> list[dict]:
+    """
+    Return the wallet's mature transparent coinbase UTXOs once the count is at
+    least `min_count` and has held steady for `settle_secs` consecutive
+    seconds. Unlike `wait_for_mature_coinbase_count`, this does not require an
+    exact target, so it stays correct after earlier steps have spent an
+    unknown number of coinbase UTXOs.
+    """
+    deadline = time.time() + timeout
+    last_count = -1
+    stable_secs = 0
+    transparent = []
+    while time.time() < deadline:
+        try:
+            transparent = mature_transparent_utxos(wallet)
+            count = len(transparent)
+            if count >= min_count and count == last_count:
+                stable_secs += 1
+            else:
+                stable_secs = 0
+            last_count = count
+            if count >= min_count and stable_secs >= settle_secs:
+                return transparent
+        except Exception:
+            pass
+        time.sleep(1)
+
+    raise AssertionError(
+        "wait_for_stable_mature_coinbase: timeout after {}s; last saw {} mature "
+        "transparent UTXOs (wanted >= {} stable for {}s)".format(
+            timeout, last_count, min_count, settle_secs))
+
+
+def wait_for_tx_scanned(wallet: RpcProxy, txid: str, timeout: int = 120) -> dict:
+    """
+    Return `txid`'s `z_viewtransaction` view once it carries a `fee`, i.e. the
+    confirming block is scanned. Other scan-dependent views (balance,
+    z_listunspent) are then current too, so they can be read without a wait.
+    """
+    deadline = time.time() + timeout
+    last_err = None
+    while time.time() < deadline:
+        try:
+            tx = wallet.z_viewtransaction(txid)
+            if 'fee' in tx:
+                return tx
+        except Exception as e:
+            last_err = e
+        time.sleep(1)
+    raise AssertionError(
+        "wait_for_tx_scanned: timeout after {}s for txid {} ({})".format(
+            timeout, txid, last_err))
+
+
+def wait_for_pool_note(wallet: RpcProxy, pool: Pool | str, minconf: int = 1,
+                       timeout: int = 120) -> list[dict]:
+    """Block until the wallet has at least one unspent note in `pool` (a `Pool`
+    member or the equivalent string), then return those notes."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            notes = [u for u in wallet.z_listunspent(minconf)
+                     if u.get('pool') == pool]
+            if notes:
+                return notes
+        except Exception:
+            pass
+        time.sleep(1)
+    raise AssertionError(
+        "wait_for_pool_note: timeout after {}s waiting for a {} note".format(
+            timeout, pool))
+
+
+# One ZEC in zatoshis. Mirrors test_framework.mininode.COIN; defined here too
+# so wallet tests can convert ZEC amounts without importing mininode.
+COIN = 100000000
+
+
+def zat(zec: str | Decimal | int | float) -> int:
+    """Convert a ZEC amount (str / Decimal / number) to integer zatoshis."""
+    return int((Decimal(str(zec)) * COIN).to_integral_value())
+
+
+def _balance_held(bal: dict) -> int:
+    """Sum every component (spendable + locked + pending + dust) of a
+    `z_getbalances` Balance object, in zatoshis."""
+    total = bal['spendable']['valueZat']
+    for key in ('locked', 'pending', 'dust'):
+        component = bal.get(key)
+        if component is not None:
+            total += component['valueZat']
+    return total
+
+
+def _account_pool(wallet: RpcProxy, account_uuid: str, pool: Pool | str,
+                  minconf: int) -> list[dict]:
+    """The list of Balance objects `account_uuid` holds in `pool`, per
+    `z_getbalances` (one for shielded pools, `regular`/`coinbase` for the
+    transparent pool). Empty if the account holds nothing in that pool."""
+    balances = wallet.z_getbalances(minconf)
+    for acct in balances.get('accounts', []):
+        if acct.get('account_uuid') != account_uuid:
+            continue
+        bal = acct.get(pool)
+        if bal is None:
+            return []
+        if pool == Pool.TRANSPARENT:
+            return [bal[sub] for sub in ('regular', 'coinbase')
+                    if bal.get(sub) is not None]
+        return [bal]
+    return []
+
+
+def account_balance_zat(wallet: RpcProxy, account_uuid: str, pool: Pool | str,
+                        minconf: int = 1) -> int:
+    """
+    The total balance, in zatoshis, held by `account_uuid` in `pool`
+    (`'transparent'` / `'sapling'` / `'orchard'`), per `z_getbalances`. This
+    sums spendable, pending, and dust, so a just-confirmed note still pending
+    spendability is counted. Returns 0 if the account holds nothing there.
+
+    `pool` may be a `Pool` member or the equivalent string. Note `z_getbalances`
+    reports transparent coinbase only once it is mature, so pass
+    `minconf=COINBASE_MATURITY` to see mature coinbase.
+    """
+    return sum(_balance_held(b)
+               for b in _account_pool(wallet, account_uuid, pool, minconf))
+
+
+def account_spendable_zat(wallet: RpcProxy, account_uuid: str, pool: Pool | str,
+                          minconf: int = 1) -> int:
+    """
+    The immediately-spendable balance, in zatoshis, held by `account_uuid` in
+    `pool`, per `z_getbalances` (the `spendable` component only). A freshly
+    confirmed note is reported as pending until the wallet's scan catches up,
+    so this can lag `account_balance_zat`; use `wait_for_account_spendable` to
+    block on funds becoming spendable.
+    """
+    return sum(b['spendable']['valueZat']
+               for b in _account_pool(wallet, account_uuid, pool, minconf))
+
+
+def wait_for_account_spendable(wallet: RpcProxy, account_uuid: str, pool: Pool,
+                               min_zat: int = 1, minconf: int = 1,
+                               timeout: int = 120) -> int:
+    """
+    Block until `account_uuid`'s spendable `pool` balance is at least `min_zat`
+    zatoshis, then return it. Rides out the lag between a shielded note being
+    confirmed and the wallet reporting it as spendable (zcash/wallet#316).
+    """
+    if not isinstance(pool, Pool):
+        raise TypeError(
+            "pool must be a Pool enum member, got {!r}".format(type(pool)))
+    deadline = time.time() + timeout
+    last = None
+    while time.time() < deadline:
+        try:
+            last = account_spendable_zat(wallet, account_uuid, pool, minconf)
+            if last >= min_zat:
+                return last
+        except Exception:
+            pass
+        time.sleep(1)
+    raise AssertionError(
+        "wait_for_account_spendable: timeout after {}s; account {} {} spendable "
+        "is {} zat, wanted >= {} zat".format(
+            timeout, account_uuid, pool, last, min_zat))
+
+
+def wait_for_account_balance(wallet: RpcProxy, account_uuid: str, pool: Pool,
+                             expected_zat: int, minconf: int = 1,
+                             timeout: int = 120) -> int:
+    """
+    Block until `account_uuid`'s total `pool` balance equals `expected_zat`
+    zatoshis (per `account_balance_zat`, which counts pending notes), then
+    return it. Tolerates the brief lag between a block being scanned and the
+    balance views catching up.
+
+    `pool` must be a `Pool` member, so callers commit to a known value pool.
+    """
+    if not isinstance(pool, Pool):
+        raise TypeError(
+            "pool must be a Pool enum member, got {!r}".format(type(pool)))
+    deadline = time.time() + timeout
+    last = None
+    while time.time() < deadline:
+        try:
+            last = account_balance_zat(wallet, account_uuid, pool, minconf)
+            if last == expected_zat:
+                return last
+        except Exception:
+            pass
+        time.sleep(1)
+    raise AssertionError(
+        "wait_for_account_balance: timeout after {}s; account {} {} total "
+        "is {} zat, wanted {} zat".format(
+            timeout, account_uuid, pool, last, expected_zat))
+
+
+def expect_rpc_error(callable_: Callable, *args, **kwargs):
+    """Invoke an RPC and return the JSONRPCException; fail if it didn't raise.
+
+    Accepts either JSONRPCException class (nodes and wallets raise different
+    ones), so it works against both node and wallet proxies.
+    """
+    try:
+        callable_(*args, **kwargs)
+    except _RPC_EXCEPTIONS as e:
+        return e
+    raise AssertionError(
+        "Expected RPC error, but call succeeded: {}({}, {})".format(
+            getattr(callable_, '__name__', '?'), args, kwargs))
+
+
+def assert_in_message(e, needle: str) -> None:
+    """Assert that JSONRPCException `e`'s message contains `needle`."""
+    msg = e.error['message']
+    assert_true(needle in msg, "Expected {!r} in error, got: {!r}".format(needle, msg))

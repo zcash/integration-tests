@@ -44,6 +44,8 @@ from decimal import Decimal
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.config import ZebraArgs
 from test_framework.util import (
+    COINBASE_MATURITY,
+    COINBASE_SETTLE_SECS,
     assert_equal,
     assert_true,
     node_dir,
@@ -56,16 +58,6 @@ from test_framework.util import (
     wait_bitcoinds,
     wait_zallets,
 )
-
-# Coinbase outputs require 100 confirmations before they can be spent.
-COINBASE_MATURITY = 100
-
-# Seconds the 1+1 mature-coinbase state must hold steady before a sweep.
-# z_listunspent shows new coinbase before zallet's recover_history scan
-# task (30s idle tick, not woken on tip change) makes it spendable to
-# z_shieldcoinbase, so the window must outlast that tick. See
-# wallet_z_shieldcoinbase.py; drop once #316 lands.
-COINBASE_SETTLE_SECS = 35
 
 
 def first_transparent_receiver(wallet, ua):

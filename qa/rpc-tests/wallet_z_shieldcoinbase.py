@@ -29,116 +29,24 @@
 #   { remainingUTXOs, remainingValue, shieldingUTXOs, shieldingValue, opid }
 #
 
-import time
-
 from decimal import Decimal
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.authproxy import JSONRPCException
 from test_framework.config import ZebraArgs
 from test_framework.util import (
+    COINBASE_MATURITY,
     assert_equal,
+    assert_in_message,
     assert_true,
+    expect_rpc_error,
     start_nodes,
     wait_and_assert_operationid_status,
     wait_and_assert_operationid_status_result,
+    wait_for_mature_coinbase_count,
+    wait_for_tx_scanned,
 )
-
-# Coinbase outputs require 100 confirmations before they can be spent.
-COINBASE_MATURITY = 100
 
 # A well-formed but never-used account UUID, for negative tests.
 BOGUS_ACCOUNT_UUID = "00000000-0000-0000-0000-000000000001"
-
-
-def mature_transparent_utxos(wallet):
-    """Return the wallet's mature transparent coinbase UTXOs.
-
-    minconf=COINBASE_MATURITY matches the proposal (coinbase is spendable at
-    exactly 100 confirmations); minconf+1 misses a boundary UTXO the sweep
-    selects.
-    """
-    utxos = wallet.z_listunspent(COINBASE_MATURITY)
-    return [u for u in utxos if u.get('pool') == 'transparent']
-
-
-# Seconds the mature-coinbase count must hold steady before a sweep.
-# z_listunspent (tip-change-driven) shows new coinbase before zallet's
-# recover_history scan task (30s idle tick, not woken on tip change) makes
-# it spendable to z_shieldcoinbase, so the window must outlast that tick.
-# Drop once recover_history wakes on tip change / a sync RPC lands (#316).
-COINBASE_SETTLE_SECS = 35
-
-
-def wait_for_mature_coinbase_count(wallet, expected_count,
-                                   timeout=300, settle_secs=COINBASE_SETTLE_SECS):
-    """
-    Return the wallet's mature transparent coinbase UTXOs once the count has
-    held at `expected_count` for `settle_secs` consecutive seconds.
-
-    The steady-count requirement is the sync barrier: z_listunspent reaches a
-    new tip before the proposal builder's spendable view does, so we wait for
-    the views to converge (no getwalletstatus RPC yet, zcash/wallet#316).
-    """
-    deadline = time.time() + timeout
-    last_count = -1
-    stable_secs = 0
-    transparent = []
-    while time.time() < deadline:
-        try:
-            transparent = mature_transparent_utxos(wallet)
-            count = len(transparent)
-            if count == expected_count and last_count == expected_count:
-                stable_secs += 1
-            else:
-                stable_secs = 0
-            last_count = count
-            if count == expected_count and stable_secs >= settle_secs:
-                return transparent
-        except Exception:
-            pass
-        time.sleep(1)
-
-    raise AssertionError(
-        "wait_for_mature_coinbase_count: timeout after {}s; last saw {} mature "
-        "transparent UTXOs (wanted exactly {} stable for {}s)".format(
-            timeout, last_count, expected_count, settle_secs))
-
-
-def wait_for_tx_scanned(wallet, txid, timeout=120):
-    """
-    Return `txid`'s `z_viewtransaction` view once it carries a `fee`, i.e. the
-    confirming block is scanned. Other scan-dependent views (balance,
-    z_listunspent) are then current too, so they can be read without a wait.
-    """
-    deadline = time.time() + timeout
-    last_err = None
-    while time.time() < deadline:
-        try:
-            tx = wallet.z_viewtransaction(txid)
-            if 'fee' in tx:
-                return tx
-        except Exception as e:
-            last_err = e
-        time.sleep(1)
-    raise AssertionError(
-        "wait_for_tx_scanned: timeout after {}s for txid {} ({})".format(
-            timeout, txid, last_err))
-
-
-def expect_rpc_error(callable_, *args, **kwargs):
-    """Invoke an RPC and return the JSONRPCException; fail if it didn't raise."""
-    try:
-        callable_(*args, **kwargs)
-    except JSONRPCException as e:
-        return e
-    raise AssertionError(
-        "Expected RPC error, but call succeeded: {}({}, {})".format(
-            getattr(callable_, '__name__', '?'), args, kwargs))
-
-
-def assert_in_message(e, needle):
-    msg = e.error['message']
-    assert_true(needle in msg, "Expected {!r} in error, got: {!r}".format(needle, msg))
 
 
 class WalletZShieldCoinbaseTest(BitcoinTestFramework):
