@@ -47,8 +47,12 @@ from test_framework.util import (
     COINBASE_MATURITY,
     COINBASE_SETTLE_SECS,
     assert_equal,
+    assert_shieldcoinbase_preflight_shape,
     assert_true,
+    first_transparent_receiver,
+    mature_coinbase_on_address,
     node_dir,
+    nu_activation_all_at_1,
     start_node,
     start_nodes,
     start_wallets,
@@ -58,16 +62,6 @@ from test_framework.util import (
     wait_bitcoinds,
     wait_zallets,
 )
-
-
-def first_transparent_receiver(wallet, ua):
-    receivers = wallet.z_listunifiedreceivers(ua)
-    if 'p2pkh' in receivers:
-        return receivers['p2pkh']
-    if 'p2sh' in receivers:
-        return receivers['p2sh']
-    raise AssertionError(
-        "UA has no transparent receiver: {!r} -> {!r}".format(ua, receivers))
 
 
 class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
@@ -87,18 +81,10 @@ class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
         args = [
             ZebraArgs(
                 miner_address=addr,
-                activation_heights={"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1},
+                activation_heights=nu_activation_all_at_1(),
             ) for addr in self.miner_addresses
         ]
         return start_nodes(self.num_nodes, self.options.tmpdir, args)
-
-    def _mature_coinbase_on(self, wallet, taddr):
-        # minconf = COINBASE_MATURITY matches the proposal (coinbase is
-        # spendable at exactly 100 confirmations); minconf+1 would miss a
-        # boundary UTXO the sweep selects.
-        utxos = wallet.z_listunspent(COINBASE_MATURITY)
-        return [u for u in utxos
-                if u.get('pool') == 'transparent' and u.get('address') == taddr]
 
     def run_test(self):
         node = self.nodes[0]
@@ -184,8 +170,7 @@ class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
         self.nodes[0] = start_node(
             0, self.options.tmpdir,
             ZebraArgs(miner_address=taddr_b,
-                      activation_heights={"NU5": 1, "NU6": 1,
-                                          "NU6.1": 1, "NU6.2": 1}))
+                      activation_heights=nu_activation_all_at_1()))
         node = self.nodes[0]
         # zebra must have restored exactly block 1 (A's coinbase). If the backup
         # had not captured it, the restored tip would be genesis and the premise
@@ -211,8 +196,8 @@ class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
         mature_b = []
         stable_secs = 0
         while time.time() < deadline:
-            mature_a = self._mature_coinbase_on(w0, taddr_a)
-            mature_b = self._mature_coinbase_on(w0, taddr_b)
+            mature_a = mature_coinbase_on_address(w0, taddr_a)
+            mature_b = mature_coinbase_on_address(w0, taddr_b)
             if len(mature_a) == 1 and len(mature_b) == 1:
                 stable_secs += 1
                 if stable_secs >= COINBASE_SETTLE_SECS:
@@ -254,9 +239,7 @@ class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
         result = w0.z_shieldcoinbase(account_uuid, zaddr, None, None, None, None)
 
         # Pre-flight shape sanity.
-        for key in ('remainingUTXOs', 'remainingValue',
-                    'shieldingUTXOs', 'shieldingValue', 'opid'):
-            assert_true(key in result, "Missing field {!r} in response".format(key))
+        assert_shieldcoinbase_preflight_shape(result)
 
         # Sweep must select exactly the two mature coinbases — one
         # from each receiver. Anything other than 2 means either the
