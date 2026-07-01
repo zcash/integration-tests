@@ -1452,6 +1452,51 @@ def mature_transparent_utxos(wallet: RpcProxy) -> list[dict]:
     return transparent_utxos(wallet, COINBASE_MATURITY)
 
 
+def mature_coinbase_on_address(wallet: RpcProxy, taddr: str) -> list[dict]:
+    """The wallet's mature transparent coinbase UTXOs held on `taddr`."""
+    return [u for u in mature_transparent_utxos(wallet)
+            if u.get('address') == taddr]
+
+
+def first_transparent_receiver(wallet: RpcProxy, ua: str) -> str:
+    """Return the transparent (P2PKH, else P2SH) receiver of a unified address
+    created with a transparent component."""
+    receivers = wallet.z_listunifiedreceivers(ua)
+    if 'p2pkh' in receivers:
+        return receivers['p2pkh']
+    if 'p2sh' in receivers:
+        return receivers['p2sh']
+    raise AssertionError(
+        "UA has no transparent receiver: {!r} -> {!r}".format(ua, receivers))
+
+
+def nu_activation_all_at_1() -> dict:
+    """Activation heights putting every network upgrade at height 1, the
+    standard Z3-stack wallet-test regtest config (NU5+ active from height 1).
+
+    Returns a fresh dict on each call so callers can pass it to `ZebraArgs`
+    without sharing mutable state."""
+    return {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1}
+
+
+def assert_shieldcoinbase_preflight_shape(result: dict) -> None:
+    """Assert the `z_shieldcoinbase` pre-flight response has the zcashd-shaped
+    fields with the right types:
+    `{ remainingUTXOs, remainingValue, shieldingUTXOs, shieldingValue, opid }`."""
+    assert_true(isinstance(result, dict),
+                "Expected dict, got {}: {!r}".format(type(result), result))
+    for key in ('remainingUTXOs', 'remainingValue',
+                'shieldingUTXOs', 'shieldingValue', 'opid'):
+        assert_true(key in result,
+                    "Missing field {!r} in response: {!r}".format(key, result))
+    assert_true(isinstance(result['remainingUTXOs'], int))
+    assert_true(isinstance(result['shieldingUTXOs'], int))
+    assert_true(isinstance(result['opid'], str))
+    # remainingValue / shieldingValue are JSON numbers; Decimal-able.
+    Decimal(result['remainingValue'])
+    Decimal(result['shieldingValue'])
+
+
 def wait_for_stable_transparent(wallet: RpcProxy, min_count: int = 1,
                                 minconf: int = 1, timeout: int = 300,
                                 settle_secs: int = COINBASE_SETTLE_SECS) -> list[dict]:
