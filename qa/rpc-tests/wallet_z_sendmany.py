@@ -39,6 +39,12 @@
 # exact zcashd wording; the synchronous parse errors, whose messages are
 # stable, are asserted exactly.
 #
+# TODO: extend once zallet can spend transparent/coinbase (and reliably Sapling)
+# sources in z_sendmany. That unblocks the privacy policies not covered here:
+# AllowRevealedSenders (transparent -> shielded), AllowRevealedAmounts (cross-pool),
+# AllowLinkingAccountAddresses, and NoPrivacy overrides. The same limitation keeps
+# the sibling policy tests disabled (wallet_sendmany_any_taddr, wallet_unified_change).
+#
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.config import ZebraArgs
