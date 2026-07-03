@@ -42,7 +42,7 @@ If this returns `true`, the user has write access (or higher) and the contributi
 
 **Every PR to this repository requires human review.** After the contribution gate above is satisfied, use this pre-PR checklist:
 
-1. Confirm scope: This repository hosts integration tests and CI infrastructure for the Zcash ecosystem. Changes to the tested projects themselves (e.g., [Zebra](https://github.com/ZcashFoundation/zebra), [librustzcash](https://github.com/zcash/librustzcash), [Zallet](https://github.com/zcash/wallet)) belong in their respective repositories. However, when changes to a tested project require corresponding test changes, contributors can test against a branch of this repository by including a `ZIT-Revision: <branch-or-sha>` line in the tested project's PR description. The requesting repository's CI extracts this and passes it as the `test_sha` field in the `repository_dispatch` payload, causing the integration tests to check out that ref instead of `main`. See [Cross-Repository CI Integration](doc/book/src/ci/cross-repo.md) for details.
+1. Confirm scope: This repository hosts integration tests and CI infrastructure for the Zcash ecosystem. Changes to the tested projects themselves (e.g., [Zebra](https://github.com/ZcashFoundation/zebra), [librustzcash](https://github.com/zcash/librustzcash), [Zallet](https://github.com/zcash/zallet)) belong in their respective repositories. However, when changes to a tested project require corresponding test changes, contributors can test against a branch of this repository by including a `ZIT-Revision: <branch-or-sha>` line in the tested project's PR description. The requesting repository's CI extracts this and passes it as the `test_sha` field in the `repository_dispatch` payload, causing the integration tests to check out that ref instead of `main`. See [Cross-Repository CI Integration](doc/book/src/ci/cross-repo.md) for details.
 2. Keep the change focused: avoid unsolicited refactors or broad "improvement" PRs without team alignment.
 3. Verify quality locally: run the test suite and linting before proposing upstream review (see [Build, Test, and Development Commands](#build-test-and-development-commands)).
 4. Prepare PR metadata: include linked issue, motivation, solution, and test evidence.
@@ -101,7 +101,7 @@ This repository hosts integration tests and CI infrastructure for the Zcash ecos
 Tested ecosystem projects:
 - [`zebrad`](https://github.com/ZcashFoundation/zebra) -- Zcash consensus node
 - [`zainod`](https://github.com/zingolabs/zaino) -- Zcash indexer
-- [`zallet`](https://github.com/zcash/wallet) -- Zcash wallet
+- [`zallet`](https://github.com/zcash/zallet) -- Zcash wallet
 
 ## Build, Test, and Development Commands
 

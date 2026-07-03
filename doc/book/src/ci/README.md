@@ -5,7 +5,7 @@ This repository's CI pipeline builds and tests the Z3 stack components
 
 [`zebrad`]: https://github.com/ZcashFoundation/zebra
 [`zainod`]: https://github.com/zingolabs/zaino
-[`zallet`]: https://github.com/zcash/wallet
+[`zallet`]: https://github.com/zcash/zallet
 
 ## What CI does
 

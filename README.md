@@ -14,7 +14,7 @@ codebase, with the Python test framework (and some of the tests) inherited from
 
 [`zebrad`]: https://github.com/ZcashFoundation/zebra
 [`zainod`]: https://github.com/zingolabs/zaino
-[`zallet`]: https://github.com/zcash/wallet
+[`zallet`]: https://github.com/zcash/zallet
 [`zcashd`]: https://github.com/zcash/zcash
 [Bitcoin Core]: https://github.com/bitcoin/bitcoin
 <!-- ANCHOR_END: summary -->

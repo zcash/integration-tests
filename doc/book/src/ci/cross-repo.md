@@ -10,7 +10,7 @@ Integration testing is currently set up for the [`zallet`], [`zebrad`], and
 [`zaino`] repositories.
 
 [`repository_dispatch`]: https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#repository_dispatch
-[`zallet`]: https://github.com/zcash/wallet
+[`zallet`]: https://github.com/zcash/zallet
 [`zebrad`]: https://github.com/ZcashFoundation/zebra
 [`zainod`]: https://github.com/zingolabs/zaino
 
