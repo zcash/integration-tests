@@ -539,20 +539,20 @@ jobs:
           requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
           job-name: "Build zallet on ${{ matrix.platform }}${{ matrix.required_suffix }}"
 
-      - name: Use specified zcash/wallet commit
+      - name: Use specified zcash/zallet commit
         if: github.event.action == 'zallet-interop-request'
         shell: sh
         env:
           SHA: ${{ github.event.client_payload.sha }}
         run: echo "ZALLET_REF=${SHA}" >> $GITHUB_ENV
-      - name: Use zcash/wallet current main
+      - name: Use zcash/zallet current main
         if: github.event.action != 'zallet-interop-request'
         run: echo "ZALLET_REF=refs/heads/main" >> $GITHUB_ENV
 
-      - name: Check out zcash/wallet
+      - name: Check out zcash/zallet
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: zcash/wallet
+          repository: zcash/zallet
           ref: ${{ env.ZALLET_REF }}
           path: zallet
 
@@ -606,7 +606,7 @@ jobs:
         # these tests use). Read them here, ignoring comment lines; fall back to
         # the default build when the file is absent (wallets predating the
         # backend split). zebra-state regtest support is tracked in
-        # zcash/wallet#495.
+        # zcash/zallet#495.
         shell: bash
         run: |
           # Read the wallet's declared backend flags into an array (ignoring
