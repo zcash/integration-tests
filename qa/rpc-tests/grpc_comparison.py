@@ -712,19 +712,44 @@ class GrpcComparisonTest(BitcoinTestFramework):
             ls = service_pb2_grpc.CompactTxStreamerStub(lwd_ch)
 
             deadline = time.time() + timeout
+            last_zainod_height = None
+            last_lightwalletd_height = None
+            last_zainod_error = None
+            last_lightwalletd_error = None
             while time.time() < deadline:
                 try:
                     z_info = zs.GetLightdInfo(service_pb2.Empty(), timeout=5)
+                    last_zainod_height = z_info.blockHeight
+                    last_zainod_error = None
+                except grpc.RpcError as e:
+                    last_zainod_error = e
+                    z_info = None
+
+                try:
                     l_info = ls.GetLightdInfo(service_pb2.Empty(), timeout=5)
-                    if (z_info.blockHeight >= expected_height and
-                            l_info.blockHeight >= expected_height):
-                        return
-                except grpc.RpcError:
-                    pass
+                    last_lightwalletd_height = l_info.blockHeight
+                    last_lightwalletd_error = None
+                except grpc.RpcError as e:
+                    last_lightwalletd_error = e
+                    l_info = None
+
+                if (z_info is not None and l_info is not None and
+                        z_info.blockHeight >= expected_height and
+                        l_info.blockHeight >= expected_height):
+                    return
                 time.sleep(1)
 
             raise Exception(
-                f"Indexers did not sync to height {expected_height} within {timeout}s"
+                "Indexers did not sync to height {} within {}s "
+                "(last zainod height: {}, last lightwalletd height: {}, "
+                "last zainod error: {}, last lightwalletd error: {})".format(
+                    expected_height,
+                    timeout,
+                    last_zainod_height,
+                    last_lightwalletd_height,
+                    last_zainod_error,
+                    last_lightwalletd_error,
+                )
             )
         finally:
             zainod_ch.close()
