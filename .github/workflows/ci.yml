@@ -586,60 +586,102 @@ jobs:
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
           key: ${{ matrix.name }}
-          workspaces: "./zallet"
+          # zallet is two workspaces: the root (the `zallet` launcher) and
+          # backends/zaino (the `zallet-zaino` backend binary), each with its
+          # own target directory. Cache both.
+          workspaces: |
+            zallet
+            zallet/backends/zaino
 
       - name: Install Rust target
         run: rustup target add ${{ matrix.rust_target }}
         working-directory: ./zallet
 
+      # Zallet is split across independent cargo workspaces: the `zallet`
+      # launcher (root workspace) reads the config's top-level `backend` key and
+      # execs the matching per-backend binary (`zallet-zebra`, `zallet-zaino`),
+      # each built in its own workspace under backends/. The integration RPC
+      # suite runs in regtest, which only the Zaino backend supports, so we build
+      # the launcher plus `zallet-zaino`. Backend selection is structural (which
+      # workspace binary is built, plus the config `backend` key set in
+      # qa/defaults/zallet/zallet.toml), not a cargo feature, so the zaino build
+      # takes no backend-selecting flags.
+      #
+      # Pre-split wallets have no backends/ directory: fall back to the
+      # single-binary build that selected the backend via the feature flags in
+      # ci/integration-features (the file moved from zallet/ci/ to zallet-core/ci/
+      # in the split; check both).
+      #
+      # zcashd-import is disabled on mingw32: its pqcrypto-mlkem dep fails to
+      # cross-compile to windows-gnu, and the tests needing it are Linux-only.
       - name: Build zallet
         env:
           HOST: ${{ matrix.host }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
-        # zcashd-import is disabled on mingw32: its pqcrypto-mlkem dep fails
-        # to cross-compile to windows-gnu, and the tests needing it are
-        # Linux-only. See this commit's message for the full rationale.
-        #
-        # The wallet under test declares its chain-backend build args in
-        # zallet/ci/integration-features (e.g. pinning the Zaino backend, since
-        # the default zebra-state backend does not support regtest, the network
-        # these tests use). Read them here, ignoring comment lines; fall back to
-        # the default build when the file is absent (wallets predating the
-        # backend split). zebra-state regtest support is tracked in
-        # zcash/zallet#495.
         shell: bash
         run: |
-          # Read the wallet's declared backend flags into an array (ignoring
-          # comment lines); stays empty when the file is absent.
-          backend=()
-          if [ -f zallet/ci/integration-features ]; then
-            read -ra backend <<< "$(grep -vhE '^[[:space:]]*#' zallet/ci/integration-features | tr '\n' ' ' || true)" || true
+          set -eo pipefail
+          target='${{ matrix.rust_target }}'
+          ext='${{ matrix.file_ext }}'
+          zcashd_import='${{ matrix.name != 'mingw32' && '--features zcashd-import' || '' }}'
+          dist=dist
+          mkdir -p "$dist"
+          if [ -f backends/zaino/Cargo.toml ]; then
+            # Split layout: launcher (root workspace) + Zaino backend binary.
+            cargo build --release --target "$target" --bin zallet
+            cargo build --release --target "$target" \
+              --manifest-path backends/zaino/Cargo.toml \
+              $zcashd_import --bin zallet-zaino
+            cp "target/$target/release/zallet$ext" "$dist/"
+            cp "backends/zaino/target/$target/release/zallet-zaino$ext" "$dist/"
+            echo "DB_DUMP_ROOT=backends/zaino/target/$target/release/build" >> "$GITHUB_ENV"
+          else
+            # Pre-split single binary: backend selected via the feature flags the
+            # wallet declares in ci/integration-features (ignore comment lines;
+            # stays empty when the file is absent).
+            backend=()
+            for f in zallet-core/ci/integration-features ci/integration-features; do
+              if [ -f "$f" ]; then
+                read -ra backend <<< "$(grep -vhE '^[[:space:]]*#' "$f" | tr '\n' ' ' || true)" || true
+                break
+              fi
+            done
+            cargo build --release --target "$target" \
+              "${backend[@]}" $zcashd_import --bin zallet
+            cp "target/$target/release/zallet$ext" "$dist/"
+            echo "DB_DUMP_ROOT=target/$target/release/build" >> "$GITHUB_ENV"
           fi
-          cargo build --release --target ${{ matrix.rust_target }} \
-            "${backend[@]}" ${{ matrix.name != 'mingw32' && '--features zcashd-import' || '' }} \
-            --bin zallet
         working-directory: ./zallet
 
       # Ship the BDB 6.2 db_dump vendored by zewif-zcashd alongside zallet:
       # its build.rs writes the path via cargo:rustc-env, which doesn't survive
-      # the build->test runner hop, and Ubuntu's PATH db_dump is BDB 5.3.
+      # the build->test runner hop, and Ubuntu's PATH db_dump is BDB 5.3. It is
+      # produced by whichever workspace pulls in zewif-zcashd via zcashd-import
+      # (the zaino backend post-split, the root pre-split): DB_DUMP_ROOT points
+      # at that workspace's build output.
       - name: Stage vendored db_dump
         if: matrix.name != 'mingw32' && runner.os != 'Windows'
         shell: bash
+        working-directory: ./zallet
         run: |
           set -euo pipefail
-          db_dump=$(find ./zallet/target/${{ matrix.rust_target }}/release/build \
+          db_dump=$(find "$DB_DUMP_ROOT" \
                       -path '*/zewif-zcashd-*/out/db_dump' -type f -print -quit)
-          [ -n "$db_dump" ] || { echo "Vendored db_dump not found under target/.../zewif-zcashd-*/out/" >&2; exit 1; }
-          cp "$db_dump" ./zallet/target/${{ matrix.rust_target }}/release/db_dump
+          [ -n "$db_dump" ] || { echo "Vendored db_dump not found under $DB_DUMP_ROOT/zewif-zcashd-*/out/" >&2; exit 1; }
+          cp "$db_dump" dist/db_dump
 
+      # Upload the launcher, the Zaino backend binary (absent on pre-split
+      # wallets, hence if-no-files-found: warn), and the vendored db_dump. They
+      # land flat in ./src on the test runners; the launcher finds a sibling
+      # zallet-zaino next to itself.
       - name: Upload zallet
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: zallet-${{ matrix.name }}
           path: |
-              ${{ format('./zallet/target/{0}/release/zallet{1}', matrix.rust_target, matrix.file_ext) }}
-              ${{ format('./zallet/target/{0}/release/db_dump', matrix.rust_target) }}
+              ${{ format('./zallet/dist/zallet{0}', matrix.file_ext) }}
+              ${{ format('./zallet/dist/zallet-zaino{0}', matrix.file_ext) }}
+              ./zallet/dist/db_dump
           if-no-files-found: warn
 
       - uses: ./integration-tests/.github/actions/finish-interop
@@ -724,6 +766,11 @@ jobs:
           chmod +x ${{ format('./src/zebrad{0}', matrix.file_ext) }}
           chmod +x ${{ format('./src/zainod{0}', matrix.file_ext) }}
           chmod +x ${{ format('./src/zallet{0}', matrix.file_ext) }}
+          # The `zallet` launcher execs a sibling backend binary; present when
+          # built against a split wallet, absent otherwise.
+          if [ -f ${{ format('./src/zallet-zaino{0}', matrix.file_ext) }} ]; then
+            chmod +x ${{ format('./src/zallet-zaino{0}', matrix.file_ext) }}
+          fi
 
       - name: Run sec-hard test
         shell: bash
@@ -858,6 +905,11 @@ jobs:
           chmod +x ${{ format('./src/zebrad{0}', matrix.file_ext) }}
           chmod +x ${{ format('./src/zainod{0}', matrix.file_ext) }}
           chmod +x ${{ format('./src/zallet{0}', matrix.file_ext) }}
+          # The `zallet` launcher execs a sibling backend binary; present when
+          # built against a split wallet, absent otherwise.
+          if [ -f ${{ format('./src/zallet-zaino{0}', matrix.file_ext) }} ]; then
+            chmod +x ${{ format('./src/zallet-zaino{0}', matrix.file_ext) }}
+          fi
 
       # Vendored BDB 6.2 db_dump (shipped in the zallet artifact) goes on PATH
       # so zallet's which::which("db_dump") finds it instead of Ubuntu's 5.3.

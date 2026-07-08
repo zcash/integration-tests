@@ -101,13 +101,15 @@ This repository hosts integration tests and CI infrastructure for the Zcash ecos
 Tested ecosystem projects:
 - [`zebrad`](https://github.com/ZcashFoundation/zebra) -- Zcash consensus node
 - [`zainod`](https://github.com/zingolabs/zaino) -- Zcash indexer
-- [`zallet`](https://github.com/zcash/zallet) -- Zcash wallet
+- [`zallet`](https://github.com/zcash/zallet) -- Zcash wallet. Structured as a
+  `zallet` launcher plus per-backend binaries (`zallet-zebra`, `zallet-zaino`),
+  each built in its own cargo workspace; these tests use the `zallet-zaino` backend.
 
 ## Build, Test, and Development Commands
 
 ### Prerequisites
 
-Build `zebrad`, `zainod`, and `zallet` binaries and place them in a `./src/` directory under the repository root.
+Build `zebrad`, `zainod`, and `zallet` binaries and place them in a `./src/` directory under the repository root. `zallet` is a thin launcher that execs a per-backend binary; the tests run in regtest, which requires the Zaino backend, so also build `zallet-zaino` and place it in `./src/` next to the launcher (the launcher looks for the backend binary beside itself). The default config `qa/defaults/zallet/zallet.toml` selects it via its top-level `backend = "zaino"` key.
 
 ### Running the test suite
 
