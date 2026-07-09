@@ -183,7 +183,11 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ inputs.repository }}
-          ref: ${{ env.TARGET_REF }}
+          # Check out the SHA resolved above, not the symbolic TARGET_REF: the
+          # cache key is that SHA, so building anything else (e.g. if the branch
+          # head moves between resolution and checkout) would store a binary
+          # under a key that misrepresents its contents.
+          ref: ${{ steps.resolve-sha.outputs.sha }}
           path: ${{ inputs.path }}
           persist-credentials: false
 
