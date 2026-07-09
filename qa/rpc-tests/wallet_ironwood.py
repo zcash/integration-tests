@@ -34,7 +34,6 @@
 # NULL height, leaving every Ironwood note permanently un-spendable.
 #
 
-import time
 from decimal import Decimal
 
 from test_framework.test_framework import BitcoinTestFramework
@@ -49,47 +48,10 @@ from test_framework.util import (
     start_nodes,
     start_wallets,
     wait_and_assert_operationid_status,
+    wait_for_account_spendable,
     wait_for_mature_coinbase_count,
     wait_for_tx_scanned,
 )
-
-
-def _wait_for_wallet_sync(node, wallet, timeout=60):
-    """Block until the wallet reports the node's current tip."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        target = node.getblockcount()
-        status = wallet.getwalletstatus()
-        if status.get('wallet_tip', {}).get('height') == target:
-            time.sleep(1)
-            return
-        time.sleep(0.5)
-    raise AssertionError("wallet did not sync to node tip within %ss" % timeout)
-
-
-def wait_for_spendable_pool(node, wallet, account_uuid, pool,
-                            max_blocks=15, timeout=180):
-    """Mine blocks one at a time until `account_uuid` reports a positive
-    spendable balance in `pool` via z_getbalanceforaccount, then return that
-    pool's balance dict.
-
-    A freshly received shielded note is counted in the account total but is not
-    spendable until its note-commitment-tree witness is available and it has
-    enough confirmations, so this drives the chain forward until the pool
-    surfaces a spendable balance."""
-    deadline = time.time() + timeout
-    for _ in range(max_blocks):
-        _wait_for_wallet_sync(node, wallet)
-        pools = wallet.z_getbalanceforaccount(account_uuid)['pools']
-        if pool in pools and pools[pool]['valueZat'] > 0:
-            return pools[pool]
-        if time.time() > deadline:
-            break
-        node.generate(1)
-    pools = wallet.z_getbalanceforaccount(account_uuid)['pools']
-    raise AssertionError(
-        "pool {!r} never became spendable for account {} within {} blocks "
-        "(last pools={})".format(pool, account_uuid, max_blocks, pools))
 
 
 class WalletIronwoodTest(BitcoinTestFramework):
@@ -169,17 +131,19 @@ class WalletIronwoodTest(BitcoinTestFramework):
         assert_equal(Decimal(total['private']), ironwood_zec,
                      "Ironwood funds should be counted as private")
 
-        # The note becomes spendable once its note-commitment-tree witness
-        # stabilizes (a few blocks past the tip). Mine and wait for the Ironwood
-        # pool to surface a spendable balance via z_getbalanceforaccount.
-        ironwood_pool = wait_for_spendable_pool(node, w, acct, 'ironwood')
+        # Wait for the Ironwood note to become spendable (the confirming block
+        # is already scanned, so this only rides out the brief lag before the
+        # spendable-balance view catches up).
+        expected_zat = int(ironwood_zec * COIN)
+        assert_equal(
+            wait_for_account_spendable(w, acct, Pool.IRONWOOD, min_zat=expected_zat),
+            expected_zat)
 
         # The funds are Ironwood, not Orchard, now that NU6.3 is active.
         pools = w.z_getbalanceforaccount(acct)['pools']
         assert_true('orchard' not in pools,
                     "Funds must be Ironwood, not Orchard, once NU6.3 is active; "
                     "got {}".format(pools))
-        assert_equal(Decimal(ironwood_pool['valueZat']), ironwood_zec * COIN)
 
         # z_listunspent surfaces the note under the ironwood pool.
         ironwood_notes = [u for u in w.z_listunspent(1)
@@ -217,12 +181,12 @@ class WalletIronwoodTest(BitcoinTestFramework):
         # The spent Ironwood note is consumed and its value (minus the fee)
         # returns to the account as new, spendable Ironwood notes. The value
         # stays in the Ironwood pool, never Orchard.
-        sender_pool = wait_for_spendable_pool(node, w, acct, 'ironwood')
+        expected_zat = int((ironwood_zec - spend_fee) * COIN)
+        assert_equal(
+            wait_for_account_spendable(w, acct, Pool.IRONWOOD, min_zat=expected_zat),
+            expected_zat)
         bal_after = w.z_getbalanceforaccount(acct)['pools']
         assert_true('orchard' not in bal_after, "Change must be Ironwood, not Orchard")
-        assert_equal(
-            Decimal(sender_pool['valueZat']),
-            (ironwood_zec - spend_fee) * COIN)
         print("  Spent an Ironwood note (fee {}); value retained as Ironwood. "
               "PASSED".format(spend_fee))
 

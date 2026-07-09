@@ -1739,6 +1739,20 @@ def account_spendable_zat(wallet: RpcProxy, account_uuid: str, pool: Pool | str,
                for b in _account_pool(wallet, account_uuid, pool, minconf))
 
 
+def wait_for_wallet_sync(node, wallet, timeout: int = 60) -> None:
+    """Block until `wallet` reports `node`'s current tip as its wallet tip."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        target = node.getblockcount()
+        status = wallet.getwalletstatus()
+        if status.get('wallet_tip', {}).get('height') == target:
+            # Give the transparent balance accounting a beat to catch up.
+            time.sleep(2)
+            return
+        time.sleep(0.5)
+    raise AssertionError("wallet did not sync to node tip within %ss" % timeout)
+
+
 def wait_for_account_spendable(wallet: RpcProxy, account_uuid: str, pool: Pool,
                                min_zat: int = 1, minconf: int = 1,
                                timeout: int = 120) -> int:
