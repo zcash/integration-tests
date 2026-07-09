@@ -32,6 +32,17 @@ required platforms to manage CI costs. When CI is triggered via cross-repo
 dispatch, callers may specify which platforms to run; all explicitly requested
 platforms are treated as required.
 
+## Build caching
+
+The tested projects move much less often than this repository, so most CI runs
+would otherwise rebuild an identical upstream commit. Each build resolves its
+upstream ref to a concrete commit SHA and restores a cache of the built binary
+keyed by that SHA (plus a hash of the build scripts). On a cache hit the source
+checkout and the `cargo build` are skipped entirely, and only the cached binary
+is uploaded as the artifact; the binary is rebuilt only when the upstream commit
+(or the build logic) actually changes. A best-effort post-build step prunes each
+per-binary, per-platform cache to its 5 most recent versions.
+
 ## Cross-repository integration
 
 External repositories can trigger integration tests from their PRs and receive

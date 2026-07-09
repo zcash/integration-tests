@@ -7,6 +7,15 @@ name: Build binary
 # Splitting the matrix this way lets the test jobs depend only on the builds
 # they actually consume, instead of waiting for every platform to finish
 # building.
+#
+# The built binary is cached keyed by the upstream source commit (see issue
+# #156). The tested projects (zebrad, zainod, zallet) move much less often than
+# this repository, so most CI runs rebuild an identical upstream commit. We
+# resolve the upstream ref to a concrete commit SHA, restore a cache keyed by
+# it, and skip the whole build (and the source checkout) on a hit, only
+# rebuilding when the upstream commit actually changed. A post-build step prunes
+# the per-binary, per-platform caches to the most recent 5 versions, which is
+# why this workflow needs `actions: write`.
 
 on:
   workflow_call:
@@ -54,6 +63,9 @@ on:
 
 permissions:
   contents: read
+  # Needed by the "Prune old binary caches" step to delete stale caches via the
+  # Actions cache API. The calling jobs in ci.yml grant this per-job.
+  actions: write
 
 jobs:
   build:
@@ -102,7 +114,72 @@ jobs:
           DEFAULT_REF: ${{ inputs.default_ref }}
         run: echo "TARGET_REF=${DEFAULT_REF}" >> $GITHUB_ENV
 
+      # Resolve TARGET_REF to a concrete commit SHA. An interop request already
+      # pins a SHA; the default-branch case is a symbolic ref (refs/heads/...),
+      # which we resolve with `git ls-remote` against the source repository. The
+      # SHA is the cache key below, so the build is reused across integration-
+      # tests commits as long as the upstream commit is unchanged.
+      - name: Resolve upstream commit SHA
+        id: resolve-sha
+        shell: bash
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+        run: |
+          case "${TARGET_REF}" in
+            refs/*)
+              sha=$(git ls-remote "https://github.com/${REPOSITORY}.git" \
+                "${TARGET_REF}" | cut -f1)
+              ;;
+            *)
+              sha="${TARGET_REF}"
+              ;;
+          esac
+          if [ -z "${sha}" ]; then
+            echo "Could not resolve ${REPOSITORY} ref ${TARGET_REF}" >&2
+            exit 1
+          fi
+          echo "Resolved ${REPOSITORY} ${TARGET_REF} to ${sha}"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+      # Restore the cached binary for this exact upstream commit. The key mixes
+      # in a hash of the build inputs (this workflow and the zallet build
+      # scripts) so that changing how we build invalidates stale binaries even
+      # when the upstream commit is unchanged. Only one of the two steps runs,
+      # per is_zallet; the combined result is read from `binary-cache.hit`.
+      - name: Restore cached ${{ inputs.bin }} binary (single workspace)
+        id: binary-cache-single
+        if: ${{ !inputs.is_zallet }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ format('./{0}/target/{1}/release/{2}{3}', inputs.path, matrix.rust_target, inputs.bin, matrix.file_ext) }}
+          key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ steps.resolve-sha.outputs.sha }}-${{ hashFiles('integration-tests/.github/workflows/build-binary.yml') }}
+
+      - name: Restore cached zallet binaries
+        id: binary-cache-zallet
+        if: ${{ inputs.is_zallet }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # The launcher, the zaino backend binary, and the vendored db_dump all
+          # land in ./zallet/dist; cache the directory as a unit.
+          path: ./zallet/dist
+          key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ steps.resolve-sha.outputs.sha }}-${{ hashFiles('integration-tests/.github/workflows/build-binary.yml', 'integration-tests/.github/scripts/build-zallet.sh', 'integration-tests/.github/scripts/stage-zallet-db-dump.sh') }}
+
+      - name: Determine binary cache hit
+        id: binary-cache
+        shell: bash
+        env:
+          IS_ZALLET: ${{ inputs.is_zallet }}
+          SINGLE_HIT: ${{ steps.binary-cache-single.outputs.cache-hit }}
+          ZALLET_HIT: ${{ steps.binary-cache-zallet.outputs.cache-hit }}
+        run: |
+          if [ "${IS_ZALLET}" = "true" ]; then
+            echo "hit=${ZALLET_HIT}" >> "$GITHUB_OUTPUT"
+          else
+            echo "hit=${SINGLE_HIT}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check out ${{ inputs.repository }}
+        if: steps.binary-cache.outputs.hit != 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ inputs.repository }}
@@ -111,25 +188,27 @@ jobs:
           persist-credentials: false
 
       - name: Install Homebrew build dependencies
-        if: matrix.brew_deps != ''
+        if: matrix.brew_deps != '' && steps.binary-cache.outputs.hit != 'true'
         run: brew install ${{ matrix.brew_deps }}
 
       - name: Install cross-compilation build dependencies
-        if: matrix.cross_deps != ''
+        if: matrix.cross_deps != '' && steps.binary-cache.outputs.hit != 'true'
         run: sudo apt update && sudo apt install ${{ matrix.cross_deps }}
 
       - name: Configure MinGW to use POSIX variant
-        if: matrix.name == 'mingw32'
+        if: matrix.name == 'mingw32' && steps.binary-cache.outputs.hit != 'true'
         run: |
           sudo update-alternatives --set x86_64-w64-mingw32-gcc $(update-alternatives --query x86_64-w64-mingw32-gcc | grep Alternative | grep posix | cut -d' ' -f2)
           sudo update-alternatives --set x86_64-w64-mingw32-g++ $(update-alternatives --query x86_64-w64-mingw32-g++ | grep Alternative | grep posix | cut -d' ' -f2)
 
       - name: Prepare ccache timestamp
         id: ccache_cache_timestamp
+        if: steps.binary-cache.outputs.hit != 'true'
         shell: bash
         run: echo "timestamp=$(date +'%Y-%m-%d-%H;%M;%S')" >> "$GITHUB_OUTPUT"
 
       - name: Cache ccache files
+        if: steps.binary-cache.outputs.hit != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.os == 'macOS' && '~/Library/Caches/ccache' || '~/.cache/ccache' }}
@@ -138,14 +217,14 @@ jobs:
             ${{ matrix.name }}-ccache-
 
       - name: Cache cargo build (single workspace)
-        if: ${{ !inputs.is_zallet }}
+        if: ${{ !inputs.is_zallet && steps.binary-cache.outputs.hit != 'true' }}
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
           key: ${{ matrix.name }}
           workspaces: "./${{ inputs.path }}"
 
       - name: Cache cargo build (zallet launcher + zaino backend)
-        if: ${{ inputs.is_zallet }}
+        if: ${{ inputs.is_zallet && steps.binary-cache.outputs.hit != 'true' }}
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
           key: ${{ matrix.name }}
@@ -157,11 +236,12 @@ jobs:
             zallet/backends/zaino
 
       - name: Install Rust target
+        if: steps.binary-cache.outputs.hit != 'true'
         run: rustup target add ${{ matrix.rust_target }}
         working-directory: ./${{ inputs.path }}
 
       - name: Build ${{ inputs.bin }}
-        if: ${{ !inputs.is_zallet }}
+        if: ${{ !inputs.is_zallet && steps.binary-cache.outputs.hit != 'true' }}
         env:
           HOST: ${{ matrix.host }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
@@ -174,7 +254,7 @@ jobs:
       # disabled on mingw32: its pqcrypto-mlkem dep fails to cross-compile to
       # windows-gnu, and the tests needing it are Linux-only.
       - name: Build zallet
-        if: ${{ inputs.is_zallet }}
+        if: ${{ inputs.is_zallet && steps.binary-cache.outputs.hit != 'true' }}
         env:
           HOST: ${{ matrix.host }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
@@ -186,7 +266,7 @@ jobs:
         run: "${{ github.workspace }}/integration-tests/.github/scripts/build-zallet.sh"
 
       - name: Stage vendored db_dump
-        if: ${{ inputs.is_zallet && matrix.name != 'mingw32' && runner.os != 'Windows' }}
+        if: ${{ inputs.is_zallet && matrix.name != 'mingw32' && runner.os != 'Windows' && steps.binary-cache.outputs.hit != 'true' }}
         shell: bash
         working-directory: ./zallet
         run: "${{ github.workspace }}/integration-tests/.github/scripts/stage-zallet-db-dump.sh"
@@ -212,6 +292,20 @@ jobs:
               ${{ format('./zallet/dist/zallet-zaino{0}', matrix.file_ext) }}
               ./zallet/dist/db_dump
           if-no-files-found: warn
+
+      # Bound the cache to the 5 most recent upstream versions for this binary
+      # and platform (issue #156), deleting older ones. Best-effort: a failure
+      # here (e.g. a read-only token on a fork PR) must not fail the build.
+      - name: Prune old ${{ inputs.bin }} binary caches
+        if: steps.binary-cache.outputs.hit != 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PREFIX: binary-${{ inputs.bin }}-${{ matrix.name }}-
+          KEEP: "5"
+        run: "${{ github.workspace }}/integration-tests/.github/scripts/prune-binary-caches.sh"
 
       - uses: ./integration-tests/.github/actions/finish-interop
         if: always()
