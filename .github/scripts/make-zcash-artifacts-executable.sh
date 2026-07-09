@@ -2,8 +2,8 @@
 #
 # Make the zcash binaries downloaded into ./src executable on the test runners.
 #
-# The `zallet` launcher execs a sibling backend binary (`zallet-zaino`), so it is
-# made executable too when present.
+# The `zallet` launcher execs a sibling backend binary (`zallet-zaino` or
+# `zallet-zebra`), so those are made executable too when present.
 #
 # Inputs (environment):
 #   FILE_EXT  executable suffix, e.g. ".exe" (optional, default empty)
@@ -17,4 +17,7 @@ chmod +x "./src/zainod$ext"
 chmod +x "./src/zallet$ext"
 if [ -f "./src/zallet-zaino$ext" ]; then
     chmod +x "./src/zallet-zaino$ext"
+fi
+if [ -f "./src/zallet-zebra$ext" ]; then
+    chmod +x "./src/zallet-zebra$ext"
 fi
