@@ -1580,6 +1580,20 @@ def nu_activation_all_at_1_with_ironwood() -> dict:
     return {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1, "NU6.3": 1}
 
 
+def nu_activation_ironwood_at(height: int) -> dict:
+    """Activation heights with NU5..NU6.2 at height 1 but NU6.3 (Ironwood)
+    deferred to `height`. This creates an Orchard era (heights 1..height-1,
+    where an Orchard receiver mints real Orchard notes) followed by an Ironwood
+    era (>= `height`, where an Orchard receiver mints Ironwood notes), so a
+    single wallet can hold both Orchard and Ironwood notes.
+
+    As with `nu_activation_all_at_1_with_ironwood`, pass this to BOTH
+    `ZebraArgs.activation_heights` and `ZalletArgs.activation_heights`."""
+    if height < 2:
+        raise ValueError("NU6.3 height must be >= 2 to leave an Orchard era")
+    return {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1, "NU6.3": height}
+
+
 def assert_shieldcoinbase_preflight_shape(result: dict) -> None:
     """Assert the `z_shieldcoinbase` pre-flight response has the zcashd-shaped
     fields with the right types:
@@ -1934,10 +1948,12 @@ def mine_to_mature_coinbase(node: RpcProxy, wallet: RpcProxy,
 
     Uses the at-least/steady variant (`wait_for_stable_mature_coinbase`) rather
     than an exact count, so it stays correct when called repeatedly after
-    earlier shields have already spent an unknown number of coinbase UTXOs.
+    earlier shields have already spent an unknown number of coinbase UTXOs. The
+    timeout is generous because scanning a full maturity window can be slow when
+    several test stacks run concurrently (CI, or local back-to-back runs).
     """
     node.generate(COINBASE_MATURITY + extra)
-    return wait_for_stable_mature_coinbase(wallet, min_count=1)
+    return wait_for_stable_mature_coinbase(wallet, min_count=1, timeout=600)
 
 
 def shield_coinbase(node: RpcProxy, wallet: RpcProxy, taddr: str, to_addr: str,
@@ -1998,6 +2014,33 @@ def self_send(node: RpcProxy, wallet: RpcProxy, ua: str, amount: Decimal,
     node.generate(1)
     details = wait_for_tx_scanned(wallet, txid)
     return txid, Decimal(details['fee'])
+
+
+def wait_account_settled(wallet: RpcProxy, account_uuid: str,
+                         pools: tuple = (Pool.SAPLING, Pool.ORCHARD,
+                                         Pool.IRONWOOD),
+                         timeout: int = 120) -> None:
+    """Block until all of the account's shielded value across `pools` is
+    spendable, i.e. the spendable balance equals the total (pending-inclusive)
+    balance. This rides out the post-confirmation spendable lag so a follow-up
+    send in a chain of sends has funds to draw on.
+    """
+    deadline = time.time() + timeout
+    spendable = balance = None
+    while time.time() < deadline:
+        try:
+            spendable = sum(account_spendable_zat(wallet, account_uuid, p)
+                            for p in pools)
+            balance = sum(account_balance_zat(wallet, account_uuid, p)
+                          for p in pools)
+            if spendable == balance:
+                return
+        except Exception:
+            pass
+        time.sleep(1)
+    raise AssertionError(
+        "wait_account_settled: timeout after {}s; account {} spendable {} != "
+        "balance {}".format(timeout, account_uuid, spendable, balance))
 
 
 def expect_rpc_error(callable_: Callable, *args, **kwargs):
