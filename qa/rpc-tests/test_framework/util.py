@@ -1082,12 +1082,22 @@ def get_rpc_auth_proxy(url, node_number, timeout=None):
 
     return coverage.AuthServiceProxyWrapper(proxy, coverage_logfile)
 
-def prepare_wallets_for_mining(num_wallets, dirname, binary=None):
+def prepare_wallets_for_mining(num_wallets, dirname, binary=None, zallet_args=None):
     """
     Creates the datadir for multiple wallets, sets up their first account, and
     returns a transparent address for each of them to use for mining.
+
+    `zallet_args` (a per-wallet list of `ZalletArgs`, or None) configures the
+    wallet BEFORE its database is created here. This matters because creating the
+    wallet runs the librustzcash migrations, some of which bake network-upgrade
+    activation heights into SQL views (e.g. the Ironwood shard-scan-ranges view
+    embeds the NU6.3 activation height). The database must therefore be created
+    with the SAME activation heights that the wallet is later started with; if a
+    NU is only configured afterwards (in `start_wallets`), the migration bakes a
+    NULL activation height and the pool's notes never become spendable.
     """
     if binary is None: binary = [ zallet_binary() for _ in range(num_wallets) ]
+    if zallet_args is None: zallet_args = [ None for _ in range(num_wallets) ]
     miner_addresses = []
     for i in range(num_wallets):
         datadir = wallet_dir(dirname, i)
@@ -1096,7 +1106,7 @@ def prepare_wallets_for_mining(num_wallets, dirname, binary=None):
 
         zallet = binary[i]
 
-        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i))
+        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i), zallet_args[i])
 
         args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
         process = subprocess.Popen(args)
