@@ -58,6 +58,7 @@ RUST_BINARIES = [
     'src/zebrad',
     'src/zainod',
     'src/zallet',
+    'src/zallet-zaino',
 ]
 
 def test_rpath_runpath(filename):
@@ -91,17 +92,22 @@ def check_security_hardening():
     ret = True
 
     # PIE, RELRO, Canary, and NX are tested by `contrib/devtools/security-check.py`.
-    bin_programs = ['src/zebrad', 'src/zainod', 'src/zallet']
+    # `zallet` is the pure-Rust launcher: it has no C dependencies, so it carries no
+    # stack-canary symbol and is checked with --allow-no-canary. The real wallet work
+    # runs in `zallet-zaino`, which links the C libraries (BDB, secp256k1) and is
+    # canary-checked in full.
+    bin_programs = ['src/zebrad', 'src/zainod', 'src/zallet-zaino']
+    no_canary_programs = ['src/zallet']
     bin_scripts = []
 
-    print(f"Checking binary security of {bin_programs + bin_scripts}...")
+    print(f"Checking binary security of {bin_programs + no_canary_programs + bin_scripts}...")
 
     for program in bin_programs:
         command = [repofile('contrib/devtools/security-check.py'), repofile(program)]
         ret &= subprocess.call(command) == 0
 
-    for script in bin_scripts:
-        command = [repofile('contrib/devtools/security-check.py'), '--allow-no-canary', repofile(script)]
+    for program in no_canary_programs + bin_scripts:
+        command = [repofile('contrib/devtools/security-check.py'), '--allow-no-canary', repofile(program)]
         ret &= subprocess.call(command) == 0
 
     # The remaining checks are only for ELF binaries
