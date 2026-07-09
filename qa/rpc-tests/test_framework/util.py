@@ -64,6 +64,7 @@ NU5_BRANCH_ID = 0xC2D6D0B4
 NU6_BRANCH_ID = 0xC8E71055
 NU6_1_BRANCH_ID = 0x4DEC4DF0
 NU6_2_BRANCH_ID = 0x5437f330
+NU6_3_BRANCH_ID = 0x37A5165B
 
 # The maximum number of nodes a single test can spawn
 MAX_NODES = 8
@@ -1081,12 +1082,22 @@ def get_rpc_auth_proxy(url, node_number, timeout=None):
 
     return coverage.AuthServiceProxyWrapper(proxy, coverage_logfile)
 
-def prepare_wallets_for_mining(num_wallets, dirname, binary=None):
+def prepare_wallets_for_mining(num_wallets, dirname, binary=None, zallet_args=None):
     """
     Creates the datadir for multiple wallets, sets up their first account, and
     returns a transparent address for each of them to use for mining.
+
+    `zallet_args` (a per-wallet list of `ZalletArgs`, or None) configures the
+    wallet BEFORE its database is created here. This matters because creating the
+    wallet runs the librustzcash migrations, some of which bake network-upgrade
+    activation heights into SQL views (e.g. the Ironwood shard-scan-ranges view
+    embeds the NU6.3 activation height). The database must therefore be created
+    with the SAME activation heights that the wallet is later started with; if a
+    NU is only configured afterwards (in `start_wallets`), the migration bakes a
+    NULL activation height and the pool's notes never become spendable.
     """
     if binary is None: binary = [ zallet_binary() for _ in range(num_wallets) ]
+    if zallet_args is None: zallet_args = [ None for _ in range(num_wallets) ]
     miner_addresses = []
     for i in range(num_wallets):
         datadir = wallet_dir(dirname, i)
@@ -1095,7 +1106,7 @@ def prepare_wallets_for_mining(num_wallets, dirname, binary=None):
 
         zallet = binary[i]
 
-        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i))
+        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i), zallet_args[i])
 
         args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
         process = subprocess.Popen(args)
@@ -1412,6 +1423,7 @@ class Pool(str, Enum):
     TRANSPARENT = 'transparent'
     SAPLING = 'sapling'
     ORCHARD = 'orchard'
+    IRONWOOD = 'ironwood'
 
 
 class FundSource(str, Enum):
@@ -1477,6 +1489,22 @@ def nu_activation_all_at_1() -> dict:
     Returns a fresh dict on each call so callers can pass it to `ZebraArgs`
     without sharing mutable state."""
     return {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1}
+
+
+def nu_activation_all_at_1_with_ironwood() -> dict:
+    """Like `nu_activation_all_at_1`, but also activates NU6.3 (Ironwood) at
+    height 1.
+
+    NU6.3 is deliberately kept out of the standard helper/defaults so that
+    existing wallet tests keep receiving shielded funds into the Orchard pool.
+    Once NU6.3 is active, funds received to an Orchard receiver land in the
+    Ironwood pool instead, so only tests that expect Ironwood should use this.
+
+    Both zebrad and zallet must activate NU6.3 at the same height, otherwise
+    zebra's coinbase commits to the NU6.2 branch id while zallet expects the
+    NU6.3 branch id and rejects the first block. Pass this dict to BOTH
+    `ZebraArgs.activation_heights` and `ZalletArgs.activation_heights`."""
+    return {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1, "NU6.3": 1}
 
 
 def assert_shieldcoinbase_preflight_shape(result: dict) -> None:
@@ -1709,6 +1737,20 @@ def account_spendable_zat(wallet: RpcProxy, account_uuid: str, pool: Pool | str,
     """
     return sum(b['spendable']['valueZat']
                for b in _account_pool(wallet, account_uuid, pool, minconf))
+
+
+def wait_for_wallet_sync(node, wallet, timeout: int = 60) -> None:
+    """Block until `wallet` reports `node`'s current tip as its wallet tip."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        target = node.getblockcount()
+        status = wallet.getwalletstatus()
+        if status.get('wallet_tip', {}).get('height') == target:
+            # Give the transparent balance accounting a beat to catch up.
+            time.sleep(2)
+            return
+        time.sleep(0.5)
+    raise AssertionError("wallet did not sync to node tip within %ss" % timeout)
 
 
 def wait_for_account_spendable(wallet: RpcProxy, account_uuid: str, pool: Pool,

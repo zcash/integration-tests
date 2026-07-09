@@ -278,6 +278,7 @@ NEW_SCRIPTS= [
     # vv Tests less than 5m vv
     'wallet.py',
     # vv Tests less than 2m vv
+    'wallet_ironwood.py',
     # vv Tests less than 60s vv
     'addnode.py',
     'wallet_z_shieldcoinbase.py',

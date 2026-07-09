@@ -54,6 +54,7 @@ _NU_BRANCH_IDS = [
     ("NU6", "c8e71055"),
     ("NU6.1", "4dec4df0"),
     ("NU6.2", "5437f330"),
+    ("NU6.3", "37a5165b"),
 ]
 
 # Upgrades before NU5. Zebra regtest activates these at height 1 when a later
