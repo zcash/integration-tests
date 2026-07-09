@@ -412,7 +412,9 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         miner_addresses = {}
         for i in range(MAX_NODES):
             datadir = wallet_dir(cachedir, i)
-            update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i))
+            update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i),
+                               indexer_port=indexer_rpc_port(i),
+                               zebra_state_dir=node_dir(cachedir, i))
 
             args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
             process = subprocess.Popen(args)
@@ -1106,7 +1108,9 @@ def prepare_wallets_for_mining(num_wallets, dirname, binary=None, zallet_args=No
 
         zallet = binary[i]
 
-        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i), zallet_args[i])
+        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i), zallet_args[i],
+                           indexer_port=indexer_rpc_port(i),
+                           zebra_state_dir=node_dir(dirname, i))
 
         args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
         process = subprocess.Popen(args)
@@ -1154,7 +1158,9 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
     validator_port = rpc_port(i)
     zallet_port = wallet_rpc_port(i)
 
-    update_zallet_conf(datadir, validator_port, zallet_port, zallet_args)
+    update_zallet_conf(datadir, validator_port, zallet_port, zallet_args,
+                       indexer_port=indexer_rpc_port(i),
+                       zebra_state_dir=node_dir(dirname, i))
 
     # We prepare the wallet if it is new
     if prepare:
@@ -1183,7 +1189,15 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
 
     return proxy
 
-def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None):
+# The zallet backend the launcher execs (top-level `backend` key in
+# zallet.toml). CI sets this to run the same RPC suite against both the `zaino`
+# and `zebra` backends; it defaults to `zaino` to match the checked-in default
+# config and local runs.
+def zallet_backend():
+    return os.getenv("ZALLET_BACKEND", "zaino")
+
+def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
+                       indexer_port=None, zebra_state_dir=None):
     config_path = zallet_config(datadir)
 
     with open(config_path, "r", encoding="utf8") as f:
@@ -1191,6 +1205,24 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None):
 
     config_file['rpc']['bind'][0] = '127.0.0.1:'+str(zallet_port)
     config_file['indexer']['validator_address'] = '127.0.0.1:'+str(validator_port)
+
+    # Select the backend the launcher execs. The `zebra` backend does not talk
+    # to zainod; it opens the co-located zebrad's state database read-only and
+    # follows the tip over zebrad's gRPC indexer interface, so it needs an
+    # [indexer.read_state_service] section pointing at that zebrad. Both the
+    # indexer gRPC port and zebrad's state directory are required for it.
+    backend = zallet_backend()
+    config_file['backend'] = backend
+    if backend == "zebra":
+        assert indexer_port is not None and zebra_state_dir is not None, \
+            "the zebra backend requires indexer_port and zebra_state_dir"
+        config_file['indexer']['read_state_service'] = {
+            'grpc_address': '127.0.0.1:'+str(indexer_port),
+            'zebra_state_path': os.path.abspath(zebra_state_dir),
+        }
+    else:
+        # Never leave a stale zebra section behind when reusing a config file.
+        config_file['indexer'].pop('read_state_service', None)
 
     extra_args = extra_args or ZalletArgs()
 

@@ -1,7 +1,9 @@
 # The `zallet` launcher reads this top-level key and execs the matching backend
-# binary (here `zallet-zaino`). The integration suite runs in regtest, which the
-# default `zebra` backend does not support. Top-level keys must precede the first
-# table header.
+# binary (`zallet-zaino` or `zallet-zebra`). The test framework overrides this
+# key (and, for `zebra`, adds an [indexer.read_state_service] section) from the
+# ZALLET_BACKEND environment variable so the suite can run against either
+# backend; `zaino` is the default here for local runs. Top-level keys must
+# precede the first table header.
 backend = "zaino"
 
 [builder.limits]
