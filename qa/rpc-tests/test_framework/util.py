@@ -64,6 +64,7 @@ NU5_BRANCH_ID = 0xC2D6D0B4
 NU6_BRANCH_ID = 0xC8E71055
 NU6_1_BRANCH_ID = 0x4DEC4DF0
 NU6_2_BRANCH_ID = 0x5437f330
+NU6_3_BRANCH_ID = 0x37A5165B
 
 # The maximum number of nodes a single test can spawn
 MAX_NODES = 8
@@ -1412,6 +1413,7 @@ class Pool(str, Enum):
     TRANSPARENT = 'transparent'
     SAPLING = 'sapling'
     ORCHARD = 'orchard'
+    IRONWOOD = 'ironwood'
 
 
 class FundSource(str, Enum):
@@ -1477,6 +1479,22 @@ def nu_activation_all_at_1() -> dict:
     Returns a fresh dict on each call so callers can pass it to `ZebraArgs`
     without sharing mutable state."""
     return {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1}
+
+
+def nu_activation_all_at_1_with_ironwood() -> dict:
+    """Like `nu_activation_all_at_1`, but also activates NU6.3 (Ironwood) at
+    height 1.
+
+    NU6.3 is deliberately kept out of the standard helper/defaults so that
+    existing wallet tests keep receiving shielded funds into the Orchard pool.
+    Once NU6.3 is active, funds received to an Orchard receiver land in the
+    Ironwood pool instead, so only tests that expect Ironwood should use this.
+
+    Both zebrad and zallet must activate NU6.3 at the same height, otherwise
+    zebra's coinbase commits to the NU6.2 branch id while zallet expects the
+    NU6.3 branch id and rejects the first block. Pass this dict to BOTH
+    `ZebraArgs.activation_heights` and `ZalletArgs.activation_heights`."""
+    return {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1, "NU6.3": 1}
 
 
 def assert_shieldcoinbase_preflight_shape(result: dict) -> None:
