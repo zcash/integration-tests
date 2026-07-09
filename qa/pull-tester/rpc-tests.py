@@ -275,8 +275,14 @@ BASE_SCRIPTS= [
 # in CI. This will eventually be merged into BASE_SCRIPTS once everything is working.
 NEW_SCRIPTS= [
     # Longest test should go first, to favor running tests in parallel
+    # vv Tests less than 7m vv
+    # The two-shield Ironwood tests each mine two coinbase-maturity windows.
+    'wallet_ironwood_crosspool.py',
+    'wallet_ironwood_spending.py',
     # vv Tests less than 5m vv
     'wallet.py',
+    'wallet_ironwood_persistence.py',
+    'wallet_ironwood_views.py',
     # vv Tests less than 2m vv
     'wallet_ironwood.py',
     # vv Tests less than 60s vv
