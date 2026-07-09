@@ -1,0 +1,222 @@
+name: Build binary
+
+# Reusable workflow that builds a single binary (zebrad, zainod, or the zallet
+# launcher plus its zaino backend) for a given set of platforms. It is called
+# twice per binary from `ci.yml`: once for the platforms the tests run on, and
+# once for the build-only platforms (macOS, Windows, cross-compiled targets).
+# Splitting the matrix this way lets the test jobs depend only on the builds
+# they actually consume, instead of waiting for every platform to finish
+# building.
+
+on:
+  workflow_call:
+    inputs:
+      build_matrix:
+        description: JSON array of platform configs to build.
+        required: true
+        type: string
+      repository:
+        description: The owner/name of the source repository to build.
+        required: true
+        type: string
+      default_ref:
+        description: The git ref to build when not handling an interop request.
+        required: true
+        type: string
+      interop_action:
+        description: The repository_dispatch action that pins this binary's commit.
+        required: true
+        type: string
+      path:
+        description: Path to check the source out into (also the cargo workspace).
+        required: true
+        type: string
+      bin:
+        description: The cargo binary (and artifact name prefix) to build.
+        required: true
+        type: string
+      job_name_prefix:
+        description: Prefix for the per-platform job and interop status name.
+        required: true
+        type: string
+      is_zallet:
+        description: Whether to apply zallet-specific build and packaging steps.
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      STATUS_APP_ID:
+        description: Status-reporting GitHub App ID (for interop requests).
+        required: true
+      STATUS_APP_PRIVATE_KEY:
+        description: Status-reporting GitHub App private key.
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ inputs.job_name_prefix }} ${{ matrix.platform }}${{ matrix.required_suffix }}
+    runs-on: ${{ matrix.build_os }}
+    container:
+      image: ${{ matrix.container }}
+      env:
+        HOME: /root
+        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+    continue-on-error: ${{ !matrix.required }}
+    strategy:
+      matrix:
+        include: ${{ fromJson(inputs.build_matrix) }}
+
+    steps:
+      - name: Check out integration-tests to access actions
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: integration-tests
+          persist-credentials: false
+
+      - name: Compute interop repo ids
+        id: repo-ids
+        uses: ./integration-tests/.github/actions/interop-repo-ids
+
+      - id: start-interop
+        uses: ./integration-tests/.github/actions/start-interop
+        with:
+          status-app-id: ${{ secrets.STATUS_APP_ID }}
+          status-app-private-key: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
+          requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
+          requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
+          job-name: "${{ inputs.job_name_prefix }} ${{ matrix.platform }}${{ matrix.required_suffix }}"
+
+      - name: Use specified commit
+        if: github.event.action == inputs.interop_action
+        shell: sh
+        env:
+          SHA: ${{ github.event.client_payload.sha }}
+        run: echo "TARGET_REF=${SHA}" >> $GITHUB_ENV
+
+      - name: Use current default branch
+        if: github.event.action != inputs.interop_action
+        env:
+          DEFAULT_REF: ${{ inputs.default_ref }}
+        run: echo "TARGET_REF=${DEFAULT_REF}" >> $GITHUB_ENV
+
+      - name: Check out ${{ inputs.repository }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ env.TARGET_REF }}
+          path: ${{ inputs.path }}
+          persist-credentials: false
+
+      - name: Install Homebrew build dependencies
+        if: matrix.brew_deps != ''
+        run: brew install ${{ matrix.brew_deps }}
+
+      - name: Install cross-compilation build dependencies
+        if: matrix.cross_deps != ''
+        run: sudo apt update && sudo apt install ${{ matrix.cross_deps }}
+
+      - name: Configure MinGW to use POSIX variant
+        if: matrix.name == 'mingw32'
+        run: |
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc $(update-alternatives --query x86_64-w64-mingw32-gcc | grep Alternative | grep posix | cut -d' ' -f2)
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ $(update-alternatives --query x86_64-w64-mingw32-g++ | grep Alternative | grep posix | cut -d' ' -f2)
+
+      - name: Prepare ccache timestamp
+        id: ccache_cache_timestamp
+        shell: bash
+        run: echo "timestamp=$(date +'%Y-%m-%d-%H;%M;%S')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache ccache files
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ccache' || '~/.cache/ccache' }}
+          key: ${{ matrix.name }}-ccache-${{ steps.ccache_cache_timestamp.outputs.timestamp }}
+          restore-keys: |
+            ${{ matrix.name }}-ccache-
+
+      - name: Cache cargo build (single workspace)
+        if: ${{ !inputs.is_zallet }}
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          key: ${{ matrix.name }}
+          workspaces: "./${{ inputs.path }}"
+
+      - name: Cache cargo build (zallet launcher + zaino backend)
+        if: ${{ inputs.is_zallet }}
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          key: ${{ matrix.name }}
+          # zallet is two workspaces: the root (the `zallet` launcher) and
+          # backends/zaino (the `zallet-zaino` backend binary), each with its
+          # own target directory. Cache both.
+          workspaces: |
+            zallet
+            zallet/backends/zaino
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.rust_target }}
+        working-directory: ./${{ inputs.path }}
+
+      - name: Build ${{ inputs.bin }}
+        if: ${{ !inputs.is_zallet }}
+        env:
+          HOST: ${{ matrix.host }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
+          BIN: ${{ inputs.bin }}
+        run: cargo build --release --target ${{ matrix.rust_target }} --bin "${BIN}"
+        working-directory: ./${{ inputs.path }}
+
+      # Build the `zallet` launcher plus the `zallet-zaino` backend binary the
+      # regtest suite needs. See .github/scripts/build-zallet.sh. zcashd-import is
+      # disabled on mingw32: its pqcrypto-mlkem dep fails to cross-compile to
+      # windows-gnu, and the tests needing it are Linux-only.
+      - name: Build zallet
+        if: ${{ inputs.is_zallet }}
+        env:
+          HOST: ${{ matrix.host }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
+          RUST_TARGET: ${{ matrix.rust_target }}
+          FILE_EXT: ${{ matrix.file_ext }}
+          ZCASHD_IMPORT: ${{ matrix.name != 'mingw32' && '--features zcashd-import' || '' }}
+        shell: bash
+        working-directory: ./zallet
+        run: "${{ github.workspace }}/integration-tests/.github/scripts/build-zallet.sh"
+
+      - name: Stage vendored db_dump
+        if: ${{ inputs.is_zallet && matrix.name != 'mingw32' && runner.os != 'Windows' }}
+        shell: bash
+        working-directory: ./zallet
+        run: "${{ github.workspace }}/integration-tests/.github/scripts/stage-zallet-db-dump.sh"
+
+      - name: Upload ${{ inputs.bin }}
+        if: ${{ !inputs.is_zallet }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.bin }}-${{ matrix.name }}
+          path: |
+              ${{ format('./{0}/target/{1}/release/{2}{3}', inputs.path, matrix.rust_target, inputs.bin, matrix.file_ext) }}
+
+      # Upload the launcher, the Zaino backend binary, and the vendored db_dump.
+      # They land flat in ./src on the test runners; the launcher finds a sibling
+      # zallet-zaino next to itself.
+      - name: Upload zallet
+        if: ${{ inputs.is_zallet }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zallet-${{ matrix.name }}
+          path: |
+              ${{ format('./zallet/dist/zallet{0}', matrix.file_ext) }}
+              ${{ format('./zallet/dist/zallet-zaino{0}', matrix.file_ext) }}
+              ./zallet/dist/db_dump
+          if-no-files-found: warn
+
+      - uses: ./integration-tests/.github/actions/finish-interop
+        if: always()
+        with:
+          app-token: ${{ steps.start-interop.outputs.app-token }}
+          requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
+          requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
+          job-name: "${{ inputs.job_name_prefix }} ${{ matrix.platform }}${{ matrix.required_suffix }}"
