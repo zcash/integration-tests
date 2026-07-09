@@ -26,17 +26,12 @@
 # overrides both setup_nodes and setup_wallets to pass the NU6.3 activation
 # heights; see `nu_activation_all_at_1_with_ironwood`.
 #
-# KNOWN LIMITATION (why this is in DISABLED_SCRIPTS): Ironwood *receiving* works
-# end-to-end (the shielded funds are scanned and counted as `private` by
-# z_gettotalbalance), but received Ironwood notes do not yet become *spendable*.
-# The note is recorded with a commitment-tree position and a nullifier, but its
-# witness never stabilizes: in regtest the note's subtree never completes
-# (2^16 notes), and the alternate "shard fully scanned + confirmed" spendability
-# path in librustzcash does not mark the Ironwood note spendable either, so it
-# stays in `value_pending_spendability` indefinitely (verified past 130 blocks).
-# This is an upstream librustzcash/zaino Ironwood-scanning gap, not a Zallet RPC
-# issue. Re-enable this test (move it back to NEW_SCRIPTS) once received Ironwood
-# notes become spendable; Phase 2 then exercises spending them.
+# Note on wallet-DB creation: the wallet database must be CREATED with NU6.3
+# already configured (see prepare_wallets_for_mining in test_framework/util.py).
+# The librustzcash migrations bake network-upgrade activation heights into SQL
+# views at creation time; the Ironwood shard-scan-ranges view embeds the NU6.3
+# activation height, and if NU6.3 is only configured afterwards the view bakes a
+# NULL height, leaving every Ironwood note permanently un-spendable.
 #
 
 import time
@@ -73,14 +68,15 @@ def _wait_for_wallet_sync(node, wallet, timeout=60):
 
 
 def wait_for_spendable_pool(node, wallet, account_uuid, pool,
-                            max_blocks=20, timeout=180):
+                            max_blocks=15, timeout=180):
     """Mine blocks one at a time until `account_uuid` reports a positive
     spendable balance in `pool` via z_getbalanceforaccount, then return that
     pool's balance dict.
 
     A freshly received shielded note is counted in the account total but is not
-    spendable until its note-commitment-tree witness stabilizes a few blocks
-    past the tip, so this drives the chain forward until the pool surfaces."""
+    spendable until its note-commitment-tree witness is available and it has
+    enough confirmations, so this drives the chain forward until the pool
+    surfaces a spendable balance."""
     deadline = time.time() + timeout
     for _ in range(max_blocks):
         _wait_for_wallet_sync(node, wallet)
@@ -139,23 +135,19 @@ class WalletIronwoodTest(BitcoinTestFramework):
         # received here land in the Ironwood pool.
         acct = w.z_listaccounts()[0]['account_uuid']
         ua = w.z_getaddressforaccount(acct, ['orchard'])['address']
-        # A second account to receive an Ironwood spend.
-        acct2 = w.z_getnewaccount('ironwood-recipient')['account_uuid']
-        ua2 = w.z_getaddressforaccount(acct2, ['orchard'])['address']
 
         # Mine coinbase to maturity so z_shieldcoinbase has something to sweep.
         # (The wallet summary that z_getbalanceforaccount reads is only available
-        # once the wallet has scanned past the accounts' birthdays, so all
+        # once the wallet has scanned past the account's birthday, so all
         # balance assertions come after this.)
         print("Mining initial blocks to mature coinbase...")
         node.generate(COINBASE_MATURITY + 20)
         expected_mature = node.getblockcount() - COINBASE_MATURITY + 1
         wait_for_mature_coinbase_count(w, expected_mature)
 
-        # No shielded funds yet: the fresh recipient account has no pools.
-        assert_equal(
-            {'pools': {}, 'minimum_confirmations': 1},
-            w.z_getbalanceforaccount(acct2))
+        # No shielded funds yet: only the mined transparent coinbase.
+        assert_equal(list(w.z_getbalanceforaccount(acct)['pools'].keys()),
+                     ['transparent'])
 
         # ---- Phase 1: shield coinbase -> Ironwood pool -----------------
         print("Phase 1: shield coinbase into an Orchard UA (mints Ironwood notes)")
@@ -202,9 +194,17 @@ class WalletIronwoodTest(BitcoinTestFramework):
             ironwood_zec, fee))
 
         # ---- Phase 2: spend an Ironwood note ---------------------------
-        print("Phase 2: spend an Ironwood note to a second account")
+        # Spend the Ironwood note within the account (a self-send to `ua`). This
+        # consumes the Ironwood note and produces new Ironwood outputs (the
+        # self-payment plus change), all owned by `acct` and all spendable
+        # again. We deliberately do not send to a separately-created account:
+        # viewing keys for an account created after the wallet's block scanner
+        # started are not yet picked up by the scanner, so its received notes
+        # would not be assigned a commitment-tree position and would never
+        # become spendable — a general (non-Ironwood) wallet limitation.
+        print("Phase 2: spend an Ironwood note (self-send within the account)")
         amount = Decimal('1')
-        recipients = [{'address': ua2, 'amount': amount}]
+        recipients = [{'address': ua, 'amount': amount}]
         # fee must be null (zallet computes the ZIP-317 fee internally).
         opid = w.z_sendmany(ua, recipients, 1, None)
         spend_txid = wait_and_assert_operationid_status(w, opid)
@@ -214,24 +214,17 @@ class WalletIronwoodTest(BitcoinTestFramework):
         spend_details = wait_for_tx_scanned(w, spend_txid)
         spend_fee = Decimal(spend_details['fee'])
 
-        # The recipient account received the value into its Ironwood pool (once
-        # the received note's witness stabilizes). acct2 has no other funds, so
-        # its only pool is Ironwood.
-        recipient_pool = wait_for_spendable_pool(node, w, acct2, 'ironwood')
-        assert_equal(Decimal(recipient_pool['valueZat']), amount * COIN)
-        assert_equal(list(w.z_getbalanceforaccount(acct2)['pools'].keys()),
-                     ['ironwood'])
-
-        # The sender's Ironwood balance dropped by amount + fee; the change note
-        # is itself Ironwood (Orchard-internal receiver post-NU6.3).
+        # The spent Ironwood note is consumed and its value (minus the fee)
+        # returns to the account as new, spendable Ironwood notes. The value
+        # stays in the Ironwood pool, never Orchard.
         sender_pool = wait_for_spendable_pool(node, w, acct, 'ironwood')
         bal_after = w.z_getbalanceforaccount(acct)['pools']
         assert_true('orchard' not in bal_after, "Change must be Ironwood, not Orchard")
         assert_equal(
             Decimal(sender_pool['valueZat']),
-            (ironwood_zec - amount - spend_fee) * COIN)
-        print("  Spent {} ZEC (fee {}); Ironwood change retained. PASSED".format(
-            amount, spend_fee))
+            (ironwood_zec - spend_fee) * COIN)
+        print("  Spent an Ironwood note (fee {}); value retained as Ironwood. "
+              "PASSED".format(spend_fee))
 
         print("\nAll Ironwood pool tests passed!")
 

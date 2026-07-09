@@ -112,11 +112,6 @@ DISABLED_SCRIPTS = [
     'txn_doublespend.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
     'upgrade_golden.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
     'wallet_1941.py',  # no zallet equiv yet: z_exportkey, z_importkey
-    # Ironwood (NU6.3) receiving works, but received Ironwood notes are not yet
-    # spendable (witness never stabilizes; upstream librustzcash/zaino scanning
-    # gap). See the header of wallet_ironwood.py. Move back to NEW_SCRIPTS once
-    # Ironwood notes become spendable.
-    'wallet_ironwood.py',
     'wallet_accounts.py',  # no zallet equiv yet: z_exportviewingkey
     'wallet_addresses.py',  # no zallet equiv yet: z_exportkey, z_importkey
     'wallet_anchorfork.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
@@ -283,6 +278,7 @@ NEW_SCRIPTS= [
     # vv Tests less than 5m vv
     'wallet.py',
     # vv Tests less than 2m vv
+    'wallet_ironwood.py',
     # vv Tests less than 60s vv
     'addnode.py',
     'wallet_z_shieldcoinbase.py',
