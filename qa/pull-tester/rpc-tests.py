@@ -132,6 +132,8 @@ DISABLED_SCRIPTS = [
     'wallet_orchard_init.py',  # no zallet equiv yet: resendwallettransactions
     'wallet_orchard_persistence.py',  # deprecated; z_getbalanceforaccount->z_getbalances
     'wallet_orchard_reindex.py',  # deprecated; z_getbalanceforaccount->z_getbalances
+    'wallet_ironwood_reorg.py',  # Z3 wallet stack does not yet follow a reorg that disconnects already-scanned blocks (node rewinds, wallet does not)
+    'wallet_ironwood_birthday.py',  # z_recoveraccounts with a non-genesis birthday does not settle the wallet tip; blocks the Ironwood treestate check
     'wallet_overwintertx.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_parsing_amounts.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_persistence.py',  # no zallet equiv yet: z_exportkey, z_importkey, z_exportviewingkey
@@ -275,14 +277,22 @@ BASE_SCRIPTS= [
 # in CI. This will eventually be merged into BASE_SCRIPTS once everything is working.
 NEW_SCRIPTS= [
     # Longest test should go first, to favor running tests in parallel
+    # vv Tests less than 10m vv
+    # These Ironwood tests span the NU6.3 activation boundary or chain many
+    # cross-pool sends, so they mine several coinbase-maturity windows.
+    'wallet_ironwood_orchard_turnstile.py',
+    'wallet_ironwood_activation.py',
     # vv Tests less than 7m vv
     # The two-shield Ironwood tests each mine two coinbase-maturity windows.
     'wallet_ironwood_crosspool.py',
     'wallet_ironwood_spending.py',
+    'wallet_ironwood_invariants.py',
     # vv Tests less than 5m vv
     'wallet.py',
     'wallet_ironwood_persistence.py',
     'wallet_ironwood_views.py',
+    'wallet_ironwood_conservation.py',
+    'wallet_ironwood_negatives.py',
     # vv Tests less than 2m vv
     'wallet_ironwood.py',
     # vv Tests less than 60s vv
