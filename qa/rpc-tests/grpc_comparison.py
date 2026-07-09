@@ -48,6 +48,7 @@ Not yet tested (require a wallet to submit mempool transactions):
 
 import json
 import os
+import shutil
 import tarfile
 import time
 from difflib import unified_diff
@@ -101,6 +102,14 @@ _GRPC_ZCASHD_NUPARAMS = {
     'c2d6d0b4': _GRPC_ACTIVATION_HEIGHT,  # NU5
     'c8e71055': _GRPC_ACTIVATION_HEIGHT,  # NU6
 }
+
+
+def _zcashd_available():
+    """Return True if the standalone zcashd builder binary can be executed."""
+    return (
+        os.path.isfile(os.getenv("ZCASHD", os.path.join("src", "zcashd"))) or
+        shutil.which("zcashd") is not None
+    )
 
 
 def _skip_cached_runtime_files(tarinfo):
@@ -345,6 +354,15 @@ class GrpcComparisonTest(BitcoinTestFramework):
                 self._stage1_loaded_from_cache = True
             except (IOError, OSError, ValueError) as e:
                 print("grpc_comparison: ignoring incompatible stage-1 cache: %s" % str(e))
+
+        if (not self._chain_loaded_from_cache and
+                not self._stage1_loaded_from_cache and
+                not _zcashd_available()):
+            raise Exception(
+                "grpc_comparison requires either qa/rpc-tests/cache/%s, "
+                "qa/rpc-tests/cache/%s, or a standalone zcashd binary to "
+                "rebuild the fixture." % (_GRPC_CACHE_NAME, _GRPC_STAGE1_CACHE_NAME)
+            )
 
     def _load_cached_metadata(self, cache_path):
         with open(os.path.join(cache_path, 'chain_metadata.json'), encoding='utf8') as f:
