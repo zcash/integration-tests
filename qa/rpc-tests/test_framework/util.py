@@ -1530,6 +1530,13 @@ def mature_transparent_utxos(wallet: RpcProxy) -> list[dict]:
     return transparent_utxos(wallet, COINBASE_MATURITY)
 
 
+def ironwood_notes(wallet: RpcProxy, minconf: int = 1) -> list[dict]:
+    """The wallet's unspent Ironwood notes (z_listunspent entries with
+    `pool == "ironwood"`) with at least `minconf` confirmations."""
+    return [u for u in wallet.z_listunspent(minconf)
+            if u.get('pool') == Pool.IRONWOOD]
+
+
 def mature_coinbase_on_address(wallet: RpcProxy, taddr: str) -> list[dict]:
     """The wallet's mature transparent coinbase UTXOs held on `taddr`."""
     return [u for u in mature_transparent_utxos(wallet)
@@ -1908,6 +1915,89 @@ def wait_for_account_balance(wallet: RpcProxy, account_uuid: str, pool: Pool,
         "wait_for_account_balance: timeout after {}s; account {} {} total "
         "is {} zat, wanted {} zat".format(
             timeout, account_uuid, pool, last, expected_zat))
+
+
+def spends_in_pool(view: dict, pool: Pool | str) -> list[dict]:
+    """The spends of a `z_viewtransaction` result that are in `pool`."""
+    return [s for s in view['spends'] if s['pool'] == pool]
+
+
+def outputs_in_pool(view: dict, pool: Pool | str) -> list[dict]:
+    """The outputs of a `z_viewtransaction` result that are in `pool`."""
+    return [o for o in view['outputs'] if o['pool'] == pool]
+
+
+def mine_to_mature_coinbase(node: RpcProxy, wallet: RpcProxy,
+                            extra: int = 20) -> list[dict]:
+    """Mine `COINBASE_MATURITY + extra` blocks and block until the wallet sees a
+    stable set of at least one mature coinbase UTXO. Returns those UTXOs.
+
+    Uses the at-least/steady variant (`wait_for_stable_mature_coinbase`) rather
+    than an exact count, so it stays correct when called repeatedly after
+    earlier shields have already spent an unknown number of coinbase UTXOs.
+    """
+    node.generate(COINBASE_MATURITY + extra)
+    return wait_for_stable_mature_coinbase(wallet, min_count=1)
+
+
+def shield_coinbase(node: RpcProxy, wallet: RpcProxy, taddr: str, to_addr: str,
+                    account_uuid: str, pool: Pool,
+                    extra: int = 20) -> tuple[str, int]:
+    """Mine coinbase to maturity, shield it into `to_addr`, confirm, and block
+    until the resulting balance in `pool` is spendable.
+
+    `to_addr`'s receiver type selects the destination pool: a Sapling receiver
+    mints Sapling notes, and an Orchard receiver mints Orchard notes, except
+    that once NU6.3 is active an Orchard receiver mints Ironwood notes. Pass the
+    matching `pool` so the spendability wait targets it.
+
+    Returns `(txid, value_zat)` where `value_zat` is the shielded note's value
+    net of the fee, in zatoshis, measured as the increase in the account's
+    spendable `pool` balance. Taking the balance delta (rather than the
+    pre-flight `shieldingValue`, which can disagree with the value actually
+    swept across the regtest subsidy halving) keeps it exact, and correct when
+    the pool already held a balance from an earlier shield.
+    """
+    pre = account_spendable_zat(wallet, account_uuid, pool)
+
+    mine_to_mature_coinbase(node, wallet, extra)
+
+    result = wallet.z_shieldcoinbase(taddr, to_addr)
+    assert_true(Decimal(result['shieldingValue']) > 0,
+                "Expected a positive shielding value")
+    txid = wait_and_assert_operationid_status(wallet, result['opid'])
+    assert_true(txid is not None, "Shielding tx should have succeeded")
+
+    node.generate(1)
+    wait_for_tx_scanned(wallet, txid)
+
+    # A shielded note becomes spendable atomically, and nothing else changes the
+    # pool balance here, so waiting for any increase past `pre` yields the fully
+    # settled balance; the note's value is the delta.
+    post = wait_for_account_spendable(wallet, account_uuid, pool,
+                                      min_zat=pre + 1)
+    return txid, post - pre
+
+
+def self_send(node: RpcProxy, wallet: RpcProxy, ua: str, amount: Decimal,
+              memo: str | None = None) -> tuple[str, Decimal]:
+    """Send `amount` ZEC (a `Decimal`) from and to `ua` (a self-send), confirm
+    it in a block, and return `(txid, fee_zec)`. `fee` is left null so zallet
+    computes the ZIP-317 fee. An optional `memo` (hex string) rides the payment.
+
+    The value returns to the account as change in `ua`'s pool; callers that need
+    it spendable again should follow up with `wait_for_account_spendable`.
+    """
+    recipient = {'address': ua, 'amount': amount}
+    if memo is not None:
+        recipient['memo'] = memo
+    opid = wallet.z_sendmany(ua, [recipient], 1, None)
+    txid = wait_and_assert_operationid_status(wallet, opid)
+    assert_true(txid is not None, "Self-send should have succeeded")
+
+    node.generate(1)
+    details = wait_for_tx_scanned(wallet, txid)
+    return txid, Decimal(details['fee'])
 
 
 def expect_rpc_error(callable_: Callable, *args, **kwargs):
