@@ -14,11 +14,8 @@
 #      spendable, and an Ironwood note can be spent post-restart with its change
 #      remaining Ironwood.
 #   2. Transaction shape: an Ironwood spend is a v6 transaction (NU6.3 version
-#      group), as reported by both z_viewtransaction and decoderawtransaction.
-#
-# Known gap (noted, not asserted): decoderawtransaction surfaces the Orchard
-# bundle but not the Ironwood bundle, so the Ironwood actions do not appear in
-# its decoded output; only the v6 version/version-group identify the tx.
+#      group) whose Ironwood bundle is surfaced by decoderawtransaction, as
+#      reported by both z_viewtransaction and decoderawtransaction.
 #
 
 from decimal import Decimal
@@ -112,10 +109,16 @@ class WalletIronwoodPersistenceTest(IronwoodTestFramework):
         assert_equal(decoded['version'], V6_TX_VERSION)
         assert_equal(decoded['versiongroupid'], V6_VERSION_GROUP_ID,
                      "v6 transactions use the NU6.3 version group id")
-        # Note: decoderawtransaction surfaces the Orchard bundle but not the
-        # Ironwood bundle, so the Ironwood actions are not present in `decoded`.
-        print("  v6 tx confirmed (version group {}). PASSED"
-              .format(decoded['versiongroupid']))
+        # decoderawtransaction surfaces the Ironwood bundle (Orchard-shaped) under
+        # its own `ironwood` key; the spend carries at least one Ironwood action.
+        assert_true('ironwood' in decoded,
+                    "decoderawtransaction should surface the Ironwood bundle; "
+                    "got keys {}".format(sorted(decoded.keys())))
+        assert_true(len(decoded['ironwood']['actions']) >= 1,
+                    "the Ironwood bundle should carry actions; got {}"
+                    .format(decoded['ironwood']))
+        print("  v6 tx with Ironwood bundle ({} actions). PASSED"
+              .format(len(decoded['ironwood']['actions'])))
 
         print("\nAll Ironwood persistence tests passed!")
 

@@ -20,10 +20,7 @@
 #      z_viewtransaction (`memo` hex and `memoStr`).
 #   4. z_getbalances: the account's Ironwood balance appears under the
 #      `ironwood` key with a spendable component.
-#
-# Known gap (surfaced here as a note, not a failing assertion): z_getnotescount
-# does not report Ironwood notes (it counts only Sapling and Orchard). We assert
-# that Ironwood notes are at least not miscounted as Orchard.
+#   5. z_getnotescount: Ironwood notes are reported under the `ironwood` field.
 #
 
 from decimal import Decimal
@@ -35,6 +32,7 @@ from test_framework.util import (
     assert_equal,
     assert_true,
     self_send,
+    wait_for_wallet_sync,
 )
 from test_framework.util_ironwood import (
     IronwoodTestFramework,
@@ -42,6 +40,20 @@ from test_framework.util_ironwood import (
     ironwood_spends,
     shield_coinbase_into_ironwood,
 )
+
+
+def wait_for_ironwood_notescount(w, node, minimum=1, timeout=60):
+    """Poll z_getnotescount until it reports at least `minimum` Ironwood notes,
+    mining a block each round to advance the `transactions.mined_height`
+    backfill that z_getnotescount depends on, then return the counts."""
+    import time
+    deadline = time.time() + timeout
+    counts = w.z_getnotescount()
+    while counts.get('ironwood', 0) < minimum and time.time() < deadline:
+        node.generate(1)
+        wait_for_wallet_sync(node, w)
+        counts = w.z_getnotescount()
+    return counts
 
 
 class WalletIronwoodViewsTest(IronwoodTestFramework):
@@ -155,16 +167,20 @@ class WalletIronwoodViewsTest(IronwoodTestFramework):
                     .format([o.get('memo') for o in spend_iron]))
         print("  PASSED")
 
-        # ---- z_getnotescount gap (documented, not a hard failure) -------
-        # z_getnotescount currently counts only Sapling and Orchard notes; it
-        # does not surface Ironwood. Assert the Ironwood notes are at least not
-        # miscounted as Orchard. (Tracked as a zallet surfacing gap.)
-        counts = w.z_getnotescount()
+        # ---- z_getnotescount surfaces Ironwood --------------------------
+        # z_getnotescount reports Ironwood notes under its own `ironwood` field;
+        # they must not be miscounted as Orchard. Unlike the balance views,
+        # z_getnotescount only counts notes whose transaction has a mined height,
+        # and that column is backfilled a scan pass later than a note first
+        # becomes visible, so mine a couple of blocks and let the wallet settle.
+        node.generate(2)
+        wait_for_wallet_sync(node, w)
+        counts = wait_for_ironwood_notescount(w, node, minimum=1)
         assert_equal(counts['orchard'], 0,
-                     "Ironwood notes must not be counted as Orchard by "
-                     "z_getnotescount; got {}".format(counts))
-        print("Note: z_getnotescount does not report Ironwood (orchard={}, "
-              "sapling={}).".format(counts['orchard'], counts['sapling']))
+                     "Ironwood notes must not be counted as Orchard; got {}"
+                     .format(counts))
+        print("  z_getnotescount reports {} ironwood note(s). PASSED"
+              .format(counts['ironwood']))
 
         print("\nAll Ironwood view-surfacing tests passed!")
 
