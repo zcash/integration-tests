@@ -1,7 +1,7 @@
 name: Build binary
 
 # Reusable workflow that builds a single binary (zebrad, zainod, or the zallet
-# launcher plus its zaino backend) for a given set of platforms. It is called
+# launcher plus its zaino and zebra backends) for a given set of platforms. It is called
 # twice per binary from `ci.yml`: once for the platforms the tests run on, and
 # once for the build-only platforms (macOS, Windows, cross-compiled targets).
 # Splitting the matrix this way lets the test jobs depend only on the builds
@@ -53,6 +53,14 @@ on:
         required: false
         type: boolean
         default: false
+      extra_build_args:
+        description: >-
+          Extra args appended to the `cargo build` invocation for the
+          non-zallet build path (e.g. "--features indexer" for zebrad). Ignored
+          when is_zallet is true.
+        required: false
+        type: string
+        default: ''
     secrets:
       STATUS_APP_ID:
         description: Status-reporting GitHub App ID (for interop requests).
@@ -227,17 +235,18 @@ jobs:
           key: ${{ matrix.name }}
           workspaces: "./${{ inputs.path }}"
 
-      - name: Cache cargo build (zallet launcher + zaino backend)
+      - name: Cache cargo build (zallet launcher + backends)
         if: ${{ inputs.is_zallet && steps.binary-cache.outputs.hit != 'true' }}
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
           key: ${{ matrix.name }}
-          # zallet is two workspaces: the root (the `zallet` launcher) and
-          # backends/zaino (the `zallet-zaino` backend binary), each with its
-          # own target directory. Cache both.
+          # zallet is three workspaces: the root (the `zallet` launcher),
+          # backends/zaino (`zallet-zaino`), and backends/zebra
+          # (`zallet-zebra`), each with its own target directory. Cache all.
           workspaces: |
             zallet
             zallet/backends/zaino
+            zallet/backends/zebra
 
       - name: Install Rust target
         if: steps.binary-cache.outputs.hit != 'true'
@@ -250,13 +259,15 @@ jobs:
           HOST: ${{ matrix.host }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
           BIN: ${{ inputs.bin }}
-        run: cargo build --release --target ${{ matrix.rust_target }} --bin "${BIN}"
+          EXTRA_BUILD_ARGS: ${{ inputs.extra_build_args }}
+        run: cargo build --release --target ${{ matrix.rust_target }} --bin "${BIN}" ${EXTRA_BUILD_ARGS}
         working-directory: ./${{ inputs.path }}
 
-      # Build the `zallet` launcher plus the `zallet-zaino` backend binary the
-      # regtest suite needs. See .github/scripts/build-zallet.sh. zcashd-import is
-      # disabled on mingw32: its pqcrypto-mlkem dep fails to cross-compile to
-      # windows-gnu, and the tests needing it are Linux-only.
+      # Build the `zallet` launcher plus the `zallet-zaino` and `zallet-zebra`
+      # backend binaries the regtest suite exercises. See
+      # .github/scripts/build-zallet.sh. zcashd-import is disabled on mingw32:
+      # its pqcrypto-mlkem dep fails to cross-compile to windows-gnu, and the
+      # tests needing it are Linux-only.
       - name: Build zallet
         if: ${{ inputs.is_zallet && steps.binary-cache.outputs.hit != 'true' }}
         env:
@@ -283,9 +294,10 @@ jobs:
           path: |
               ${{ format('./{0}/target/{1}/release/{2}{3}', inputs.path, matrix.rust_target, inputs.bin, matrix.file_ext) }}
 
-      # Upload the launcher, the Zaino backend binary, and the vendored db_dump.
-      # They land flat in ./src on the test runners; the launcher finds a sibling
-      # zallet-zaino next to itself.
+      # Upload the launcher, both backend binaries, and the vendored db_dump.
+      # They land flat in ./src on the test runners; the launcher finds the
+      # sibling zallet-zaino / zallet-zebra next to itself, selected by the
+      # config `backend` key.
       - name: Upload zallet
         if: ${{ inputs.is_zallet }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -294,6 +306,7 @@ jobs:
           path: |
               ${{ format('./zallet/dist/zallet{0}', matrix.file_ext) }}
               ${{ format('./zallet/dist/zallet-zaino{0}', matrix.file_ext) }}
+              ${{ format('./zallet/dist/zallet-zebra{0}', matrix.file_ext) }}
               ./zallet/dist/db_dump
           if-no-files-found: warn
 
