@@ -331,6 +331,10 @@ jobs:
   build-zebra:
     needs: setup
     if: ${{ needs.setup.outputs.test_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/build-binary.yml
     secrets:
       STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
@@ -347,6 +351,10 @@ jobs:
   build-zebra-extra:
     needs: setup
     if: ${{ needs.setup.outputs.extra_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/build-binary.yml
     secrets:
       STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
@@ -363,6 +371,10 @@ jobs:
   build-zaino:
     needs: setup
     if: ${{ needs.setup.outputs.test_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/build-binary.yml
     secrets:
       STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
@@ -379,6 +391,10 @@ jobs:
   build-zaino-extra:
     needs: setup
     if: ${{ needs.setup.outputs.extra_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/build-binary.yml
     secrets:
       STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
@@ -395,6 +411,10 @@ jobs:
   build-zallet:
     needs: setup
     if: ${{ needs.setup.outputs.test_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/build-binary.yml
     secrets:
       STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
@@ -412,6 +432,10 @@ jobs:
   build-zallet-extra:
     needs: setup
     if: ${{ needs.setup.outputs.extra_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/build-binary.yml
     secrets:
       STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
