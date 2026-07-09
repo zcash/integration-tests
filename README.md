@@ -25,7 +25,12 @@ codebase, with the Python test framework (and some of the tests) inherited from
 
 - Clone the repository.
 - Build `zebrad`, `zainod`, and `zallet` binaries, and place them in a folder
-  `./src/` under the repository root.
+  `./src/` under the repository root. `zallet` is a thin launcher that execs a
+  per-backend binary; the tests run in regtest, which needs the Zaino backend,
+  so also build `zallet-zaino` and place it in `./src/` alongside the launcher
+  (the launcher looks for the backend binary next to itself). The default config
+  in `qa/defaults/zallet/zallet.toml` selects the Zaino backend via its
+  top-level `backend` key.
 
 #### With uv (recommended)
 

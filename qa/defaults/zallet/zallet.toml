@@ -1,3 +1,9 @@
+# The `zallet` launcher reads this top-level key and execs the matching backend
+# binary (here `zallet-zaino`). The integration suite runs in regtest, which the
+# default `zebra` backend does not support. Top-level keys must precede the first
+# table header.
+backend = "zaino"
+
 [builder.limits]
 orchard_actions = 250
 
