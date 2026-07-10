@@ -22,7 +22,7 @@ runs:
           ) }}
         REQUESTING_REPO: |-
           ${{ case(
-            github.event.action == 'zallet-interop-request', 'wallet',
+            github.event.action == 'zallet-interop-request', 'zallet',
             github.event.action == 'zebra-interop-request', 'zebra',
             github.event.action == 'zaino-interop-request', 'zaino',
             null
