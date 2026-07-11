@@ -34,6 +34,7 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.config import ZebraArgs
 from test_framework.util import (
     COINBASE_MATURITY,
+    TotalBalanceField,
     assert_equal,
     assert_in_message,
     assert_shieldcoinbase_preflight_shape,
@@ -44,6 +45,7 @@ from test_framework.util import (
     wait_and_assert_operationid_status,
     wait_and_assert_operationid_status_result,
     wait_for_mature_coinbase_count,
+    wait_for_total_balance,
     wait_for_tx_scanned,
 )
 
@@ -254,14 +256,21 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
             node.generate(1)
             tx_details = wait_for_tx_scanned(w0, txid)
             fee = Decimal(tx_details['fee'])
-            post_private = Decimal(w0.z_gettotalbalance(1, True)['private'])
-            assert_equal(post_private, pre_private + shielding_value - fee)
+            expected_private = pre_private + shielding_value - fee
+            # wait_for_tx_scanned only proves the per-tx view is scanned; the
+            # 'private' figure from z_gettotalbalance uses a summary tip that can
+            # lag by a block, so poll until it reflects the shielded note rather
+            # than reading it once.
+            post_private = wait_for_total_balance(
+                w0, TotalBalanceField.PRIVATE, lambda v: v == expected_private)
+            assert_equal(post_private, expected_private)
             return fee, post_private, tx_details
 
         # ---- F1: explicit single-t-addr sweep -----------------------
 
         print("Test F1: explicit single-t-addr sweep (response shape + balance moves)...")
-        pre_private = Decimal(w0.z_gettotalbalance(1, True)['private'])
+        pre_private = Decimal(
+            w0.z_gettotalbalance(1, True)[TotalBalanceField.PRIVATE])
         n_expected = len(wait_for_mature_coinbase_count(w0, expected_unspent_mature()))
         print("  [diag] mature coinbase UTXO count={}".format(n_expected))
 
@@ -371,10 +380,13 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         node.generate(1)
         fee1 = Decimal(wait_for_tx_scanned(w0, txid1)['fee'])
         fee2 = Decimal(wait_for_tx_scanned(w0, txid2)['fee'])
-        post_private = Decimal(w0.z_gettotalbalance(1, True)['private'])
-        assert_equal(
-            post_private,
+        expected_private = (
             pre_private + shielding_value1 + shielding_value2 - fee1 - fee2)
+        # As in confirm_and_check_balance, the 'private' summary can lag the
+        # scanned txs by a block, so poll rather than reading once.
+        post_private = wait_for_total_balance(
+            w0, TotalBalanceField.PRIVATE, lambda v: v == expected_private)
+        assert_equal(post_private, expected_private)
         mature_spent += n_eligible
         print("  PASSED ({}/{} selected, {} swept in follow-up)".format(
             limit, n_eligible, remaining_utxos1))

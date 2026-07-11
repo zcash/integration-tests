@@ -9,7 +9,13 @@
 from decimal import Decimal
 
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal, assert_true, wait_for_wallet_sync
+from test_framework.util import (
+    TotalBalanceField,
+    assert_equal,
+    assert_true,
+    wait_for_total_balance,
+    wait_for_wallet_sync,
+)
 
 # Coinbase outputs require 100 confirmations before zallet counts them.
 COINBASE_MATURITY = 100
@@ -21,7 +27,8 @@ _SCAN_LAG_TOLERANCE = 5
 
 
 def _wallet_transparent_zec(wallet):
-    return Decimal(wallet.z_gettotalbalance(1, True)['transparent'])
+    return Decimal(
+        wallet.z_gettotalbalance(1, True)[TotalBalanceField.TRANSPARENT])
 
 
 # Test that we can create a wallet and use an address from it to mine blocks.
@@ -69,7 +76,12 @@ class WalletTest (BitcoinTestFramework):
         prev_zec = wallet_zec
         node.generate(1)
         wait_for_wallet_sync(node, wallet)
-        new_zec = _wallet_transparent_zec(wallet)
+        # wait_for_wallet_sync only guarantees wallet_tip has advanced;
+        # z_gettotalbalance's transparent summary uses an internal scan tip that
+        # can lag it by a block, so poll until the fresh coinbase surfaces
+        # rather than reading the balance once.
+        new_zec = wait_for_total_balance(
+            wallet, TotalBalanceField.TRANSPARENT, lambda v: v > prev_zec)
         assert_true(
             new_zec > prev_zec,
             "wallet transparent balance should grow after mining "

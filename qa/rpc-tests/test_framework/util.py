@@ -1458,6 +1458,17 @@ class Pool(str, Enum):
     IRONWOOD = 'ironwood'
 
 
+class TotalBalanceField(str, Enum):
+    """A summary field of `z_gettotalbalance`: the `transparent` pool, the
+    aggregate shielded balance (`private`), or their `total`. This is NOT a
+    `Pool`: `private`/`total` are roll-ups across pools, not value pools, so
+    they have no `Pool` member. Being `str`-valued, a member is usable directly
+    as the dict key into `z_gettotalbalance`'s output."""
+    TRANSPARENT = 'transparent'
+    PRIVATE = 'private'
+    TOTAL = 'total'
+
+
 class FundSource(str, Enum):
     """The `fund_source` selector accepted by z_sendfromaccount /
     z_proposetransaction, naming where an account's funds may be drawn from.
@@ -1665,8 +1676,11 @@ def wait_for_stable_mature_coinbase(wallet: RpcProxy, min_count: int = 1,
 def wait_for_tx_scanned(wallet: RpcProxy, txid: str, timeout: int = 120) -> dict:
     """
     Return `txid`'s `z_viewtransaction` view once it carries a `fee`, i.e. the
-    confirming block is scanned. Other scan-dependent views (balance,
-    z_listunspent) are then current too, so they can be read without a wait.
+    confirming block is scanned. Note this only guarantees the per-transaction
+    view is current: `z_gettotalbalance`'s summary is computed from a separate
+    internal scan tip that can still lag by a block, so poll it with
+    `wait_for_total_balance` rather than reading it once right after this
+    returns.
     """
     deadline = time.time() + timeout
     last_err = None
@@ -1681,6 +1695,37 @@ def wait_for_tx_scanned(wallet: RpcProxy, txid: str, timeout: int = 120) -> dict
     raise AssertionError(
         "wait_for_tx_scanned: timeout after {}s for txid {} ({})".format(
             timeout, txid, last_err))
+
+
+def wait_for_total_balance(wallet: RpcProxy, field: TotalBalanceField,
+                           predicate: Callable[[Decimal], bool],
+                           minconf: int = 1, include_watchonly: bool = True,
+                           timeout: int = 60) -> Decimal:
+    """
+    Poll `z_gettotalbalance(minconf, include_watchonly)` until `predicate`
+    holds for the `Decimal` value of `field` (a `TotalBalanceField`: the
+    transparent pool, the aggregate `private` balance, or the `total`), then
+    return that value. On timeout, return the last value read so the caller's
+    assertion can report it.
+
+    `z_gettotalbalance`'s summary is computed from an internal scan tip that can
+    lag `wallet_tip` (or a just-scanned transaction) by a block, so a single
+    read right after a `generate`/scan can miss the newest coinbase or note.
+    This rides out that lag; see zcash/wallet#316.
+    """
+    deadline = time.time() + timeout
+    last = None
+    while True:
+        try:
+            last = Decimal(
+                wallet.z_gettotalbalance(minconf, include_watchonly)[field])
+            if predicate(last):
+                return last
+        except Exception:
+            pass
+        if time.time() >= deadline:
+            return last
+        time.sleep(1)
 
 
 def wait_for_pool_note(wallet: RpcProxy, pool: Pool | str, minconf: int = 1,
