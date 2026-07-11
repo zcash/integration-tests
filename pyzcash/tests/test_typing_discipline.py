@@ -4,6 +4,10 @@ pyzcash is meant to be read, and a reader has to be able to trust the types. A
 `type: ignore` in the library would mean the annotations describe something the
 checker could not confirm, and the reader would have no way to know which parts
 those were. There are none, and this test is what keeps it that way.
+
+Run:
+
+    uv run pytest tests/test_typing_discipline.py
 """
 
 from __future__ import annotations

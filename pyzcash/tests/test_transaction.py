@@ -6,6 +6,10 @@ Sapling bundles, and Orchard bundles. Each one must parse and then re-serialize
 to the identical bytes. That single property is a strong one, because it fails
 if any field is read at the wrong offset, in the wrong order, or with the wrong
 width, anywhere in the transaction.
+
+Run:
+
+    uv run pytest tests/test_transaction.py
 """
 
 from __future__ import annotations

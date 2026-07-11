@@ -3,6 +3,10 @@
 The vectors come from qa/rpc-tests/decodescript.py, whose assertions are the
 node's own decodescript output. If this parser and that test disagree about what
 a script says, one of them is wrong about a real transaction.
+
+Run:
+
+    uv run pytest tests/test_script.py
 """
 
 from __future__ import annotations
@@ -256,3 +260,53 @@ def test_build_chooses_the_shortest_push() -> None:
 def test_an_empty_script_is_falsy() -> None:
     assert not Script()
     assert len(Script()) == 0
+
+
+# --- cases the property tests uncovered -------------------------------------
+
+
+def test_a_bare_push_prefix_cannot_be_built() -> None:
+    """OP_PUSHDATA1 is a push prefix, not a standalone opcode.
+
+    Found by tests/properties/test_script.py: build used to emit it happily, and
+    the result was a script that could never parse.
+    """
+    with pytest.raises(ValueError, match="push prefix"):
+        Script.build(Opcode.OP_PUSHDATA1)
+    with pytest.raises(ValueError, match="push prefix"):
+        Script.build(Opcode.OP_DUP, Opcode.OP_PUSHDATA2)
+
+
+def test_an_unparseable_script_pays_to_no_address(mainnet: Network) -> None:
+    """It returns None rather than raising.
+
+    Consensus permits an output whose script has a truncated push; it is simply
+    unspendable, and such outputs are on the chain. A caller walking the chain
+    and asking each output "who does this pay?" must not be crashed by one.
+    """
+    truncated = Script(bytes([0x05, 0x01]))  # promises 5 bytes, carries 2
+    assert address_from_script_pubkey(truncated, mainnet) is None
+
+
+def test_a_non_minimal_push_still_pays_to_the_address(mainnet: Network) -> None:
+    """But re-encoding it gives the canonical script, not the original bytes.
+
+    A P2PKH script that pushes its hash with OP_PUSHDATA1 rather than a direct
+    push says the same thing, so it decodes to the same address. Encoding that
+    address back produces the minimal push, and so different bytes. Both facts
+    are true, and a caller that assumed a script/address round trip preserves
+    bytes would be wrong.
+    """
+    pubkey_hash = P2PKH_SCRIPT_HASH
+    non_minimal = Script(
+        bytes([Opcode.OP_DUP, Opcode.OP_HASH160, Opcode.OP_PUSHDATA1, 20])
+        + pubkey_hash
+        + bytes([Opcode.OP_EQUALVERIFY, Opcode.OP_CHECKSIG])
+    )
+    address = address_from_script_pubkey(non_minimal, mainnet)
+    assert address is not None
+    assert address.hash == pubkey_hash
+
+    canonical = script_pubkey_for(address)
+    assert canonical.to_hex() == P2PKH_SCRIPT_HEX
+    assert canonical != non_minimal  # same meaning, different bytes

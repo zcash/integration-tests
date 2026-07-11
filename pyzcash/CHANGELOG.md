@@ -31,9 +31,24 @@ While the major version is 0, the public API may change in any minor release.
   bundles. Every transaction in the canonical ZIP 143, ZIP 243, and ZIP 244
   vectors parses and re-serializes byte for byte.
 
+### Testing
+
+- Property-based tests (Hypothesis) under `tests/properties/`, one module per
+  primitive: round-trip, canonicality, and robustness invariants over generated
+  inputs. The robustness properties fuzz the transaction parser with mutated
+  real transactions from the canonical corpus.
+
 ### Fixed
 
 - F4Jumble split the message at `ceil(len / 2)` rather than the
   `min(floor(len / 2), 64)` ZIP 316 specifies. The two differ only for an odd
   length below 128, and the wrong split is still invertible, so it round-tripped
   cleanly and went unnoticed; the canonical unified-address vectors caught it.
+- `Script.build` emitted a bare `OP_PUSHDATA1` as though it were a standalone
+  opcode, producing a script that could never parse. It is a push prefix, and is
+  now refused. Found by a property test.
+- `address_from_script_pubkey` raised on a script whose bytes do not parse.
+  Consensus permits an output with a truncated push (it is simply unspendable),
+  and such outputs are on the chain, so a caller walking the chain and asking
+  each output who it pays would have been crashed by one. It now returns None,
+  which is what "pays to no address" means. Found by a property test.

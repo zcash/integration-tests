@@ -28,6 +28,11 @@ dev = [
     # differential-tested against. It is a test dependency only: the shipped
     # package has no runtime dependencies.
     "base58>=2.1",
+    # Property-based testing. The parsers here are exactly the shape that
+    # rewards it: pure functions over bytes with invariants (round-trip,
+    # canonicality, and never raising anything outside the library's own error
+    # hierarchy) that hold for every input, not just the ones we thought of.
+    "hypothesis>=6.100",
     "mypy>=1.19",
     "pytest>=9.0",
     "ruff>=0.15.1",

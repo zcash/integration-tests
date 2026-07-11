@@ -4,6 +4,10 @@ The library implements these itself so the core stays dependency-free. To make
 sure that reimplementation is right rather than merely self-consistent, it is
 differential-tested against the reference `base58` package, which is a dev-only
 dependency.
+
+Run:
+
+    uv run pytest tests/test_encoding_base58.py
 """
 
 from __future__ import annotations

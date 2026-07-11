@@ -1,4 +1,9 @@
-"""Reader and Writer, and the CompactSize canonicality rule."""
+"""Reader and Writer, and the CompactSize canonicality rule.
+
+Run:
+
+    uv run pytest tests/test_encoding_stream.py
+"""
 
 from __future__ import annotations
 

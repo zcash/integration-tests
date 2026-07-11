@@ -1,4 +1,9 @@
-"""Addresses, checked against real ones from the suite's test fixtures."""
+"""Addresses, checked against real ones from the suite's test fixtures.
+
+Run:
+
+    uv run pytest tests/test_address.py
+"""
 
 from __future__ import annotations
 

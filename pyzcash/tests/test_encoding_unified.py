@@ -6,6 +6,10 @@ this library's F4Jumble, and asserts the receivers that fall out are the ones
 that key actually carries. Bech32m, F4Jumble, and the CompactSize reader all
 have to be right for that to hold: get any of them wrong and the padding check
 fails or the receiver lengths come out as noise.
+
+Run:
+
+    uv run pytest tests/test_encoding_unified.py
 """
 
 from __future__ import annotations

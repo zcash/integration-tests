@@ -50,25 +50,80 @@ compiler toolchain.
 
 ## Requirements
 
-Python 3.12 or newer. No runtime dependencies.
+**To use the library:** Python 3.12 or newer. Nothing else; there are no runtime
+dependencies, by design. Parsing a transaction should never pull in a compiler
+toolchain.
 
-## Development
+**To develop it:** [uv](https://docs.astral.sh/uv/) (which installs the right
+Python for you) and `make`. Everything else comes from `make setup`.
 
 ```sh
-make setup      # install with dev dependencies
-make check      # formatting, lint, mypy --strict, and tests
+make setup      # install the package and its dev dependencies
+make check      # everything CI runs: format, lint, mypy --strict, tests
 ```
 
-Every public symbol is typed and the package ships `py.typed`, so downstream
-`mypy` sees the annotations. The library contains no `type: ignore` and mypy has
-no per-module exceptions; a test enforces both, because a reader has to be able
-to trust the types.
+The dev dependencies are `ruff` (format and lint), `mypy` (type check), `pytest`
+(tests), `hypothesis` (property-based tests), and `base58` (the reference
+implementation this library's own Base58 is differential-tested against). None
+of them is a runtime dependency of the shipped package.
 
-Tests run against the canonical [zcash-test-vectors](https://github.com/zcash/zcash-test-vectors)
-corpus, vendored under `tests/vectors_json/` and pinned to a commit. Those are
-the vectors librustzcash, the sapling and orchard crates, and zcashd test
-against, so agreeing with them is evidence this implementation reads Zcash
-correctly rather than merely consistently with itself.
+## Layout
+
+```
+src/pyzcash/          the library, one package per layer (see Status above)
+tests/
+  test_*.py           unit tests, one module per layer
+  properties/         property-based tests, one module per primitive
+  vectors.py          hand-picked vectors: real regtest keys, addresses, and
+                      scripts taken from the integration suite's fixtures
+  vectors_json/       the canonical zcash-test-vectors corpus, vendored
+                      verbatim and pinned to the commit in vectors_json/COMMIT
+  json_vectors.py     loader for that corpus
+  strategies.py       Hypothesis strategies (generators of arbitrary valid values)
+  conftest.py         shared pytest fixtures
+```
+
+## Testing
+
+Three kinds of test, which catch different things. None of them replaces
+another.
+
+**Unit tests** (`tests/test_*.py`) pin the behaviour of each layer, including
+the errors. Run one module with the command in its header, for example:
+
+```sh
+uv run pytest tests/test_address.py
+```
+
+**Canonical vectors** (`tests/test_canonical_vectors.py`,
+`tests/test_transaction.py`) check this implementation against
+[zcash-test-vectors](https://github.com/zcash/zcash-test-vectors), the corpus
+librustzcash, the sapling and orchard crates, and zcashd all test against.
+Agreeing with it is evidence that this reads Zcash *correctly*, rather than
+merely consistently with itself. That distinction is not academic: these vectors
+found a real F4Jumble bug that every round-trip test in the suite had happily
+passed, because the wrong permutation was still invertible.
+
+**Property tests** (`tests/properties/`) assert invariants over generated
+inputs, so they cover the cases nobody thought of. They check round-tripping,
+canonicality (one value, one encoding, or a transaction would have two hashes),
+and robustness: every parser handed arbitrary bytes either succeeds or raises a
+`ZcashError`, never an `IndexError` leaking through the abstraction. The
+transaction fuzzer mutates real Sapling and Orchard transactions from the
+canonical corpus, so the parser is exercised all the way into the bundles.
+These found two genuine bugs; see `tests/properties/test_script.py`.
+
+```sh
+uv run pytest tests/properties/    # all the property tests
+```
+
+## Typing
+
+Every public symbol is typed and the package ships `py.typed`, so downstream
+`mypy` sees the annotations. The library contains **no** `type: ignore` and mypy
+has no per-module exceptions. `tests/test_typing_discipline.py` enforces both,
+because this library is meant to be read, and a reader has to be able to trust
+that the types say what the code does.
 
 ## License
 

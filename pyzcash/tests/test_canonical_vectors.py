@@ -5,6 +5,10 @@ These are the vectors librustzcash, the sapling and orchard crates, and zcashd
 test against. Agreeing with them is the strongest evidence available that this
 implementation reads Zcash correctly, rather than merely consistently with
 itself. The transaction corpus is exercised in test_transaction.py.
+
+Run:
+
+    uv run pytest tests/test_canonical_vectors.py
 """
 
 from __future__ import annotations

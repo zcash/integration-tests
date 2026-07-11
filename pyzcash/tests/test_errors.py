@@ -1,4 +1,9 @@
-"""The exception hierarchy is part of the public API, so it is tested."""
+"""The exception hierarchy is part of the public API, so it is tested.
+
+Run:
+
+    uv run pytest tests/test_errors.py
+"""
 
 from __future__ import annotations
 

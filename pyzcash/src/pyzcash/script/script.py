@@ -24,6 +24,11 @@ MAX_SCRIPT_ELEMENT_SIZE = 520
 _DIRECT_PUSH_MAX = 0x4B
 """A leading byte of 0x01..0x4b pushes that many bytes directly."""
 
+_PUSH_PREFIXES = frozenset(
+    {Opcode.OP_PUSHDATA1, Opcode.OP_PUSHDATA2, Opcode.OP_PUSHDATA4}
+)
+"""These are followed by a length and its bytes; they cannot stand alone."""
+
 ScriptItem = Opcode | bytes | int
 """What :meth:`Script.build` accepts.
 
@@ -74,10 +79,24 @@ class Script:
 
     @classmethod
     def build(cls, *items: ScriptItem) -> Self:
-        """Assemble a script from opcodes, byte pushes, and numbers."""
+        """Assemble a script from opcodes, byte pushes, and numbers.
+
+        Raises:
+            ValueError: on a bare OP_PUSHDATA1, OP_PUSHDATA2, or OP_PUSHDATA4.
+                Those are push *prefixes*, not standalone opcodes: each must be
+                followed by a length and that many bytes. Emitting one alone
+                produces a script that can never parse, so it is refused here
+                rather than built. Pass the bytes to push instead, and the
+                right prefix is chosen automatically.
+        """
         out = bytearray()
         for item in items:
             if isinstance(item, Opcode):
+                if item in _PUSH_PREFIXES:
+                    raise ValueError(
+                        f"{item.name} is a push prefix, not an opcode that can "
+                        f"stand alone; pass the bytes to push instead"
+                    )
                 out.append(int(item))
             elif isinstance(item, bytes):
                 out += _encode_push(item)

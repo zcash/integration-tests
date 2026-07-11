@@ -101,8 +101,18 @@ def address_from_script_pubkey(
     None means "this output does not pay to an address" (an OP_RETURN, a bare
     multisig, anything non-standard), which is a real and common thing for an
     output to be. It does not mean the script is invalid.
+
+    A script whose bytes do not even parse also pays to no address, and so also
+    returns None rather than raising. Such scripts are on the chain: consensus
+    permits an output script with a truncated push, it is simply unspendable.
+    Raising here would mean a caller walking the chain and asking each output
+    "who does this pay?" would crash on one, which is not a question that has an
+    exceptional answer.
     """
-    ops = script.operations()
+    try:
+        ops = script.operations()
+    except ParseError:
+        return None
 
     match ops:
         case [

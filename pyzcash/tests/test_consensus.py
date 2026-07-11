@@ -1,4 +1,9 @@
-"""Networks, upgrades, branch IDs, and amounts."""
+"""Networks, upgrades, branch IDs, and amounts.
+
+Run:
+
+    uv run pytest tests/test_consensus.py
+"""
 
 from __future__ import annotations
 
