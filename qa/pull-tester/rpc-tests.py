@@ -94,7 +94,6 @@ DISABLED_SCRIPTS = [
     'prioritisetransaction.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
     'proxy_test.py',  # -proxy/tor unsupported
     'rawtransactions.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'regtest_signrawtransaction.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'remove_sprout_shielding.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'reorg_limit.py',  # investigate
     'rest.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
@@ -116,7 +115,6 @@ DISABLED_SCRIPTS = [
     'wallet_addresses.py',  # no zallet equiv yet: z_exportkey, z_importkey
     'wallet_anchorfork.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
     'wallet_broadcast.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'wallet_changeaddresses.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_changeindicator.py',  # no zallet equiv yet: z_exportviewingkey
     'wallet_deprecation.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_doublespend.py',  # deprecated; z_getbalanceforaccount->z_getbalances, gettransaction->z_viewtransaction
@@ -178,7 +176,6 @@ BASE_SCRIPTS= [
     'walletbackup.py',
     'zkey_import_export.py',
     'prioritisetransaction.py',
-    'wallet_changeaddresses.py',
     'wallet_listreceived.py',
     'mempool_tx_expiry.py',
     'finalsaplingroot.py',
@@ -250,7 +247,6 @@ BASE_SCRIPTS= [
     'p2p_txexpiry_dos.py',
     'p2p_txexpiringsoon.py',
     'p2p_node_bloom.py',
-    'regtest_signrawtransaction.py',
     'shorter_block_times.py',
     'mining_shielded_coinbase.py',
     'coinbase_funding_streams.py',
@@ -295,10 +291,13 @@ NEW_SCRIPTS= [
     'wallet_ironwood_negatives.py',
     # vv Tests less than 2m vv
     'wallet_ironwood.py',
+    'wallet_changeaddresses.py',
     # vv Tests less than 60s vv
     'addnode.py',
     'wallet_z_shieldcoinbase.py',
     'wallet_z_shieldcoinbase_multi_taddr.py',
+    'wallet_transparent_spend.py',
+    'regtest_signrawtransaction.py',
     # vv Tests less than 30s vv
     'feature_nu6.py',
     'feature_backup_non_finalized_state.py',
