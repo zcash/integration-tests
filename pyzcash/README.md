@@ -21,13 +21,13 @@ so the integration suite acts as the regression net for the extraction.
 Landed:
 
 - `pyzcash.errors` - the exception hierarchy every failure derives from.
-
-Planned, in dependency order:
-
 - `pyzcash.encoding` - CompactSize, Base58Check, Bech32/Bech32m, F4Jumble, and
   the hash functions (SHA-256d, personalized BLAKE2b).
 - `pyzcash.consensus` - networks, network upgrades, branch IDs, activation
   heights, and a range-checked `Zatoshi` amount type.
+
+Planned, in dependency order:
+
 - `pyzcash.address` - transparent (P2PKH, P2SH), Sapling, Unified (ZIP 316),
   and TEX (ZIP 320) addresses and viewing keys, as a parsed tagged union.
 - `pyzcash.script` - opcodes, script parsing, and the standard templates.

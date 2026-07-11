@@ -17,3 +17,6 @@ While the major version is 0, the public API may change in any minor release.
   canonical CompactSize, Base58Check, Bech32 and Bech32m, F4Jumble (both
   directions), and the personalized BLAKE2b/SHA-256 hashes the rest of the
   library is built on.
+- `pyzcash.consensus`: `Network`, `NetworkUpgrade` with its consensus branch ID
+  and per-network activation heights, `branch_id_for_height`, and `Zatoshi`, a
+  range-checked amount type that refuses floats.
