@@ -142,7 +142,6 @@ DISABLED_SCRIPTS = [
     'wallet_tarnished_5_6_0.py',  # needs ZebraArgs migration (list args)
     'wallet_treestate.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
     'wallet_unified_change.py',  # needs z_shieldcoinbase funding step: zallet z_sendmany cannot spend mined coinbase (have 0)
-    'wallet_z_sendmany.py',  # no zallet equiv yet: z_exportviewingkey
     'wallet_zero_value.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
     'addnode.py',  # zebra regtest peering stalls in multi-peer topologies (zebra #10329, #10332)
     'wallet_zip317_default.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
@@ -259,7 +258,6 @@ BASE_SCRIPTS= [
     'feature_walletfile.py',
     'wallet_parsing_amounts.py',
     'wallet_broadcast.py',
-    'wallet_z_sendmany.py',
     'wallet_zero_value.py',
     'threeofthreerestore.py',
     'show_help.py',
@@ -281,6 +279,10 @@ NEW_SCRIPTS= [
     'wallet_z_shieldcoinbase.py',
     'wallet_z_shieldcoinbase_multi_taddr.py',
     'wallet_transparent_spend.py',
+    'wallet_z_sendmany.py',
+    'wallet_z_sendfromaccount.py',
+    'wallet_z_proposetransaction.py',
+    'wallet_z_send_scenarios.py',
     'regtest_signrawtransaction.py',
     # vv Tests less than 30s vv
     'feature_nu6.py',
