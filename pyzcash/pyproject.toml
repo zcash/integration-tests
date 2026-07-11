@@ -1,0 +1,75 @@
+[project]
+name = "pyzcash"
+version = "0.0.1"
+description = "Typed Zcash protocol primitives: addresses, scripts, transactions, and digests"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+keywords = ["zcash", "blockchain", "cryptocurrency", "transaction", "address"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Security :: Cryptography",
+    "Typing :: Typed",
+]
+
+# Intentionally empty: the core library is pure standard library. Anything that
+# needs a third-party package (secp256k1 signing, an RPC client) belongs in an
+# optional extra, so that parsing a transaction never pulls in a compiler.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.19",
+    "pytest>=9.0",
+    "ruff>=0.15.1",
+]
+
+[project.urls]
+Repository = "https://github.com/zcash/integration-tests"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Hatchling walks up to the git root and applies the repository's .gitignore to
+# its file selection. That .gitignore carries `src/*` (the root src/ is where
+# the zebrad and zallet binaries are staged), which hatchling mis-anchors onto
+# this package's own src/ directory, silently producing a wheel containing no
+# modules at all. The explicit include lists below are the source of truth.
+[tool.hatch.build]
+ignore-vcs = true
+
+[tool.hatch.build.targets.sdist]
+include = ["src/pyzcash/", "tests/", "LICENSE", "README.md", "pyproject.toml"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pyzcash"]
+
+[tool.ruff]
+line-length = 80
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TC", "RUF"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unreachable = true
+disallow_any_explicit = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
