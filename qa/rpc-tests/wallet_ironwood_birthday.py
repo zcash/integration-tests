@@ -18,13 +18,17 @@
 # birthday height ABOVE that note (z_recoveraccounts with birthday_height), and
 # is paid an Ironwood note. The recovered account must both SEE and SPEND it.
 #
-# CURRENTLY DISABLED (see qa/pull-tester/rpc-tests.py DISABLED_SCRIPTS). Before
-# the Ironwood treestate can even be exercised, this hits an upstream blocker:
-# after z_recoveraccounts adds an account with a non-genesis birthday, the
-# wallet never reports its tip as caught up to the node (the recovery rescan
-# does not settle within 300s), so the test cannot proceed to the spend. This
-# is written to the intended behavior; re-enable once z_recoveraccounts settles
-# the wallet tip.
+# Was disabled pending zcash/zallet#563 ("z_importkey into a running wallet:
+# imported key not scanned until restart"): z_recoveraccounts wrote the new
+# account + UFVK, but nothing told the running sync engine's batch decryptor to
+# reload its key set, so the recovered account's scan range was queued but
+# never actually decrypted against — the wallet's tip never reported "caught
+# up" for it, and the test could not proceed to the spend. zcash/zallet#563
+# fixed the reload for z_importkey / z_getnewaccount / z_recoveraccount alike
+# (merged 2026-07-10); re-enabled here now that CI's zallet build (tracking
+# zallet's `main`) includes the fix. (The remaining half of that bug class,
+# zcash/zallet#578, only affects a birthday that falls in an ALREADY-scanned
+# range, which does not apply here: this test's birthday sits at the tip.)
 #
 # It may then still surface a real Ironwood bug: if the wallet's node backend
 # reports an empty final Ironwood tree at a non-genesis birthday, the received

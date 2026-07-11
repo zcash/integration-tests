@@ -132,8 +132,6 @@ DISABLED_SCRIPTS = [
     'wallet_orchard_init.py',  # no zallet equiv yet: resendwallettransactions
     'wallet_orchard_persistence.py',  # deprecated; z_getbalanceforaccount->z_getbalances
     'wallet_orchard_reindex.py',  # deprecated; z_getbalanceforaccount->z_getbalances
-    'wallet_ironwood_reorg.py',  # Z3 wallet stack does not yet follow a reorg that disconnects already-scanned blocks (node rewinds, wallet does not)
-    'wallet_ironwood_birthday.py',  # z_recoveraccounts with a non-genesis birthday does not settle the wallet tip; blocks the Ironwood treestate check
     'wallet_overwintertx.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_parsing_amounts.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_persistence.py',  # no zallet equiv yet: z_exportkey, z_importkey, z_exportviewingkey
@@ -293,6 +291,8 @@ NEW_SCRIPTS= [
     'wallet_ironwood_views.py',
     'wallet_ironwood_conservation.py',
     'wallet_ironwood_negatives.py',
+    'wallet_ironwood_reorg.py',
+    'wallet_ironwood_birthday.py',
     # vv Tests less than 2m vv
     'wallet_ironwood.py',
     # vv Tests less than 60s vv
