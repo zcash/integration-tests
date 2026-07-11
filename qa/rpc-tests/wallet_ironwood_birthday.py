@@ -73,16 +73,16 @@ class WalletIronwoodBirthdayTest(IronwoodTestFramework):
         # Bury it so the recovered account's birthday sits comfortably above it.
         node.generate(5)
         wait_for_wallet_sync(node, w)
-        birthday = node.getblockcount()
+        recovery_height = node.getblockcount()
         print("  Ironwood tree advanced; recovering account B at birthday {}"
-              .format(birthday))
+              .format(recovery_height))
 
         # ---- Recover account B with a non-genesis birthday --------------
         recovered = w.z_recoveraccounts([{
             'name': 'birthday-account',
             'seedfp': seedfp,
             'zip32_account_index': 1,
-            'birthday_height': birthday,
+            'birthday_height': recovery_height,
         }])
         acct_b_uuid = recovered['accounts'][0]['account_uuid']
         wait_for_wallet_sync(node, w, timeout=300)
