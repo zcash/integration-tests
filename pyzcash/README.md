@@ -38,10 +38,8 @@ Landed:
 
 - `pyzcash.transaction` - the v1 through v5 transaction model (ZIP 225), with
   the transparent, Sprout, Sapling, and Orchard bundles.
-
-Planned, in dependency order:
-
-- `pyzcash.digest` - txid and auth digests, and sighash (ZIP 143/243/244).
+- `pyzcash.digest` - txids, auth digests, and sighashes (ZIP 143, ZIP 243,
+  ZIP 244).
 - `pyzcash.fees` - the ZIP 317 conventional fee.
 
 Signing (secp256k1) and a typed RPC client are deliberately out of the core and

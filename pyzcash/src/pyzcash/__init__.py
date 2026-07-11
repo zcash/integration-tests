@@ -17,8 +17,11 @@ The library is built in layers, each usable on its own:
                              standard templates
 - :mod:`pyzcash.transaction` the v1 to v5 transaction model (ZIP 225), with the
                              transparent, Sprout, Sapling, and Orchard bundles
+- :mod:`pyzcash.digest`      txids, auth digests, and sighashes
+                             (ZIP 143, ZIP 243, ZIP 244)
+- :mod:`pyzcash.fees`        the ZIP 317 conventional fee
 
-Layers still to land: digests (ZIP 143/243/244) and fees (ZIP 317).
+Every layer the library set out to cover is now in place.
 
 This library does not verify proofs, decrypt notes, or validate consensus. It
 reads and writes the wire formats; it does not decide what is valid.

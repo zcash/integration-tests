@@ -31,6 +31,12 @@ While the major version is 0, the public API may change in any minor release.
   bundles. Every transaction in the canonical ZIP 143, ZIP 243, and ZIP 244
   vectors parses and re-serializes byte for byte.
 
+- `pyzcash.digest`: the ZIP 244 txid and authorizing-data commitment, the ZIP 244
+  v5 sighash, and the ZIP 143 (v3) and ZIP 243 (v4) sighashes, with a typed
+  `SigHashType`. Every txid, auth digest, and sighash in the canonical vectors
+  matches.
+- `pyzcash.fees`: the ZIP 317 conventional fee and logical-action count.
+
 ### Testing
 
 - Property-based tests (Hypothesis) under `tests/properties/`, one module per
