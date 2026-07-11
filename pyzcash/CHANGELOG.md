@@ -13,3 +13,7 @@ While the major version is 0, the public API may change in any minor release.
 
 - Initial package scaffold: `pyzcash.errors`, the exception hierarchy that every
   failure raised by the library derives from.
+- `pyzcash.encoding`, the codec layer: a typed `Reader`/`Writer` pair with
+  canonical CompactSize, Base58Check, Bech32 and Bech32m, F4Jumble (both
+  directions), and the personalized BLAKE2b/SHA-256 hashes the rest of the
+  library is built on.

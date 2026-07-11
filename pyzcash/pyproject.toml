@@ -24,6 +24,10 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
+    # `base58` is the reference implementation the library's own Base58 is
+    # differential-tested against. It is a test dependency only: the shipped
+    # package has no runtime dependencies.
+    "base58>=2.1",
     "mypy>=1.19",
     "pytest>=9.0",
     "ruff>=0.15.1",
