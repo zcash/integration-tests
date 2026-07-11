@@ -16,9 +16,29 @@ set -euo pipefail
 
 root="${DB_DUMP_ROOT:?DB_DUMP_ROOT must be set}"
 
-db_dump="$(find "$root" -path '*/zewif-zcashd-*/out/db_dump' -type f -print -quit)"
+candidate_roots=(
+    "$root"
+    backends/zaino/target/release/build
+    backends/zaino/target
+    target/release/build
+    target
+)
+existing_roots=()
+for candidate in "${candidate_roots[@]}"; do
+    if [ -d "$candidate" ]; then
+        existing_roots+=("$candidate")
+    fi
+done
+
+db_dump=""
+if [ "${#existing_roots[@]}" -gt 0 ]; then
+    db_dump="$(
+        find "${existing_roots[@]}" \
+            -path '*/zewif-zcashd-*/out/db_dump' -type f -print -quit
+    )"
+fi
 if [ -z "$db_dump" ]; then
-    echo "Vendored db_dump not found under $root/zewif-zcashd-*/out/" >&2
+    echo "Vendored db_dump not found under target/.../zewif-zcashd-*/out/" >&2
     exit 1
 fi
 
