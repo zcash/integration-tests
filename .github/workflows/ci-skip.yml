@@ -49,44 +49,7 @@ jobs:
       - name: Check whether the changes are only to the set of filtered paths
         id: no-ci-required
         run: |
-          cat <<EOF > ./subclass.py
-          import os
-          import re
-          import shlex
-          import sys
-
-          paths = [
-              r'^\.github/dependabot\.yml$',
-              r'^\.github/workflows/audits\.yml$',
-              r'^\.github/workflows/book\.yml$',
-              r'^\.github/workflows/ci-skip\.yml$',
-              r'^\.github/workflows/lints\.yml$',
-              r'^\.github/workflows/release-docker-hub\.yml$',
-              r'^contrib/debian/copyright$',
-              r'^doc/.*',
-              r'.*\.md$',
-              r'^COPYING$',
-              r'^INSTALL$',
-          ]
-          paths_regex = '(?:%s)' % '|'.join(paths)
-
-          lex = shlex.shlex(posix = True)
-          lex.whitespace = '\n\r'
-          lex.whitespace_split = True
-          lex.commenters = ''
-          changed_files = list(lex)
-          if len(changed_files) == 0:
-              sys.exit(1)
-
-          verified = True
-          for f in changed_files:
-              if not re.match(paths_regex, f):
-                  verified = False
-
-          print('result=verified' if verified else 'result=skipped')
-          EOF
-
-          git diff --name-only ${{ github.sha }}...$HEAD_SHA -- | python3 ./subclass.py >> $GITHUB_OUTPUT
+          git diff --name-only ${{ github.sha }}...$HEAD_SHA -- | python3 .github/scripts/check_no_ci_required.py >> $GITHUB_OUTPUT
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
