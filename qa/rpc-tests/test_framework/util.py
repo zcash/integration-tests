@@ -511,16 +511,54 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         # restart. Reconnect every node to whichever one is furthest ahead
         # (not necessarily node 0 -- if the last per-round sync above didn't
         # fully seat everyone before the restart, a fixed hub could itself be
-        # behind) and sync once more so every node converges to a single tip
-        # before the cache is used -- skipping this reconnect+sync was the
-        # root cause of zcash/integration-tests#136 (nodes left at divergent
-        # heights on one non-forked chain, which then hung or timed out in
-        # the wallet-sync wait below).
+        # behind) so every node converges to a single tip before the cache is
+        # used -- skipping this reconnect was the root cause of
+        # zcash/integration-tests#136 (nodes left at divergent heights on one
+        # non-forked chain, which then hung or timed out in the wallet-sync
+        # wait below).
+        #
+        # This uses a dedicated, patient poll rather than
+        # sync_blocks_with_reconnect: that helper's budget (3 * 60s) is tuned
+        # for the warm, incremental per-round syncs above, where nodes already
+        # have an established peer connection and are mid-sync. Here every
+        # node is coming up cold with zero peers, so the initial handshake +
+        # catch-up can take longer; CI has been observed to still be
+        # unconverged past 3 minutes. Reconnects are retried every 15s in case
+        # `addnode` was issued before a peer's P2P listener was fully up.
+        # Diagnostics go to stderr+flush: the pull-tester's
+        # subprocess.check_output silently drops stdout on a non-zero exit
+        # (see #136), so a plain print here would vanish on exactly the
+        # failure path where it's needed.
         tip_node = max(range(MAX_NODES), key=lambda i: rpcs[i].getblockcount())
-        for i in range(MAX_NODES):
-            if i != tip_node:
-                connect_nodes_bi(rpcs, i, tip_node)
-        sync_blocks_with_reconnect(rpcs, tip_node)
+        target_height = rpcs[tip_node].getblockcount()
+        deadline = time.time() + 300
+        last_heights = None
+        next_reconnect = time.time()
+        while time.time() < deadline:
+            heights = [r.getblockcount() for r in rpcs]
+            if all(h == target_height for h in heights):
+                break
+            if heights != last_heights:
+                print(
+                    "[rebuild_cache] post-restart mesh converging to height "
+                    "{} (node {}): {}".format(target_height, tip_node, heights),
+                    file=sys.stderr, flush=True,
+                )
+                last_heights = heights
+            if time.time() >= next_reconnect:
+                for i in range(MAX_NODES):
+                    if i != tip_node:
+                        try:
+                            connect_nodes_bi(rpcs, i, tip_node)
+                        except Exception:
+                            pass
+                next_reconnect = time.time() + 15
+            time.sleep(1)
+        else:
+            raise AssertionError(
+                "post-restart mesh did not converge to height {} (node {}) "
+                "within 300s: {}".format(
+                    target_height, tip_node, [r.getblockcount() for r in rpcs]))
         # Check that local time isn't going backwards
         assert_greater_than(time.time() + 1, block_time)
 
