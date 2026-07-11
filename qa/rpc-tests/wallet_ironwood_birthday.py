@@ -30,8 +30,8 @@
 # backend, and `wait_for_wallet_sync(..., timeout=300)` still times out at the
 # full 300s waiting for the recovered account to catch up. Whatever is
 # blocking forward progress here survives all three fixes; root cause still
-# unknown. Re-enable once the recovered account's wallet tip actually
-# converges to the node's.
+# unknown. Filed as zcash/zallet#588. Re-enable once the recovered account's
+# wallet tip actually converges to the node's.
 #
 # It may then still surface a real Ironwood bug: if the wallet's node backend
 # reports an empty final Ironwood tree at a non-genesis birthday, the received

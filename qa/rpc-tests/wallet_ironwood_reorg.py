@@ -22,8 +22,9 @@
 # wallet does not appear to notice the node's tip shrank at all, which is a
 # different failure mode than the BlockConflict crash #560 fixed (that path
 # triggers on a *replacing* block at a conflicting height; a bare
-# invalidateblock with nothing yet mined over it may never reach it). Re-enable
-# once the wallet backends actually detect and follow a shrinking tip.
+# invalidateblock with nothing yet mined over it may never reach it). Filed as
+# zcash/zallet#587. Re-enable once the wallet backends actually detect and
+# follow a shrinking tip.
 #
 # The reorg is driven on a single node with invalidateblock / reconsiderblock
 # (both served by zebra in regtest); the wallet follows its own node.
