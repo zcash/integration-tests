@@ -3,8 +3,17 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.mininode import NodeConn, NodeConnCB, NetworkThread, \
-    msg_filteradd, msg_filterclear, mininode_lock, SAPLING_PROTO_VERSION
+from test_framework.mininode import (
+    SAPLING_PROTO_VERSION,
+)
+from test_framework.p2p import (
+    NetworkThread,
+    NodeConn,
+    NodeConnCB,
+    mininode_lock,
+    msg_filteradd,
+    msg_filterclear,
+)
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import initialize_chain_clean, start_nodes, \
     p2p_port, assert_equal

@@ -6,8 +6,18 @@
 from decimal import Decimal
 
 from test_framework.authproxy import JSONRPCException
-from test_framework.mininode import NodeConn, NetworkThread, CInv, \
-    msg_mempool, msg_getdata, msg_tx, mininode_lock, SAPLING_PROTO_VERSION
+from test_framework.mininode import (
+    CInv,
+    SAPLING_PROTO_VERSION,
+)
+from test_framework.p2p import (
+    NetworkThread,
+    NodeConn,
+    mininode_lock,
+    msg_getdata,
+    msg_mempool,
+    msg_tx,
+)
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, connect_nodes_bi, fail, \
     p2p_port, start_nodes, sync_blocks, sync_mempools

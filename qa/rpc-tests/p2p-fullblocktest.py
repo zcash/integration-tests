@@ -14,6 +14,8 @@ from test_framework.mininode import (
     CTransaction,
     CTxIn,
     CTxOut,
+)
+from test_framework.p2p import (
     NetworkThread,
 )
 from test_framework.script import CScript, SignatureHash, SIGHASH_ALL, OP_CHECKSIG, OP_TRUE

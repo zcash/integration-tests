@@ -4,13 +4,15 @@
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 from test_framework.mininode import (
-    NodeConn,
-    NodeConnCB,
-    NetworkThread,
-    msg_ping,
-    SPROUT_PROTO_VERSION,
     OVERWINTER_PROTO_VERSION,
     SAPLING_PROTO_VERSION,
+    SPROUT_PROTO_VERSION,
+)
+from test_framework.p2p import (
+    NetworkThread,
+    NodeConn,
+    NodeConnCB,
+    msg_ping,
 )
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import initialize_chain_clean, start_nodes, \
