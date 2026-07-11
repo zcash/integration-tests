@@ -19,7 +19,7 @@ from typing import Self
 
 from pyzcash.errors import RangeError
 
-__all__ = ["COIN", "MAX_MONEY", "Zatoshi"]
+__all__ = ["COIN", "MAX_MONEY", "ZERO", "Zatoshi"]
 
 COIN = 100_000_000
 """Zatoshis in one ZEC."""
@@ -111,3 +111,10 @@ class Zatoshi:
 
     def __str__(self) -> str:
         return f"{self.to_zec()} ZEC"
+
+
+ZERO = Zatoshi(0)
+"""The zero amount.
+
+Shared so that a dataclass default need not be a constructor call.
+"""

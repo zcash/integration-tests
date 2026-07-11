@@ -36,10 +36,11 @@ Landed:
 - `pyzcash.script` - opcodes, script parsing and building, the standard
   templates, and the translation between scripts and transparent addresses.
 
-Planned, in dependency order:
-
 - `pyzcash.transaction` - the v1 through v5 transaction model (ZIP 225), with
   the transparent, Sprout, Sapling, and Orchard bundles.
+
+Planned, in dependency order:
+
 - `pyzcash.digest` - txid and auth digests, and sighash (ZIP 143/243/244).
 - `pyzcash.fees` - the ZIP 317 conventional fee.
 
@@ -59,7 +60,15 @@ make check      # formatting, lint, mypy --strict, and tests
 ```
 
 Every public symbol is typed and the package ships `py.typed`, so downstream
-`mypy` sees the annotations.
+`mypy` sees the annotations. The library contains no `type: ignore` and mypy has
+no per-module exceptions; a test enforces both, because a reader has to be able
+to trust the types.
+
+Tests run against the canonical [zcash-test-vectors](https://github.com/zcash/zcash-test-vectors)
+corpus, vendored under `tests/vectors_json/` and pinned to a commit. Those are
+the vectors librustzcash, the sapling and orchard crates, and zcashd test
+against, so agreeing with them is evidence this implementation reads Zcash
+correctly rather than merely consistently with itself.
 
 ## License
 

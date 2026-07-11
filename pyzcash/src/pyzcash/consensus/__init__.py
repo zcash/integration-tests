@@ -7,7 +7,7 @@ transactions, digests) is parameterized by these.
 
 from __future__ import annotations
 
-from pyzcash.consensus.amount import COIN, MAX_MONEY, Zatoshi
+from pyzcash.consensus.amount import COIN, MAX_MONEY, ZERO, Zatoshi
 from pyzcash.consensus.upgrades import (
     BlockHeight,
     Network,
@@ -18,6 +18,7 @@ from pyzcash.consensus.upgrades import (
 __all__ = [
     "COIN",
     "MAX_MONEY",
+    "ZERO",
     "BlockHeight",
     "Network",
     "NetworkUpgrade",

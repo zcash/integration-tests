@@ -26,3 +26,14 @@ While the major version is 0, the public API may change in any minor release.
 - `pyzcash.script`: the `Opcode` enum, `Script` parsing and building, one
   canonical script-number codec, the standard templates (P2PKH, P2SH, OP_RETURN,
   multisig), and `script_pubkey_for` / `address_from_script_pubkey`.
+- `pyzcash.transaction`: the v1 to v5 transaction model (ZIP 225), with the
+  transparent, Sprout (both PHGR13 and Groth16 JoinSplits), Sapling, and Orchard
+  bundles. Every transaction in the canonical ZIP 143, ZIP 243, and ZIP 244
+  vectors parses and re-serializes byte for byte.
+
+### Fixed
+
+- F4Jumble split the message at `ceil(len / 2)` rather than the
+  `min(floor(len / 2), 64)` ZIP 316 specifies. The two differ only for an odd
+  length below 128, and the wrong split is still invertible, so it round-tripped
+  cleanly and went unnoticed; the canonical unified-address vectors caught it.

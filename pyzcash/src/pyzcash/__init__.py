@@ -15,9 +15,10 @@ The library is built in layers, each usable on its own:
                              (ZIP 320) addresses, as a tagged union
 - :mod:`pyzcash.script`      opcodes, script parsing and building, and the
                              standard templates
+- :mod:`pyzcash.transaction` the v1 to v5 transaction model (ZIP 225), with the
+                             transparent, Sprout, Sapling, and Orchard bundles
 
-Layers still to land: transactions, digests (ZIP 143/243/244), and fees
-(ZIP 317).
+Layers still to land: digests (ZIP 143/243/244) and fees (ZIP 317).
 
 This library does not verify proofs, decrypt notes, or validate consensus. It
 reads and writes the wire formats; it does not decide what is valid.

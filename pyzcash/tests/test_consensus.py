@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 from decimal import Decimal
+from typing import cast
 
 import pytest
 
@@ -16,6 +18,7 @@ from pyzcash.consensus import (
     Zatoshi,
 )
 from pyzcash.errors import RangeError, ZcashError
+from tests.helpers import mutate
 
 # The branch IDs the test framework carries in qa/rpc-tests/test_framework/
 # util.py. If the library and the framework ever disagree, one of them is
@@ -127,9 +130,16 @@ def test_zec_conversion_round_trips() -> None:
 
 
 def test_amounts_reject_floats() -> None:
-    """0.1 ZEC is not representable in binary floating point."""
+    """0.1 ZEC is not representable in binary floating point.
+
+    The type signature already forbids a float, so the runtime guard exists for
+    the case the types cannot see: a value arriving from an untyped source, such
+    as a JSON payload or an RPC response. The cast below simulates exactly that,
+    rather than suppressing the type error, which would prove nothing.
+    """
+    from_untyped_source = cast("Decimal", 0.1)
     with pytest.raises(TypeError, match="float"):
-        Zatoshi.from_zec(0.1)  # type: ignore[arg-type]
+        Zatoshi.from_zec(from_untyped_source)
 
 
 def test_amounts_reject_sub_zatoshi_precision() -> None:
@@ -173,9 +183,15 @@ def test_amounts_are_ordered_and_hashable() -> None:
 
 
 def test_amounts_are_immutable() -> None:
+    """Frozen at runtime, not merely by convention.
+
+    Written through a helper taking ``object`` so that the assignment is a real
+    runtime attempt rather than a type error the checker has been told to
+    ignore.
+    """
     amount = Zatoshi(1)
-    with pytest.raises(AttributeError):
-        amount.value = 2  # type: ignore[misc]
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        mutate(amount, "value", 2)
 
 
 def test_bool_is_not_an_amount() -> None:

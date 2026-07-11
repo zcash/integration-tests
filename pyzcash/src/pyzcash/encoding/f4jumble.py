@@ -35,13 +35,27 @@ _G_PERSONAL = b"UA_F4Jumble_G"
 
 
 def _check_length(message: bytes) -> tuple[int, int]:
+    """Split the message into its left and right halves.
+
+    ZIP 316 defines the left half as ``min(floor(len / 2), 64)`` bytes. The
+    floor matters: for an odd length below 128 it makes the left half the
+    *shorter* one. Taking the ceiling instead (which the test framework this
+    code was extracted from did) produces a different split for exactly those
+    lengths, and so a different, wrong permutation.
+
+    That bug is invisible to most tests. Every even length agrees, and every
+    length above 128 agrees because the cap at 64 dominates; even the canonical
+    f4jumble vectors miss it, as none of them is an odd length below 128. The
+    unified-address vectors catch it, because a UA with a Sapling receiver and
+    nothing else has an odd payload length.
+    """
     length = len(message)
     if length < MIN_LENGTH or length > MAX_LENGTH:
         raise ParseError(
             f"F4Jumble requires {MIN_LENGTH} to {MAX_LENGTH} bytes, "
             f"got {length}"
         )
-    left_len = (length + 1) // 2 if length <= 128 else 64
+    left_len = min(length // 2, 64)
     return left_len, length - left_len
 
 
