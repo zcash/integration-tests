@@ -36,6 +36,9 @@ from test_framework.util import (
     assert_equal,
     assert_true,
     first_transparent_receiver,
+    transparent_change_address,
+    transparent_output_addresses,
+    unified_address_for,
     wait_and_assert_operationid_status,
     wait_for_account_spendable,
     wait_for_mature_coinbase_count,
@@ -50,21 +53,9 @@ NUM_SOURCE_UTXOS = 6
 SOURCE_UTXO_VALUE = Decimal('2')
 SEND_VALUE = Decimal('1')
 
-RECEIVERS = ['orchard', 'p2pkh']
 DIVERSIFIER_SHIELDED = 10
 DIVERSIFIER_SOURCE = 11
 DIVERSIFIER_TARGET = 12
-
-
-def _ua_for(wallet, acct, diversifier_index):
-    return wallet.z_getaddressforaccount(
-        acct, RECEIVERS, diversifier_index)['address']
-
-
-def _transparent_outputs(node, txid):
-    """The transparent output addresses of `txid`, indexed by vout position."""
-    raw = node.getrawtransaction(txid, 1)
-    return [vout['scriptPubKey']['addresses'] for vout in raw['vout']]
 
 
 class WalletChangeAddressesTest(BitcoinTestFramework):
@@ -83,11 +74,11 @@ class WalletChangeAddressesTest(BitcoinTestFramework):
         self.sync_all()
         acct = w.z_listaccounts()[0]['account_uuid']
 
-        ua_shielded = _ua_for(w, acct, DIVERSIFIER_SHIELDED)
+        ua_shielded = unified_address_for(w, acct, DIVERSIFIER_SHIELDED)
         taddr_source = first_transparent_receiver(
-            w, _ua_for(w, acct, DIVERSIFIER_SOURCE))
+            w, unified_address_for(w, acct, DIVERSIFIER_SOURCE))
         taddr_target = first_transparent_receiver(
-            w, _ua_for(w, acct, DIVERSIFIER_TARGET))
+            w, unified_address_for(w, acct, DIVERSIFIER_TARGET))
 
         # Shield coinbase: coinbase cannot be spent transparently, so this is the
         # only route to spendable non-coinbase transparent funds.
@@ -153,26 +144,16 @@ class WalletChangeAddressesTest(BitcoinTestFramework):
         # the only transparent output would be the recipient, and the recipient
         # here is shielded, so there are no transparent outputs at all.
         txid1, _txid2 = send_twice(ua_shielded, PrivacyPolicy.ALLOW_FULLY_TRANSPARENT)
-        assert_equal(_transparent_outputs(node, txid1), [])
+        assert_equal(transparent_output_addresses(node, txid1), [])
 
         print()
         print('Checking z_sendmany(taddr->taddr): change address is not reused')
         txid1, txid2 = send_twice(taddr_target, PrivacyPolicy.ALLOW_FULLY_TRANSPARENT)
 
-        # Each fully-transparent send has exactly two outputs: the recipient and
-        # the transparent change.
-        tx1_outs = _transparent_outputs(node, txid1)
-        tx2_outs = _transparent_outputs(node, txid2)
-        assert_equal(len(tx1_outs), 2)
-        assert_equal(len(tx2_outs), 2)
-
-        def change_address(outs):
-            change = [addrs for addrs in outs if addrs != [taddr_target]]
-            assert_equal(len(change), 1)
-            return change[0][0]
-
-        change1 = change_address(tx1_outs)
-        change2 = change_address(tx2_outs)
+        # Each send is fully transparent, so each has exactly two outputs: the
+        # recipient and the transparent change (asserted by the helper).
+        change1 = transparent_change_address(node, txid1, taddr_target)
+        change2 = transparent_change_address(node, txid2, taddr_target)
         print('Source address:     %s' % taddr_source)
         print('TX1 change address: %s' % change1)
         print('TX2 change address: %s' % change2)

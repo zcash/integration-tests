@@ -46,6 +46,8 @@ from test_framework.util import (
     assert_true,
     expect_rpc_error,
     first_transparent_receiver,
+    transparent_change_address,
+    unified_address_for,
     wait_and_assert_operationid_status,
     wait_for_account_spendable,
     wait_for_mature_coinbase_count,
@@ -62,19 +64,10 @@ UNSHIELD_AMOUNT = Decimal('10')
 TT_AMOUNT = Decimal('4')
 
 
-# Diversifier indices are pinned so each address is stable and distinct. An index
-# may only ever be used with ONE receiver set, so every address here requests the
-# same set (a UA must carry a shielded receiver, so `p2pkh` cannot stand alone).
-RECEIVERS = ['orchard', 'p2pkh']
+# Diversifier indices are pinned so each address is stable and distinct.
 DIVERSIFIER_SHIELDED = 10
 DIVERSIFIER_SRC = 11
 DIVERSIFIER_DST = 12
-
-
-def _ua_for(wallet, acct, diversifier_index):
-    """A unified address of `acct` at a pinned diversifier index."""
-    return wallet.z_getaddressforaccount(
-        acct, RECEIVERS, diversifier_index)['address']
 
 
 class WalletTransparentSpendTest(BitcoinTestFramework):
@@ -93,11 +86,11 @@ class WalletTransparentSpendTest(BitcoinTestFramework):
         self.sync_all()
         acct = w.z_listaccounts()[0]['account_uuid']
 
-        ua_shielded = _ua_for(w, acct, DIVERSIFIER_SHIELDED)
+        ua_shielded = unified_address_for(w, acct, DIVERSIFIER_SHIELDED)
         taddr_src = first_transparent_receiver(
-            w, _ua_for(w, acct, DIVERSIFIER_SRC))
+            w, unified_address_for(w, acct, DIVERSIFIER_SRC))
         taddr_dst = first_transparent_receiver(
-            w, _ua_for(w, acct, DIVERSIFIER_DST))
+            w, unified_address_for(w, acct, DIVERSIFIER_DST))
         assert_true(
             taddr_src != taddr_dst,
             "source and destination must be distinct transparent receivers")
@@ -212,15 +205,9 @@ class WalletTransparentSpendTest(BitcoinTestFramework):
 
         # Change stayed transparent, at an internal-scope change address that is
         # neither the source nor the recipient. Sweeping it into Orchard would
-        # have made this a t-to-z send wearing a t-to-t costume.
-        assert_equal(len(raw['vout']), 2)
-        out_addrs = set()
-        for vout in raw['vout']:
-            out_addrs.update(vout['scriptPubKey']['addresses'])
-        assert_true(taddr_dst in out_addrs, "recipient must be an output")
-        change_addrs = out_addrs - {taddr_dst}
-        assert_equal(len(change_addrs), 1)
-        change_addr = change_addrs.pop()
+        # have made this a t-to-z send wearing a t-to-t costume. (The helper
+        # asserts the two-output recipient-plus-change shape.)
+        change_addr = transparent_change_address(node, tt_txid, taddr_dst)
         assert_true(
             change_addr != taddr_src,
             "change must go to an internal change address, not back to the source")
