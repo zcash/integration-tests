@@ -25,7 +25,7 @@
 # t-addr as the `fromaddress`.
 #
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 
 from test_framework.util import (
     COIN,
@@ -73,14 +73,23 @@ class WalletIronwoodOrchardTurnstileTest(IronwoodTestFramework):
                    for p in (Pool.SAPLING, Pool.ORCHARD, Pool.IRONWOOD)
                    if p != exclude)
 
+    # Comfortably covers a multi-action ZIP-317 fee, so the forced amount plus
+    # its fee still fits inside the combined spendable balance.
+    FEE_BUFFER_ZAT = 100000  # 0.001 ZEC
+
     def force_shielded_amount(self, w, acct, pool: Pool) -> Decimal:
         """A ZEC amount that can only be covered by also spending `pool`: one ZEC
-        more than every other shielded pool holds."""
-        amount_zat = self.other_shielded(w, acct, pool) + COIN
-        assert_true(amount_zat <= account_spendable_zat(w, acct, pool)
-                    + self.other_shielded(w, acct, pool),
-                    "forced amount must be coverable from {}".format(pool))
-        return (Decimal(amount_zat) / COIN).quantize(Decimal('0.0001'))
+        more than every other shielded pool holds, minus a fee buffer (a bare
+        `other + 1 ZEC` ceiling leaves no room for the send's own fee, and
+        rounding the resulting Decimal could round up past the coverable
+        amount)."""
+        other = self.other_shielded(w, acct, pool)
+        amount_zat = other + COIN - self.FEE_BUFFER_ZAT
+        assert_true(other < amount_zat <= account_spendable_zat(w, acct, pool) + other,
+                    "forced amount must exceed {} alone and be coverable "
+                    "together with it".format(pool))
+        return (Decimal(amount_zat) / COIN).quantize(
+            Decimal('0.0001'), rounding=ROUND_DOWN)
 
     def send(self, node, w, from_addr, to_addr, amount, policy):
         """z_sendmany one recipient, confirm, settle, and return the tx view."""

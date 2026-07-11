@@ -35,6 +35,7 @@ from test_framework.util import (
     wait_account_settled,
     wait_and_assert_operationid_status,
     wait_for_tx_scanned,
+    wait_for_wallet_sync,
 )
 from test_framework.util_ironwood import IronwoodTestFramework
 
@@ -69,7 +70,11 @@ class WalletIronwoodInvariantsTest(IronwoodTestFramework):
 
         # 3. Reconciliation: wallet total shielded == node total shielded.
         # account_balance_zat counts pending notes, so it matches the chain as
-        # soon as the confirming block is scanned.
+        # soon as the wallet's tip catches up to the confirming block --- but
+        # wait_for_tx_scanned (already awaited by the caller) only guarantees
+        # the per-transaction view is current, not the wallet's aggregate
+        # balance, so wait for the wallet's tip explicitly before reading it.
+        wait_for_wallet_sync(node, w)
         wallet_total = (account_balance_zat(w, acct, Pool.IRONWOOD)
                         + account_balance_zat(w, acct, Pool.SAPLING))
         assert_equal(wallet_total, total_after,
