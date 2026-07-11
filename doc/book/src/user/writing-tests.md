@@ -25,6 +25,66 @@ The test framework lives in `qa/rpc-tests/test_framework/`. Key modules:
 | `key.py` | Wrapper around OpenSSL EC_Key |
 | `bignum.py` | Helpers for `script.py` |
 | `blocktools.py` | Helper functions for creating blocks and transactions |
+| `proto/` | Generated Python gRPC stubs for the [lightwallet-protocol] |
+
+[lightwallet-protocol]: https://github.com/zcash/lightwallet-protocol
+
+## Writing gRPC parity tests
+
+The framework supports starting a `lightwalletd` instance alongside a `zainod`
+instance and comparing their `CompactTxStreamer` gRPC responses. See
+`qa/rpc-tests/grpc_comparison.py` for a complete example.
+
+### Service lifecycle
+
+Set `num_lightwalletds` in your test's `__init__` alongside `num_indexers`:
+
+```python
+class MyGrpcTest(BitcoinTestFramework):
+    def __init__(self):
+        super().__init__()
+        self.num_nodes = 1
+        self.num_indexers = 1       # starts zainod
+        self.num_lightwalletds = 1  # starts lightwalletd
+        self.num_wallets = 0
+        self.cache_behavior = 'clean'
+```
+
+After `setup_network()` runs, `self.lwds` holds a list of gRPC port numbers
+(one per lightwalletd instance). `self.zainos` holds JSON-RPC proxy objects as
+usual, but the Zainod gRPC port is obtained via `zaino_grpc_port(i)`.
+
+### Connecting gRPC clients
+
+```python
+import grpc
+from test_framework.proto import service_pb2, service_pb2_grpc
+from test_framework.util import zaino_grpc_port
+
+zainod_ch = grpc.insecure_channel(f"127.0.0.1:{zaino_grpc_port(0)}")
+lwd_ch    = grpc.insecure_channel(f"127.0.0.1:{self.lwds[0]}")
+
+zs = service_pb2_grpc.CompactTxStreamerStub(zainod_ch)
+ls = service_pb2_grpc.CompactTxStreamerStub(lwd_ch)
+```
+
+### Regenerating the proto stubs
+
+The proto files live in the `lightwallet-protocol/` git subtree
+(`zcash/lightwallet-protocol`). To update to a new protocol version:
+
+```bash
+# Pull the new version
+git subtree pull --prefix=lightwallet-protocol \
+  https://github.com/zcash/lightwallet-protocol.git <NEW_VERSION> --squash
+
+# Regenerate Python stubs (requires grpcio-tools: uv tool install grpcio-tools)
+scripts/generate_proto.sh
+
+# Commit both the subtree update and the regenerated stubs
+git add lightwallet-protocol/ qa/rpc-tests/test_framework/proto/
+git commit
+```
 
 ## P2P test design
 
