@@ -1440,6 +1440,17 @@ COINBASE_MATURITY = 100
 # (zcash/wallet#316).
 COINBASE_SETTLE_SECS = 35
 
+# The `fee` argument of z_sendmany / z_shieldcoinbase. Zallet always computes the
+# ZIP-317 fee itself and rejects the call if a fee is supplied, so the argument
+# must be null. Named, so that a call site carries `INTERNAL_FEE` rather than a
+# bare `None` whose meaning is unreadable there.
+INTERNAL_FEE = None
+
+# The `minconf` argument of z_sendmany / z_listunspent: spend (or report) only
+# funds with at least this many confirmations. One is the usual choice: it takes
+# confirmed funds only, without waiting beyond a single block.
+MIN_CONFIRMATIONS = 1
+
 # Wallets and nodes handed to tests are RPC proxies (see `get_rpc_proxy`): a
 # coverage wrapper around an AuthServiceProxy that dispatches arbitrary RPC
 # method names via `__getattr__`.

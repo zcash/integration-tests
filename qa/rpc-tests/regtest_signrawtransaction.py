@@ -30,6 +30,8 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     COIN,
     COINBASE_MATURITY,
+    INTERNAL_FEE,
+    MIN_CONFIRMATIONS,
     Pool,
     PrivacyPolicy,
     assert_equal,
@@ -87,8 +89,8 @@ class RegtestSignrawtransactionTest(BitcoinTestFramework):
         opid = w.z_sendmany(
             ua_shielded,
             [{'address': taddr, 'amount': FUND_AMOUNT}],
-            1,
-            None,
+            MIN_CONFIRMATIONS,
+            INTERNAL_FEE,
             PrivacyPolicy.ALLOW_REVEALED_RECIPIENTS)
         fund_txid = wait_and_assert_operationid_status(w, opid)
         node.generate(1)
@@ -102,8 +104,8 @@ class RegtestSignrawtransactionTest(BitcoinTestFramework):
         opid = w.z_sendmany(
             taddr,
             [{'address': ua_shielded, 'amount': SEND_AMOUNT}],
-            1,
-            None,
+            MIN_CONFIRMATIONS,
+            INTERNAL_FEE,
             PrivacyPolicy.ALLOW_REVEALED_SENDERS)
         spend_txid = wait_and_assert_operationid_status(w, opid)
         node.generate(1)

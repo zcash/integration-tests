@@ -28,7 +28,8 @@
 #      insufficient; phase 3 pins that rejection.
 #
 # Change on a fully-transparent send stays transparent (it goes to an
-# internal-scope BIP 44 change address), rather than being swept into Orchard.
+# internal-scope BIP 44 change address), rather than being swept into a
+# shielded pool.
 # Phase 4 asserts that, since it is what makes the t-to-t send actually
 # transparent end to end.
 #
@@ -39,6 +40,8 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     COIN,
     COINBASE_MATURITY,
+    INTERNAL_FEE,
+    MIN_CONFIRMATIONS,
     Pool,
     PrivacyPolicy,
     assert_equal,
@@ -127,8 +130,8 @@ class WalletTransparentSpendTest(BitcoinTestFramework):
         opid = w.z_sendmany(
             ua_shielded,
             [{'address': taddr_src, 'amount': UNSHIELD_AMOUNT}],
-            1,
-            None,
+            MIN_CONFIRMATIONS,
+            INTERNAL_FEE,
             PrivacyPolicy.ALLOW_REVEALED_RECIPIENTS)
         unshield_txid = wait_and_assert_operationid_status(w, opid)
         assert_true(unshield_txid is not None, "unshielding should succeed")
@@ -138,7 +141,7 @@ class WalletTransparentSpendTest(BitcoinTestFramework):
         # The proposal builder selects transparent inputs from z_listunspent,
         # which lags the scanned tx; wait for the new UTXO to settle.
         wait_for_stable_transparent(w, min_count=1)
-        src_utxos = [u for u in w.z_listunspent(1)
+        src_utxos = [u for u in w.z_listunspent(MIN_CONFIRMATIONS)
                      if u['pool'] == Pool.TRANSPARENT
                      and u['address'] == taddr_src]
         assert_equal(len(src_utxos), 1)
@@ -156,8 +159,8 @@ class WalletTransparentSpendTest(BitcoinTestFramework):
             w.z_sendmany,
             taddr_src,
             [{'address': taddr_dst, 'amount': TT_AMOUNT}],
-            1,
-            None,
+            MIN_CONFIRMATIONS,
+            INTERNAL_FEE,
             PrivacyPolicy.ALLOW_REVEALED_SENDERS)
         assert_in_message(e, "would have transparent recipients")
         print("  rejected as expected (transparent recipient not permitted)")
@@ -167,8 +170,8 @@ class WalletTransparentSpendTest(BitcoinTestFramework):
             w.z_sendmany,
             taddr_src,
             [{'address': taddr_dst, 'amount': TT_AMOUNT}],
-            1,
-            None,
+            MIN_CONFIRMATIONS,
+            INTERNAL_FEE,
             PrivacyPolicy.ALLOW_REVEALED_RECIPIENTS)
         assert_in_message(
             e, "would both spend transparent funds and have transparent")
@@ -179,8 +182,8 @@ class WalletTransparentSpendTest(BitcoinTestFramework):
         opid = w.z_sendmany(
             taddr_src,
             [{'address': taddr_dst, 'amount': TT_AMOUNT}],
-            1,
-            None,
+            MIN_CONFIRMATIONS,
+            INTERNAL_FEE,
             PrivacyPolicy.ALLOW_FULLY_TRANSPARENT)
         tt_txid = wait_and_assert_operationid_status(w, opid)
         assert_true(tt_txid is not None, "t-to-t spend should succeed")
