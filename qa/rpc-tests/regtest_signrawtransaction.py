@@ -34,6 +34,7 @@ from test_framework.util import (
     PrivacyPolicy,
     assert_equal,
     first_transparent_receiver,
+    unified_address_for,
     wait_and_assert_operationid_status,
     wait_for_account_spendable,
     wait_for_mature_coinbase_count,
@@ -44,14 +45,8 @@ from test_framework.util import (
 FUND_AMOUNT = Decimal('2')
 SEND_AMOUNT = Decimal('1')
 
-RECEIVERS = ['orchard', 'p2pkh']
 DIVERSIFIER_SHIELDED = 10
 DIVERSIFIER_TRANSPARENT = 11
-
-
-def _ua_for(wallet, acct, diversifier_index):
-    return wallet.z_getaddressforaccount(
-        acct, RECEIVERS, diversifier_index)['address']
 
 
 class RegtestSignrawtransactionTest(BitcoinTestFramework):
@@ -70,9 +65,9 @@ class RegtestSignrawtransactionTest(BitcoinTestFramework):
         self.sync_all()
         acct = w.z_listaccounts()[0]['account_uuid']
 
-        ua_shielded = _ua_for(w, acct, DIVERSIFIER_SHIELDED)
+        ua_shielded = unified_address_for(w, acct, DIVERSIFIER_SHIELDED)
         taddr = first_transparent_receiver(
-            w, _ua_for(w, acct, DIVERSIFIER_TRANSPARENT))
+            w, unified_address_for(w, acct, DIVERSIFIER_TRANSPARENT))
 
         # Shield coinbase, so there are shielded funds to unshield.
         node.generate(COINBASE_MATURITY + 20)
