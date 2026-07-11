@@ -8,7 +8,7 @@ from decimal import Decimal
 from test_framework.config import ZebraArgs
 
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal, start_nodes
+from test_framework.util import UpgradeStatus, assert_equal, start_nodes
 
 # Check the behaviour of the value pools and funding streams at NU6.
 #
@@ -88,13 +88,13 @@ class PoolsTest(BitcoinTestFramework):
         # Check the network upgrades are all pending
         (overwinter, sapling, blossom, heartwood, canopy, nu5, nu6) = get_network_upgrades(getblockchaininfo)
 
-        assert_equal(overwinter['status'], 'pending')
-        assert_equal(sapling['status'], 'pending')
-        assert_equal(blossom['status'], 'pending')
-        assert_equal(heartwood['status'], 'pending')
-        assert_equal(canopy['status'], 'pending')
-        assert_equal(nu5['status'], 'pending')
-        assert_equal(nu6['status'], 'pending')
+        assert_equal(overwinter['status'], UpgradeStatus.PENDING)
+        assert_equal(sapling['status'], UpgradeStatus.PENDING)
+        assert_equal(blossom['status'], UpgradeStatus.PENDING)
+        assert_equal(heartwood['status'], UpgradeStatus.PENDING)
+        assert_equal(canopy['status'], UpgradeStatus.PENDING)
+        assert_equal(nu5['status'], UpgradeStatus.PENDING)
+        assert_equal(nu6['status'], UpgradeStatus.PENDING)
 
         print("Activating Overwinter, Sapling, Blossom, Heartwood and Canopy at Block 1")
         self.nodes[0].generate(1)
@@ -118,13 +118,13 @@ class PoolsTest(BitcoinTestFramework):
         # Check the network upgrades up to Canopy are active
         (overwinter, sapling, blossom, heartwood, canopy, nu5, nu6) = get_network_upgrades(getblockchaininfo)
 
-        assert_equal(overwinter['status'], 'active')
-        assert_equal(sapling['status'], 'active')
-        assert_equal(blossom['status'], 'active')
-        assert_equal(heartwood['status'], 'active')
-        assert_equal(canopy['status'], 'active')
-        assert_equal(nu5['status'], 'pending')
-        assert_equal(nu6['status'], 'pending')
+        assert_equal(overwinter['status'], UpgradeStatus.ACTIVE)
+        assert_equal(sapling['status'], UpgradeStatus.ACTIVE)
+        assert_equal(blossom['status'], UpgradeStatus.ACTIVE)
+        assert_equal(heartwood['status'], UpgradeStatus.ACTIVE)
+        assert_equal(canopy['status'], UpgradeStatus.ACTIVE)
+        assert_equal(nu5['status'], UpgradeStatus.PENDING)
+        assert_equal(nu6['status'], UpgradeStatus.PENDING)
 
         print("Activating NU5 at Block 7")
         self.nodes[0].generate(6)
@@ -147,13 +147,13 @@ class PoolsTest(BitcoinTestFramework):
         # Check that NU5 is now active
         (overwinter, sapling, blossom, heartwood, canopy, nu5, nu6) = get_network_upgrades(getblockchaininfo)
 
-        assert_equal(overwinter['status'], 'active')
-        assert_equal(sapling['status'], 'active')
-        assert_equal(blossom['status'], 'active')
-        assert_equal(heartwood['status'], 'active')
-        assert_equal(canopy['status'], 'active')
-        assert_equal(nu5['status'], 'active')
-        assert_equal(nu6['status'], 'pending')
+        assert_equal(overwinter['status'], UpgradeStatus.ACTIVE)
+        assert_equal(sapling['status'], UpgradeStatus.ACTIVE)
+        assert_equal(blossom['status'], UpgradeStatus.ACTIVE)
+        assert_equal(heartwood['status'], UpgradeStatus.ACTIVE)
+        assert_equal(canopy['status'], UpgradeStatus.ACTIVE)
+        assert_equal(nu5['status'], UpgradeStatus.ACTIVE)
+        assert_equal(nu6['status'], UpgradeStatus.PENDING)
     
         # Check we have fundingstream rewards but no lockbox rewards yet
         fs_outputs = Decimal('1.25')
@@ -187,13 +187,13 @@ class PoolsTest(BitcoinTestFramework):
         # Check all upgrades up to NU6 are active
         (overwinter, sapling, blossom, heartwood, canopy, nu5, nu6) = get_network_upgrades(getblockchaininfo)
 
-        assert_equal(overwinter['status'], 'active')
-        assert_equal(sapling['status'], 'active')
-        assert_equal(blossom['status'], 'active')
-        assert_equal(heartwood['status'], 'active')
-        assert_equal(canopy['status'], 'active')
-        assert_equal(nu5['status'], 'active')
-        assert_equal(nu6['status'], 'active')
+        assert_equal(overwinter['status'], UpgradeStatus.ACTIVE)
+        assert_equal(sapling['status'], UpgradeStatus.ACTIVE)
+        assert_equal(blossom['status'], UpgradeStatus.ACTIVE)
+        assert_equal(heartwood['status'], UpgradeStatus.ACTIVE)
+        assert_equal(canopy['status'], UpgradeStatus.ACTIVE)
+        assert_equal(nu5['status'], UpgradeStatus.ACTIVE)
+        assert_equal(nu6['status'], UpgradeStatus.ACTIVE)
 
         # Check that we have fundingstreams and lockbox rewards
         fs_outputs = Decimal('0.5')
