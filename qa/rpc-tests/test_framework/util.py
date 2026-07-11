@@ -970,8 +970,21 @@ def fail(message=""):
     raise AssertionError(message)
 
 
+class OperationStatus(str, Enum):
+    """The lifecycle status of an async wallet operation, as reported in the
+    `status` field of z_getoperationstatus / z_getoperationresult (and accepted
+    by the `wait_and_assert_operationid_status*` helpers below). Being
+    `str`-valued, a member compares equal to the wire string and can be passed
+    straight to those helpers or compared against RPC output."""
+    QUEUED = 'queued'
+    EXECUTING = 'executing'
+    SUCCESS = 'success'
+    FAILED = 'failed'
+    CANCELLED = 'cancelled'
+
+
 # Returns an async operation result
-def wait_and_assert_operationid_status_result(node, myopid, in_status='success', in_errormsg=None, timeout=300):
+def wait_and_assert_operationid_status_result(node, myopid, in_status=OperationStatus.SUCCESS, in_errormsg=None, timeout=300):
     print('waiting for async operation {}'.format(myopid))
     result = None
     for _ in range(1, timeout):
@@ -989,7 +1002,7 @@ def wait_and_assert_operationid_status_result(node, myopid, in_status='success',
         print('...returned status: {}'.format(status))
 
     errormsg = None
-    if status == "failed":
+    if status == OperationStatus.FAILED:
         errormsg = result['error']['message']
         if debug:
             print('...returned error: {}'.format(errormsg))
@@ -1001,9 +1014,9 @@ def wait_and_assert_operationid_status_result(node, myopid, in_status='success',
 
 
 # Returns txid if operation was a success or None
-def wait_and_assert_operationid_status(node, myopid, in_status='success', in_errormsg=None, timeout=300):
+def wait_and_assert_operationid_status(node, myopid, in_status=OperationStatus.SUCCESS, in_errormsg=None, timeout=300):
     result = wait_and_assert_operationid_status_result(node, myopid, in_status, in_errormsg, timeout)
-    if result['status'] == "success":
+    if result['status'] == OperationStatus.SUCCESS:
         return result['result']['txid']
     else:
         return None
@@ -1450,6 +1463,16 @@ class PrivacyPolicy(str, Enum):
     ALLOW_FULLY_TRANSPARENT = 'AllowFullyTransparent'
     ALLOW_LINKING_ACCOUNT_ADDRESSES = 'AllowLinkingAccountAddresses'
     NO_PRIVACY = 'NoPrivacy'
+
+
+class UpgradeStatus(str, Enum):
+    """The activation status of a network upgrade, as reported in the `status`
+    field of each entry of `getblockchaininfo()['upgrades']`. Being `str`-valued,
+    a member compares equal to the wire string, so it can be asserted directly
+    against RPC output."""
+    DISABLED = 'disabled'
+    PENDING = 'pending'
+    ACTIVE = 'active'
 
 
 def transparent_utxos(wallet: RpcProxy, minconf: int = 1) -> list[dict]:
