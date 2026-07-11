@@ -92,24 +92,28 @@ def test_upgrade_active_at_height(
     )
 
 
-def test_nu7_has_no_activation_height_yet() -> None:
-    assert Network.MAIN.activation_height(NetworkUpgrade.NU7) is None
-    assert Network.TEST.activation_height(NetworkUpgrade.NU7) is None
+def test_nu7_has_no_activation_height_yet(
+    mainnet: Network, testnet: Network
+) -> None:
+    assert mainnet.activation_height(NetworkUpgrade.NU7) is None
+    assert testnet.activation_height(NetworkUpgrade.NU7) is None
 
 
-def test_sprout_is_in_force_from_genesis() -> None:
-    assert Network.MAIN.activation_height(NetworkUpgrade.SPROUT) == 0
+def test_sprout_is_in_force_from_genesis(mainnet: Network) -> None:
+    assert mainnet.activation_height(NetworkUpgrade.SPROUT) == 0
 
 
-def test_regtest_refuses_to_invent_an_activation_schedule() -> None:
+def test_regtest_refuses_to_invent_an_activation_schedule(
+    regtest: Network,
+) -> None:
     """Regtest heights come from -nuparams, so there is no right answer here."""
     with pytest.raises(ZcashError, match="no fixed activation heights"):
-        Network.REGTEST.activation_height(NetworkUpgrade.NU5)
+        regtest.activation_height(NetworkUpgrade.NU5)
 
 
-def test_negative_heights_are_rejected() -> None:
+def test_negative_heights_are_rejected(mainnet: Network) -> None:
     with pytest.raises(ValueError, match="cannot be negative"):
-        Network.MAIN.upgrade_active_at(BlockHeight(-1))
+        mainnet.upgrade_active_at(BlockHeight(-1))
 
 
 # --- amounts ---------------------------------------------------------------

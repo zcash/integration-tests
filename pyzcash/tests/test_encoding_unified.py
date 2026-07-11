@@ -31,22 +31,21 @@ from tests.vectors import (
     TYPECODE_P2PKH,
     TYPECODE_SAPLING,
     UNIFIED_FVK,
-    UNIFIED_FVK_HRP,
 )
 
 _PAD_LEN = 16
 
 
-def test_sapling_extfvk_is_bech32_not_bech32m() -> None:
-    hrp, payload, encoding = bech32_decode(SAPLING_EXTFVK)
+def test_sapling_extfvk_is_bech32_not_bech32m(sapling_extfvk: str) -> None:
+    hrp, payload, encoding = bech32_decode(sapling_extfvk)
     assert hrp == "zxviewregtestsapling"
     assert encoding is Bech32Encoding.BECH32
     assert len(payload) == SAPLING_EXTFVK_PAYLOAD_LEN
 
 
-def test_unified_fvk_is_bech32m_not_bech32() -> None:
-    hrp, _, encoding = bech32_decode(UNIFIED_FVK)
-    assert hrp == UNIFIED_FVK_HRP
+def test_unified_fvk_is_bech32m_not_bech32(unified_fvk: str) -> None:
+    hrp, _, encoding = bech32_decode(unified_fvk)
+    assert hrp == "uviewregtest"
     assert encoding is Bech32Encoding.BECH32M
 
 
@@ -56,9 +55,11 @@ def test_bech32_round_trip_reproduces_the_exact_string(encoded: str) -> None:
     assert bech32_encode(hrp, payload, encoding) == encoded
 
 
-def test_decoding_a_unified_key_yields_the_expected_receivers() -> None:
+def test_decoding_a_unified_key_yields_the_expected_receivers(
+    unified_fvk: str,
+) -> None:
     """The whole layer, end to end, against a key a real wallet produced."""
-    hrp, payload, encoding = bech32_decode(UNIFIED_FVK)
+    hrp, payload, encoding = bech32_decode(unified_fvk)
     assert encoding is Bech32Encoding.BECH32M
 
     plaintext = f4jumble_inverse(payload)
@@ -87,10 +88,10 @@ def test_decoding_a_unified_key_yields_the_expected_receivers() -> None:
     assert list(receivers) == sorted(receivers)
 
 
-def test_f4jumble_round_trips() -> None:
-    for length in (48, 49, 127, 128, 129, 200):
-        message = bytes((i * 7 + length) % 256 for i in range(length))
-        assert f4jumble_inverse(f4jumble(message)) == message
+@pytest.mark.parametrize("length", [48, 49, 127, 128, 129, 200])
+def test_f4jumble_round_trips(length: int) -> None:
+    message = bytes((i * 7 + length) % 256 for i in range(length))
+    assert f4jumble_inverse(f4jumble(message)) == message
 
 
 def test_f4jumble_diffuses_every_byte() -> None:
@@ -112,21 +113,22 @@ def test_f4jumble_rejects_lengths_outside_zip316(length: int) -> None:
         f4jumble(bytes(length))
 
 
-def test_bech32_rejects_a_corrupted_checksum() -> None:
-    corrupted = UNIFIED_FVK[:-1] + ("q" if UNIFIED_FVK[-1] != "q" else "p")
+def test_bech32_rejects_a_corrupted_checksum(unified_fvk: str) -> None:
+    tail = "q" if unified_fvk[-1] != "q" else "p"
     with pytest.raises(ChecksumError):
-        bech32_decode(corrupted)
+        bech32_decode(unified_fvk[:-1] + tail)
 
 
-def test_bech32_rejects_mixed_case() -> None:
+def test_bech32_rejects_mixed_case(sapling_extfvk: str) -> None:
+    mixed = sapling_extfvk[:-4] + sapling_extfvk[-4:].upper()
     with pytest.raises(EncodingError, match="mixes upper and lower case"):
-        bech32_decode(SAPLING_EXTFVK[:-4] + SAPLING_EXTFVK[-4:].upper())
+        bech32_decode(mixed)
 
 
-def test_bech32_has_no_ninety_character_limit() -> None:
+def test_bech32_has_no_ninety_character_limit(unified_fvk: str) -> None:
     """BIP 173 caps strings at 90 characters; ZIP 316 lifts that cap.
 
     This is exactly why the test framework could not use embit's decoder.
     """
-    assert len(UNIFIED_FVK) > 90
-    bech32_decode(UNIFIED_FVK)  # must not raise
+    assert len(unified_fvk) > 90
+    bech32_decode(unified_fvk)  # must not raise

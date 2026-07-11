@@ -18,39 +18,27 @@ from pyzcash.encoding import (
     b58encode,
 )
 from pyzcash.errors import ChecksumError, EncodingError
-
-# Transparent address payloads are a 2-byte version prefix and a 20-byte hash;
-# the leading-zero cases matter because they encode as leading '1' characters
-# and are the classic place a Base58 implementation goes wrong.
-PAYLOADS = [
-    b"",
-    b"\x00",
-    b"\x00\x00\x00",
-    b"\x00\x01\x02",
-    bytes(range(22)),
-    b"\x1c\xb8" + bytes(range(20)),  # a mainnet t-address shaped payload
-    b"\xff" * 32,
-]
+from tests.vectors import BASE58_PAYLOADS
 
 
-@pytest.mark.parametrize("payload", PAYLOADS)
+@pytest.mark.parametrize("payload", BASE58_PAYLOADS)
 def test_b58encode_matches_the_reference_implementation(payload: bytes) -> None:
     assert b58encode(payload) == reference.b58encode(payload).decode()
 
 
-@pytest.mark.parametrize("payload", PAYLOADS)
+@pytest.mark.parametrize("payload", BASE58_PAYLOADS)
 def test_b58check_matches_the_reference_implementation(payload: bytes) -> None:
     assert (
         b58check_encode(payload) == reference.b58encode_check(payload).decode()
     )
 
 
-@pytest.mark.parametrize("payload", PAYLOADS)
+@pytest.mark.parametrize("payload", BASE58_PAYLOADS)
 def test_b58check_round_trips(payload: bytes) -> None:
     assert b58check_decode(b58check_encode(payload)) == payload
 
 
-@pytest.mark.parametrize("payload", PAYLOADS)
+@pytest.mark.parametrize("payload", BASE58_PAYLOADS)
 def test_b58_round_trips(payload: bytes) -> None:
     assert b58decode(b58encode(payload)) == payload
 
