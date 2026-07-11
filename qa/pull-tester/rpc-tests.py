@@ -132,6 +132,8 @@ DISABLED_SCRIPTS = [
     'wallet_orchard_init.py',  # no zallet equiv yet: resendwallettransactions
     'wallet_orchard_persistence.py',  # deprecated; z_getbalanceforaccount->z_getbalances
     'wallet_orchard_reindex.py',  # deprecated; z_getbalanceforaccount->z_getbalances
+    'wallet_ironwood_reorg.py',  # zebra-backend: wait_for_wallet_sync never converges after invalidateblock (still hangs as of zallet@d168efe, past zallet#560/#563/#576)
+    'wallet_ironwood_birthday.py',  # zebra-backend: recovered account's wait_for_wallet_sync(timeout=300) still times out (still hangs as of zallet@d168efe, past zallet#560/#563/#576)
     'wallet_overwintertx.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_parsing_amounts.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_persistence.py',  # no zallet equiv yet: z_exportkey, z_importkey, z_exportviewingkey
@@ -291,8 +293,6 @@ NEW_SCRIPTS= [
     'wallet_ironwood_views.py',
     'wallet_ironwood_conservation.py',
     'wallet_ironwood_negatives.py',
-    'wallet_ironwood_reorg.py',
-    'wallet_ironwood_birthday.py',
     # vv Tests less than 2m vv
     'wallet_ironwood.py',
     # vv Tests less than 60s vv

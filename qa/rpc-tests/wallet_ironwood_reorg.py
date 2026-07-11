@@ -12,14 +12,18 @@
 # the note stops being spendable, and reconnecting the block restores it. This
 # is exactly the shardtree/checkpoint path that Ironwood stresses.
 #
-# Was disabled pending zcash/zallet#556 ("steady_state sync crashes the whole
-# process on BlockConflict, instead of using existing reorg-rewind recovery"):
-# a reorg the wallet had already scanned past crashed `steady_state` outright
-# (uncovered by `is_retryable`) instead of rewinding to the fork point, and hit
-# the same uncovered path in `initialize()`'s startup catch-up scan when a
-# reorg was in progress right as the wallet started. zcash/zallet#560 fixed
-# both paths (merged 2026-07-08); re-enabled here now that CI's zallet build
-# (tracking zallet's `main`) includes the fix.
+# CURRENTLY DISABLED (see qa/pull-tester/rpc-tests.py DISABLED_SCRIPTS).
+# Originally disabled pending zcash/zallet#556 ("steady_state sync crashes the
+# whole process on BlockConflict, instead of using existing reorg-rewind
+# recovery"), which zcash/zallet#560 fixed (merged 2026-07-08). That fix is
+# NOT sufficient, though: re-verified locally against a zallet built from
+# `main` @ d168efe (past #560, #563, and #576) on the zebra backend, and
+# `wait_for_wallet_sync` still never converges after `invalidateblock` — the
+# wallet does not appear to notice the node's tip shrank at all, which is a
+# different failure mode than the BlockConflict crash #560 fixed (that path
+# triggers on a *replacing* block at a conflicting height; a bare
+# invalidateblock with nothing yet mined over it may never reach it). Re-enable
+# once the wallet backends actually detect and follow a shrinking tip.
 #
 # The reorg is driven on a single node with invalidateblock / reconsiderblock
 # (both served by zebra in regtest); the wallet follows its own node.

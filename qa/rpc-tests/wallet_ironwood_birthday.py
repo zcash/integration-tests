@@ -18,17 +18,20 @@
 # birthday height ABOVE that note (z_recoveraccounts with birthday_height), and
 # is paid an Ironwood note. The recovered account must both SEE and SPEND it.
 #
-# Was disabled pending zcash/zallet#563 ("z_importkey into a running wallet:
-# imported key not scanned until restart"): z_recoveraccounts wrote the new
-# account + UFVK, but nothing told the running sync engine's batch decryptor to
-# reload its key set, so the recovered account's scan range was queued but
-# never actually decrypted against — the wallet's tip never reported "caught
-# up" for it, and the test could not proceed to the spend. zcash/zallet#563
-# fixed the reload for z_importkey / z_getnewaccount / z_recoveraccount alike
-# (merged 2026-07-10); re-enabled here now that CI's zallet build (tracking
-# zallet's `main`) includes the fix. (The remaining half of that bug class,
-# zcash/zallet#578, only affects a birthday that falls in an ALREADY-scanned
-# range, which does not apply here: this test's birthday sits at the tip.)
+# CURRENTLY DISABLED (see qa/pull-tester/rpc-tests.py DISABLED_SCRIPTS).
+# Originally disabled pending zcash/zallet#563 ("z_importkey into a running
+# wallet: imported key not scanned until restart"), which looked like an exact
+# match: z_recoveraccounts wrote the new account but nothing told the running
+# sync engine's batch decryptor to reload its key set. zcash/zallet#563 fixed
+# that reload for z_importkey / z_getnewaccount / z_recoveraccount alike
+# (merged 2026-07-10). That fix is NOT sufficient, though: re-verified locally
+# against a zallet built from `main` @ d168efe (past #560, #563, and #576,
+# "zebra backend: read the Ironwood note commitment tree") on the zebra
+# backend, and `wait_for_wallet_sync(..., timeout=300)` still times out at the
+# full 300s waiting for the recovered account to catch up. Whatever is
+# blocking forward progress here survives all three fixes; root cause still
+# unknown. Re-enable once the recovered account's wallet tip actually
+# converges to the node's.
 #
 # It may then still surface a real Ironwood bug: if the wallet's node backend
 # reports an empty final Ironwood tree at a non-genesis birthday, the received
