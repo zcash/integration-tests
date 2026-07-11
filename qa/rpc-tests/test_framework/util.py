@@ -412,7 +412,9 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         miner_addresses = {}
         for i in range(MAX_NODES):
             datadir = wallet_dir(cachedir, i)
-            update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i))
+            update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i),
+                               indexer_port=indexer_rpc_port(i),
+                               zebra_state_dir=node_dir(cachedir, i))
 
             args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
             process = subprocess.Popen(args)
@@ -1106,7 +1108,9 @@ def prepare_wallets_for_mining(num_wallets, dirname, binary=None, zallet_args=No
 
         zallet = binary[i]
 
-        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i), zallet_args[i])
+        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i), zallet_args[i],
+                           indexer_port=indexer_rpc_port(i),
+                           zebra_state_dir=node_dir(dirname, i))
 
         args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
         process = subprocess.Popen(args)
@@ -1154,7 +1158,9 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
     validator_port = rpc_port(i)
     zallet_port = wallet_rpc_port(i)
 
-    update_zallet_conf(datadir, validator_port, zallet_port, zallet_args)
+    update_zallet_conf(datadir, validator_port, zallet_port, zallet_args,
+                       indexer_port=indexer_rpc_port(i),
+                       zebra_state_dir=node_dir(dirname, i))
 
     # We prepare the wallet if it is new
     if prepare:
@@ -1183,7 +1189,15 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
 
     return proxy
 
-def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None):
+# The zallet backend the launcher execs (top-level `backend` key in
+# zallet.toml). CI sets this to run the same RPC suite against both the `zaino`
+# and `zebra` backends; it defaults to `zaino` to match the checked-in default
+# config and local runs.
+def zallet_backend():
+    return os.getenv("ZALLET_BACKEND", "zaino")
+
+def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
+                       indexer_port=None, zebra_state_dir=None):
     config_path = zallet_config(datadir)
 
     with open(config_path, "r", encoding="utf8") as f:
@@ -1191,6 +1205,24 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None):
 
     config_file['rpc']['bind'][0] = '127.0.0.1:'+str(zallet_port)
     config_file['indexer']['validator_address'] = '127.0.0.1:'+str(validator_port)
+
+    # Select the backend the launcher execs. The `zebra` backend does not talk
+    # to zainod; it opens the co-located zebrad's state database read-only and
+    # follows the tip over zebrad's gRPC indexer interface, so it needs an
+    # [indexer.read_state_service] section pointing at that zebrad. Both the
+    # indexer gRPC port and zebrad's state directory are required for it.
+    backend = zallet_backend()
+    config_file['backend'] = backend
+    if backend == "zebra":
+        assert indexer_port is not None and zebra_state_dir is not None, \
+            "the zebra backend requires indexer_port and zebra_state_dir"
+        config_file['indexer']['read_state_service'] = {
+            'grpc_address': '127.0.0.1:'+str(indexer_port),
+            'zebra_state_path': os.path.abspath(zebra_state_dir),
+        }
+    else:
+        # Never leave a stale zebra section behind when reusing a config file.
+        config_file['indexer'].pop('read_state_service', None)
 
     extra_args = extra_args or ZalletArgs()
 
@@ -1426,6 +1458,17 @@ class Pool(str, Enum):
     IRONWOOD = 'ironwood'
 
 
+class TotalBalanceField(str, Enum):
+    """A summary field of `z_gettotalbalance`: the `transparent` pool, the
+    aggregate shielded balance (`private`), or their `total`. This is NOT a
+    `Pool`: `private`/`total` are roll-ups across pools, not value pools, so
+    they have no `Pool` member. Being `str`-valued, a member is usable directly
+    as the dict key into `z_gettotalbalance`'s output."""
+    TRANSPARENT = 'transparent'
+    PRIVATE = 'private'
+    TOTAL = 'total'
+
+
 class FundSource(str, Enum):
     """The `fund_source` selector accepted by z_sendfromaccount /
     z_proposetransaction, naming where an account's funds may be drawn from.
@@ -1633,8 +1676,11 @@ def wait_for_stable_mature_coinbase(wallet: RpcProxy, min_count: int = 1,
 def wait_for_tx_scanned(wallet: RpcProxy, txid: str, timeout: int = 120) -> dict:
     """
     Return `txid`'s `z_viewtransaction` view once it carries a `fee`, i.e. the
-    confirming block is scanned. Other scan-dependent views (balance,
-    z_listunspent) are then current too, so they can be read without a wait.
+    confirming block is scanned. Note this only guarantees the per-transaction
+    view is current: `z_gettotalbalance`'s summary is computed from a separate
+    internal scan tip that can still lag by a block, so poll it with
+    `wait_for_total_balance` rather than reading it once right after this
+    returns.
     """
     deadline = time.time() + timeout
     last_err = None
@@ -1649,6 +1695,37 @@ def wait_for_tx_scanned(wallet: RpcProxy, txid: str, timeout: int = 120) -> dict
     raise AssertionError(
         "wait_for_tx_scanned: timeout after {}s for txid {} ({})".format(
             timeout, txid, last_err))
+
+
+def wait_for_total_balance(wallet: RpcProxy, field: TotalBalanceField,
+                           predicate: Callable[[Decimal], bool],
+                           minconf: int = 1, include_watchonly: bool = True,
+                           timeout: int = 60) -> Decimal:
+    """
+    Poll `z_gettotalbalance(minconf, include_watchonly)` until `predicate`
+    holds for the `Decimal` value of `field` (a `TotalBalanceField`: the
+    transparent pool, the aggregate `private` balance, or the `total`), then
+    return that value. On timeout, return the last value read so the caller's
+    assertion can report it.
+
+    `z_gettotalbalance`'s summary is computed from an internal scan tip that can
+    lag `wallet_tip` (or a just-scanned transaction) by a block, so a single
+    read right after a `generate`/scan can miss the newest coinbase or note.
+    This rides out that lag; see zcash/wallet#316.
+    """
+    deadline = time.time() + timeout
+    last = None
+    while True:
+        try:
+            last = Decimal(
+                wallet.z_gettotalbalance(minconf, include_watchonly)[field])
+            if predicate(last):
+                return last
+        except Exception:
+            pass
+        if time.time() >= deadline:
+            return last
+        time.sleep(1)
 
 
 def wait_for_pool_note(wallet: RpcProxy, pool: Pool | str, minconf: int = 1,

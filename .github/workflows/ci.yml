@@ -347,6 +347,10 @@ jobs:
       path: zebra
       bin: zebrad
       job_name_prefix: Build zebrad on
+      # The zallet zebra backend follows zebrad's non-finalized tip over its
+      # gRPC indexer interface, which is gated behind the non-default `indexer`
+      # feature. Build it in for both backends (harmless to the zaino backend).
+      extra_build_args: --features indexer
 
   build-zebra-extra:
     needs: setup
@@ -367,6 +371,7 @@ jobs:
       path: zebra
       bin: zebrad
       job_name_prefix: Build zebrad on
+      extra_build_args: --features indexer
 
   build-zaino:
     needs: setup
@@ -574,7 +579,7 @@ jobs:
           pip install zmq asyncio base58 toml embit
 
   test-rpc:
-    name: RPC tests ${{ matrix.platform }} ${{ matrix.shard }}${{ matrix.required_suffix }}
+    name: RPC tests ${{ matrix.platform }} ${{ matrix.backend }} ${{ matrix.shard }}${{ matrix.required_suffix }}
     needs:
       - setup
       - build-zebra
@@ -591,6 +596,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Run the same RPC suite against each zallet backend. The launcher execs
+        # the matching per-backend binary, selected by the ZALLET_BACKEND env var
+        # the test step exports (see the "RPC test" step). Both backends are
+        # required on the required platforms (no continue-on-error for zebra).
+        backend: [zaino, zebra]
         name: ${{ fromJson(needs.setup.outputs.rpc_test_names) }}
         shard : ${{ fromJson(needs.setup.outputs.rpc_test_shards) }}
         include: ${{ fromJson(needs.setup.outputs.rpc_test_shards_matrix) }}
@@ -624,7 +634,7 @@ jobs:
           status-app-private-key: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
           requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
           requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
-          job-name: "RPC tests ${{ matrix.platform }} ${{ matrix.shard }}${{ matrix.required_suffix }}"
+          job-name: "RPC tests ${{ matrix.platform }} ${{ matrix.backend }} ${{ matrix.shard }}${{ matrix.required_suffix }}"
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -706,7 +716,7 @@ jobs:
             mv zcash-params "$HOME/.zcash-params"
           fi
 
-      - name: RPC test ${{ matrix.shard }}
+      - name: RPC test ${{ matrix.backend }} ${{ matrix.shard }}
         run: |
           cat <<EOF > ./subclass.py
           import importlib
@@ -735,7 +745,7 @@ jobs:
               sys.exit(1)
           EOF
           . ./venv/bin/activate
-          ZEBRAD=$(pwd)/${{ format('src/zebrad{0}', matrix.file_ext) }} ZAINOD=$(pwd)/${{ format('src/zainod{0}', matrix.file_ext) }} ZALLET=$(pwd)/${{ format('src/zallet{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py
+          ZALLET_BACKEND=${{ matrix.backend }} ZEBRAD=$(pwd)/${{ format('src/zebrad{0}', matrix.file_ext) }} ZAINOD=$(pwd)/${{ format('src/zainod{0}', matrix.file_ext) }} ZALLET=$(pwd)/${{ format('src/zallet{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py
 
       - uses: ./.github/actions/finish-interop
         if: always()
@@ -743,4 +753,4 @@ jobs:
           app-token: ${{ steps.start-interop.outputs.app-token }}
           requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
           requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
-          job-name: "RPC tests ${{ matrix.platform }} ${{ matrix.shard }}${{ matrix.required_suffix }}"
+          job-name: "RPC tests ${{ matrix.platform }} ${{ matrix.backend }} ${{ matrix.shard }}${{ matrix.required_suffix }}"

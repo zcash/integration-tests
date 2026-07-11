@@ -42,6 +42,7 @@ from test_framework.util import (
     COIN,
     COINBASE_MATURITY,
     Pool,
+    TotalBalanceField,
     assert_equal,
     assert_true,
     nu_activation_all_at_1_with_ironwood,
@@ -50,6 +51,7 @@ from test_framework.util import (
     wait_and_assert_operationid_status,
     wait_for_account_spendable,
     wait_for_mature_coinbase_count,
+    wait_for_total_balance,
     wait_for_tx_scanned,
 )
 
@@ -125,10 +127,12 @@ class WalletIronwoodTest(BitcoinTestFramework):
         ironwood_zec = shielding_value - fee
 
         # The shielded value is counted as private (z_gettotalbalance sums the
-        # Ironwood pool into `private`). This holds as soon as the note is
-        # scanned, before it is spendable.
-        total = w.z_gettotalbalance(1, True)
-        assert_equal(Decimal(total['private']), ironwood_zec,
+        # Ironwood pool into `private`), once the note is scanned and before it
+        # is spendable. z_gettotalbalance's summary tip can lag the scanned tx
+        # by a block, so poll rather than reading once.
+        private_zec = wait_for_total_balance(
+            w, TotalBalanceField.PRIVATE, lambda v: v == ironwood_zec)
+        assert_equal(private_zec, ironwood_zec,
                      "Ironwood funds should be counted as private")
 
         # Wait for the Ironwood note to become spendable (the confirming block

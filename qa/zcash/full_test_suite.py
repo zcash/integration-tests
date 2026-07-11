@@ -59,6 +59,7 @@ RUST_BINARIES = [
     'src/zainod',
     'src/zallet',
     'src/zallet-zaino',
+    'src/zallet-zebra',
 ]
 
 def test_rpath_runpath(filename):
@@ -94,9 +95,9 @@ def check_security_hardening():
     # PIE, RELRO, Canary, and NX are tested by `contrib/devtools/security-check.py`.
     # `zallet` is the pure-Rust launcher: it has no C dependencies, so it carries no
     # stack-canary symbol and is checked with --allow-no-canary. The real wallet work
-    # runs in `zallet-zaino`, which links the C libraries (BDB, secp256k1) and is
-    # canary-checked in full.
-    bin_programs = ['src/zebrad', 'src/zainod', 'src/zallet-zaino']
+    # runs in the per-backend binaries (`zallet-zaino`, `zallet-zebra`), which link the
+    # C libraries (BDB, secp256k1) and are canary-checked in full.
+    bin_programs = ['src/zebrad', 'src/zainod', 'src/zallet-zaino', 'src/zallet-zebra']
     no_canary_programs = ['src/zallet']
     bin_scripts = []
 
