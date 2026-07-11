@@ -494,12 +494,28 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                     wait_for_zebrad_start(bitcoind_processes[i], rpc_url(i), i)
                     if os.getenv("PYTHON_DEBUG", ""):
                         print("initialize_chain: RPC successfully started")
+                # Rebuild, not append: `rpcs` must stay exactly MAX_NODES
+                # live proxies. Appending here would leave stale proxies
+                # from before this restart in the list, growing it by
+                # MAX_NODES on every one of the 8 restart rounds.
+                rpcs = []
                 for i in range(MAX_NODES):
                     try:
                         rpcs.append(get_rpc_proxy(rpc_url(i), i))
                     except:
                         sys.stderr.write("Error connecting to "+rpc_url(i)+"\n")
                         sys.exit(1)
+        # regtest zebrad does not persist a peer list across a restart, so
+        # the last restart above leaves all MAX_NODES nodes with zero peer
+        # connections and each pinned wherever it had synced to before that
+        # restart. Reconnect the full mesh to node 0 and sync once more so
+        # every node converges to a single tip before the cache is used --
+        # skipping this was the root cause of zcash/integration-tests#136
+        # (nodes left at divergent heights on one non-forked chain, which
+        # then hung or timed out in the wallet-sync wait below).
+        for i in range(1, MAX_NODES):
+            connect_nodes_bi(rpcs, 0, i)
+        sync_blocks_with_reconnect(rpcs, 0)
         # Check that local time isn't going backwards
         assert_greater_than(time.time() + 1, block_time)
 
