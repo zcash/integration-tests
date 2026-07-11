@@ -11,9 +11,13 @@ We do not publish package releases or Git tags for this project. Each version en
 
 ### Added
 
+- Coverage for the account-based transaction methods (`z_sendfromaccount`, `z_proposetransaction`, `z_finalizetransaction`): `wallet_z_sendfromaccount.py` covers parameter validation and every fund source end to end, `wallet_z_proposetransaction.py` covers the propose/review/finalize flow, and `wallet_z_send_scenarios.py` drives the workflows the feature exists for (exchange withdrawals and deposit sweeps, an OTC review-then-settle, payroll with memos, a merchant payment, reserve consolidation, a legacy Sapling payout). Four scenarios pin the guarantees rather than the happy path: a fund source isolates its pool rather than falling back to another, an address list restricts to exactly the named addresses, an abandoned proposal moves nothing, and finalize holds the caller to the policy the proposal reported.
+
 - `wallet_transparent_spend.py` covers transparent-to-transparent spending through `z_sendmany`: it shields coinbase and unshields to obtain a non-coinbase transparent UTXO (coinbase cannot be spent transparently), pins both privacy-policy rejections (`AllowRevealedSenders` and `AllowRevealedRecipients` are each insufficient on their own), and asserts the resulting transaction is fully transparent with its change at a fresh internal-scope address.
 
 ### Changed
+
+- Rewrote `wallet_z_sendmany.py` for the Z3 stack and re-enabled it. It was disabled because the zcashd original depended on `z_exportviewingkey`, `z_getbalanceforviewingkey`, `sendtoaddress`, and a Sprout section with no Z3 equivalent; it now uses the account/UA API.
 
 - Reactivated `wallet_changeaddresses.py` and `regtest_signrawtransaction.py`, migrated from the `zcashd` RPCs to the Z3 stack. Both were disabled pending an account/UA migration and both depend on transparent spending, which Zallet's `z_sendmany` now supports. Two zcashd behaviours no longer hold and are pinned as such: a transparent source must be named explicitly (`ANY_TADDR` is unsupported), and the change of a transparent-to-shielded send is shielded rather than returned to the transparent pool.
 
