@@ -46,6 +46,7 @@ from test_framework.config import ZebraArgs
 from test_framework.util import (
     COINBASE_MATURITY,
     COINBASE_SETTLE_SECS,
+    TotalBalanceField,
     assert_equal,
     assert_shieldcoinbase_preflight_shape,
     assert_true,
@@ -60,6 +61,8 @@ from test_framework.util import (
     stop_wallets,
     wait_and_assert_operationid_status,
     wait_bitcoinds,
+    wait_for_total_balance,
+    wait_for_tx_scanned,
     wait_zallets,
 )
 
@@ -272,32 +275,23 @@ class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
         spent_b = (mature_b[0]['txid'], mature_b[0]['outindex'])
 
         # ---- Phase 6: confirm the sweep tx. ------------------------
-        # Wait for the balance to reach exactly shieldingValue - fee: this is
-        # both the sync barrier (confirming block fully scanned) and an exact
-        # assertion.
+        # Wait for the confirming block to be scanned (the tx view carries a
+        # fee), then poll the balance to reach exactly shieldingValue - fee.
+        # z_gettotalbalance's summary tip can lag the scanned tx by a block, so
+        # this is both the sync barrier and the exact assertion.
         node.generate(1)
         shielding_value = Decimal(result['shieldingValue'])
-        deadline = time.time() + 180
-        fee = None
-        post_private = Decimal('0')
-        while time.time() < deadline:
-            try:
-                tx_details = w0.z_viewtransaction(txid)
-                if 'fee' in tx_details:
-                    fee = Decimal(tx_details['fee'])
-                    post_private = Decimal(w0.z_gettotalbalance(1, True)['private'])
-                    if fee > 0 and post_private == shielding_value - fee:
-                        break
-            except Exception:
-                pass
-            time.sleep(1)
+        fee = Decimal(wait_for_tx_scanned(w0, txid)['fee'])
+        expected_private = shielding_value - fee
+        post_private = wait_for_total_balance(
+            w0, TotalBalanceField.PRIVATE, lambda v: v == expected_private)
 
         # ---- Phase 7: post-sweep assertions (exact). ---------------
-        assert_true(fee is not None and fee > 0,
+        assert_true(fee > 0,
                     "Sweep fee should be positive, got {}".format(fee))
         assert_equal(
             post_private,
-            shielding_value - fee,
+            expected_private,
             "Post-sweep shielded balance should equal shieldingValue ({}) - fee ({}); "
             "got {}".format(shielding_value, fee, post_private))
 
