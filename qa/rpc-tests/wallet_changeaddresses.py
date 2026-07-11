@@ -31,6 +31,8 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     COIN,
     COINBASE_MATURITY,
+    INTERNAL_FEE,
+    MIN_CONFIRMATIONS,
     Pool,
     PrivacyPolicy,
     assert_equal,
@@ -102,8 +104,8 @@ class WalletChangeAddressesTest(BitcoinTestFramework):
             opid = w.z_sendmany(
                 ua_shielded,
                 [{'address': taddr_source, 'amount': SOURCE_UTXO_VALUE}],
-                1,
-                None,
+                MIN_CONFIRMATIONS,
+                INTERNAL_FEE,
                 PrivacyPolicy.ALLOW_REVEALED_RECIPIENTS)
             txid = wait_and_assert_operationid_status(w, opid)
             node.generate(1)
@@ -117,7 +119,7 @@ class WalletChangeAddressesTest(BitcoinTestFramework):
                     min_zat=int((SOURCE_UTXO_VALUE + Decimal('0.01')) * COIN))
         wait_for_stable_transparent(w, min_count=NUM_SOURCE_UTXOS)
 
-        source_utxos = [u for u in w.z_listunspent(1)
+        source_utxos = [u for u in w.z_listunspent(MIN_CONFIRMATIONS)
                         if u['pool'] == Pool.TRANSPARENT
                         and u['address'] == taddr_source]
         assert_equal(len(source_utxos), NUM_SOURCE_UTXOS)
@@ -129,8 +131,8 @@ class WalletChangeAddressesTest(BitcoinTestFramework):
                 opid = w.z_sendmany(
                     taddr_source,
                     [{'address': target, 'amount': SEND_VALUE}],
-                    1,
-                    None,
+                    MIN_CONFIRMATIONS,
+                    INTERNAL_FEE,
                     policy)
                 txid = wait_and_assert_operationid_status(w, opid)
                 node.generate(1)
