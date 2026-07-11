@@ -214,34 +214,6 @@ def sync_blocks(nodes, wallets=None, wait=0.125, timeout=60, allow_different_tip
         print('Wallet statuses:', wallet_status)
     raise AssertionError("Block sync failed")
 
-def sync_blocks_with_reconnect(rpcs, peer_idx, max_attempts=3, reconnect_pause=2):
-    """`sync_blocks` wrapped in retries that re-issue `addnode` between attempts.
-
-    Works around the 8-node `rebuild_cache` mesh sometimes failing to converge
-    within `sync_blocks`'s 60s timeout (zebra #10329, #10332).
-    """
-    last_err = None
-    for attempt in range(1, max_attempts + 1):
-        try:
-            sync_blocks(rpcs)
-            return
-        except AssertionError as e:
-            last_err = e
-            if attempt < max_attempts:
-                print(
-                    "sync_blocks attempt {}/{} timed out; reconnecting peers "
-                    "to node {} and retrying".format(attempt, max_attempts, peer_idx)
-                )
-                for i in range(len(rpcs)):
-                    if i != peer_idx:
-                        try:
-                            connect_nodes_bi(rpcs, i, peer_idx)
-                        except Exception:
-                            # Best-effort; next sync_blocks will surface real failures.
-                            pass
-                time.sleep(reconnect_pause)
-    raise last_err
-
 def sync_mempools(nodes, wallets=None, wait=0.5, timeout=60):
     """
     Wait until everybody has the same transactions in their memory
@@ -471,33 +443,8 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                 for j in range(25):
                     rpcs[peer].generate(1)
                     block_time += PRE_BLOSSOM_BLOCK_TARGET_SPACING
-                # Must sync before next peer mines; retry variant handles the
-                # 8-node mesh occasionally missing sync_blocks's 60s window.
-                sync_blocks_with_reconnect(rpcs, peer)
-                # Shut down and restart every zebrad node.
-                # This works around a zebrad problem where it won't broadcast
-                # received blocks to other connected nodes, and is a workaround
-                # for zebrad not supporting `addnode remove`.
-                # TODO: Remove this workaround once either of the following is resolved:
-                # - https://github.com/ZcashFoundation/zebra/issues/10329
-                # - https://github.com/ZcashFoundation/zebra/issues/10332
-                stop_nodes(rpcs)
-                wait_bitcoinds()
-                for i in range(MAX_NODES):
-                    config = zebrad_config(node_dir(cachedir, i))
-                    args = [ zebrad_binary(), "-c="+config, "start" ]
-                    bitcoind_processes[i] = subprocess.Popen(args)
-                    if os.getenv("PYTHON_DEBUG", ""):
-                        print("initialize_chain: %s started, waiting for RPC to come up" % (zebrad_binary(),))
-                    wait_for_zebrad_start(bitcoind_processes[i], rpc_url(i), i)
-                    if os.getenv("PYTHON_DEBUG", ""):
-                        print("initialize_chain: RPC successfully started")
-                for i in range(MAX_NODES):
-                    try:
-                        rpcs.append(get_rpc_proxy(rpc_url(i), i))
-                    except:
-                        sys.stderr.write("Error connecting to "+rpc_url(i)+"\n")
-                        sys.exit(1)
+                # Must sync before next peer starts generating blocks
+                sync_blocks(rpcs)
         # Check that local time isn't going backwards
         assert_greater_than(time.time() + 1, block_time)
 
@@ -852,15 +799,18 @@ def wait_bitcoinds():
 def connect_nodes(from_connection, node_num):
     ip_port = "127.0.0.1:"+str(p2p_port(node_num))
     # TODO: Replace `add` with `onetry` if zebrad implements it.
-    from_connection.addnode(ip_port, "add")
+    # zebrad may reject a duplicate `addnode add` for a peer already in its
+    # addnode list (it doesn't support `addnode remove`), so ignore that error.
+    try:
+        from_connection.addnode(ip_port, "add")
+    except JSONRPCException:
+        pass
     # poll until version handshake complete to avoid race conditions
     # with transaction relaying
     while True:
-        for peer in from_connection.getpeerinfo():
-            if peer['addr'] == ip_port:
-                return
-            else:
-                time.sleep(1)
+        if any(peer['addr'] == ip_port for peer in from_connection.getpeerinfo()):
+            return
+        time.sleep(1)
 
 def connect_nodes_bi(nodes, a, b):
     connect_nodes(nodes[a], b)

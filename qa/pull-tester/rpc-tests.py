@@ -295,6 +295,7 @@ NEW_SCRIPTS= [
     'getmininginfo.py',
     'zcashd_key_import.py',
     'zcashd_key_import_db.py',
+    'regtest_block_relay.py',
 ]
 
 ZMQ_SCRIPTS = [
