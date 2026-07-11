@@ -7,6 +7,7 @@ import hashlib
 __all__ = [
     "blake2b_personal",
     "blake2s_personal",
+    "hash160",
     "ripemd160",
     "sha256",
     "sha256d",
@@ -44,6 +45,11 @@ def ripemd160(data: bytes) -> bytes:
         ) from e
     h.update(data)
     return h.digest()
+
+
+def hash160(data: bytes) -> bytes:
+    """RIPEMD-160 of SHA-256, the hash in every transparent address."""
+    return ripemd160(sha256(data))
 
 
 def blake2b_personal(

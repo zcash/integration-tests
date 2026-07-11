@@ -33,10 +33,11 @@ Landed:
   heights, and a range-checked `Zatoshi` amount type.
 - `pyzcash.address` - transparent (P2PKH, P2SH), Sapling, Unified (ZIP 316),
   and TEX (ZIP 320) addresses, as a parsed tagged union.
+- `pyzcash.script` - opcodes, script parsing and building, the standard
+  templates, and the translation between scripts and transparent addresses.
 
 Planned, in dependency order:
 
-- `pyzcash.script` - opcodes, script parsing, and the standard templates.
 - `pyzcash.transaction` - the v1 through v5 transaction model (ZIP 225), with
   the transparent, Sprout, Sapling, and Orchard bundles.
 - `pyzcash.digest` - txid and auth digests, and sighash (ZIP 143/243/244).

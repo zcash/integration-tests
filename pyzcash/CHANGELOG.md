@@ -23,3 +23,6 @@ While the major version is 0, the public API may change in any minor release.
 - `pyzcash.address`: transparent (P2PKH/P2SH), Sapling, unified (ZIP 316), and
   TEX (ZIP 320) addresses as a tagged union, with `parse_address` as the entry
   point. The ZIP 316 structural rules are enforced on decode.
+- `pyzcash.script`: the `Opcode` enum, `Script` parsing and building, one
+  canonical script-number codec, the standard templates (P2PKH, P2SH, OP_RETURN,
+  multisig), and `script_pubkey_for` / `address_from_script_pubkey`.

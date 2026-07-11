@@ -28,6 +28,7 @@ from pyzcash.encoding.f4jumble import (
 from pyzcash.encoding.hashes import (
     blake2b_personal,
     blake2s_personal,
+    hash160,
     ripemd160,
     sha256,
     sha256d,
@@ -51,6 +52,7 @@ __all__ = [
     "convert_bits",
     "f4jumble",
     "f4jumble_inverse",
+    "hash160",
     "ripemd160",
     "sha256",
     "sha256d",

@@ -80,3 +80,37 @@ BASE58_PAYLOADS = (
     b"\x1c\xb8" + bytes(range(20)),
     b"\xff" * 32,
 )
+
+
+# --- scripts (from qa/rpc-tests/decodescript.py, whose expectations are the
+# node's own decodescript/asm output) ----------------------------------------
+
+# scriptPubKey of vout[0] of the P2SH-spending transaction in that test. The
+# node renders it as:
+#   OP_DUP OP_HASH160 dc863734a218bfe83ef770ee9d41a27f824a6e56
+#   OP_EQUALVERIFY OP_CHECKSIG
+P2PKH_SCRIPT_HEX = "76a914dc863734a218bfe83ef770ee9d41a27f824a6e5688ac"
+P2PKH_SCRIPT_HASH = bytes.fromhex("dc863734a218bfe83ef770ee9d41a27f824a6e56")
+
+# scriptPubKey of vout[1] of the same transaction.
+P2SH_SCRIPT_HEX = "a9142a5edea39971049a540474c6a99edf0aa4074c5887"
+P2SH_SCRIPT_HASH = bytes.fromhex("2a5edea39971049a540474c6a99edf0aa4074c58")
+
+# An OP_RETURN output. Note it is NOT the tidy "OP_RETURN <push>" template: it
+# is OP_RETURN, a 9-byte push, and then a trailing 0x80 (OP_LEFT, a disabled
+# opcode). Nothing forbids that, since the output is unspendable regardless, and
+# it is kept precisely because a parser that assumed the tidy shape misreads it.
+OP_RETURN_SCRIPT_HEX = "6a0930060201000201000180"
+OP_RETURN_DATA = bytes.fromhex("300602010002010001")
+
+# The 2-of-3 multisig redeem script from that transaction's P2SH scriptSig.
+# It is 0x69 (105) bytes, which is why the scriptSig pushes it with
+# OP_PUSHDATA1 rather than a direct push: that is the real-world case that
+# distinguishes a correct script parser from one that only handles short pushes.
+MULTISIG_2OF3_HEX = (
+    "5221020743d44be989540d27b1b4bbbcfd17721c337cb6bc9af20eb8a32520b393532f"
+    "2102c0120a1dda9e51a938d39ddd9fe0ebc45ea97e1d27a7cbd671d5431416d3dd87"
+    "210213820eb3d5f509d7438c9eeecb4157b2f595105e7cd564b3cdbb9ead3da41eed"
+    "53ae"
+)
+PUSHDATA1_SCRIPT_HEX = "4c69" + MULTISIG_2OF3_HEX
