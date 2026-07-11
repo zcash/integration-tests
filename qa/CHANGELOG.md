@@ -9,7 +9,13 @@ We do not publish package releases or Git tags for this project. Each version en
 
 ## [Unreleased]
 
+### Added
+
+- `wallet_transparent_spend.py` covers transparent-to-transparent spending through `z_sendmany`: it shields coinbase and unshields to obtain a non-coinbase transparent UTXO (coinbase cannot be spent transparently), pins both privacy-policy rejections (`AllowRevealedSenders` and `AllowRevealedRecipients` are each insufficient on their own), and asserts the resulting transaction is fully transparent with its change at a fresh internal-scope address.
+
 ### Changed
+
+- Reactivated `wallet_changeaddresses.py` and `regtest_signrawtransaction.py`, migrated from the `zcashd` RPCs to the Z3 stack. Both were disabled pending an account/UA migration and both depend on transparent spending, which Zallet's `z_sendmany` now supports. Two zcashd behaviours no longer hold and are pinned as such: a transparent source must be named explicitly (`ANY_TADDR` is unsupported), and the change of a transparent-to-shielded send is shielded rather than returned to the transparent pool.
 
 - Support Zallet's launcher-plus-backend structure: `zallet` is a launcher that execs a per-backend binary. CI builds the launcher plus the `zallet-zaino` backend binary and ships both to the test runners, and the default `zallet.toml` selects the Zaino backend via its top-level `backend` key. The build falls back to the single-binary layout when the checked-out wallet has no `backends/` directory.
 
