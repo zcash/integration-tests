@@ -20,3 +20,6 @@ While the major version is 0, the public API may change in any minor release.
 - `pyzcash.consensus`: `Network`, `NetworkUpgrade` with its consensus branch ID
   and per-network activation heights, `branch_id_for_height`, and `Zatoshi`, a
   range-checked amount type that refuses floats.
+- `pyzcash.address`: transparent (P2PKH/P2SH), Sapling, unified (ZIP 316), and
+  TEX (ZIP 320) addresses as a tagged union, with `parse_address` as the entry
+  point. The ZIP 316 structural rules are enforced on decode.

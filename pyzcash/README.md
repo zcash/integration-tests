@@ -7,7 +7,13 @@ scripts, and transactions, and compute the digests the consensus rules define.
 formats; it does not talk to a node, verify proofs, or decide what is valid.
 
 ```python
-from pyzcash import ZcashError
+from pyzcash import Network
+from pyzcash.address import parse_address, UnifiedAddress, ReceiverType
+
+address = parse_address("u1...", Network.MAIN)
+match address:
+    case UnifiedAddress() if address.has_orchard:
+        orchard = address.receiver(ReceiverType.ORCHARD)
 ```
 
 ## Status
@@ -25,11 +31,11 @@ Landed:
   the hash functions (SHA-256d, personalized BLAKE2b).
 - `pyzcash.consensus` - networks, network upgrades, branch IDs, activation
   heights, and a range-checked `Zatoshi` amount type.
+- `pyzcash.address` - transparent (P2PKH, P2SH), Sapling, Unified (ZIP 316),
+  and TEX (ZIP 320) addresses, as a parsed tagged union.
 
 Planned, in dependency order:
 
-- `pyzcash.address` - transparent (P2PKH, P2SH), Sapling, Unified (ZIP 316),
-  and TEX (ZIP 320) addresses and viewing keys, as a parsed tagged union.
 - `pyzcash.script` - opcodes, script parsing, and the standard templates.
 - `pyzcash.transaction` - the v1 through v5 transaction model (ZIP 225), with
   the transparent, Sprout, Sapling, and Orchard bundles.

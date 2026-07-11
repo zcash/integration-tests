@@ -11,9 +11,11 @@ The library is built in layers, each usable on its own:
                              Bech32/Bech32m, F4Jumble) and the hash functions
 - :mod:`pyzcash.consensus`   networks, upgrades, branch IDs, and the Zatoshi
                              amount type
+- :mod:`pyzcash.address`     transparent, Sapling, unified (ZIP 316), and TEX
+                             (ZIP 320) addresses, as a tagged union
 
-Layers still to land: addresses, scripts, transactions, digests
-(ZIP 143/243/244), and fees (ZIP 317).
+Layers still to land: scripts, transactions, digests (ZIP 143/243/244), and
+fees (ZIP 317).
 
 This library does not verify proofs, decrypt notes, or validate consensus. It
 reads and writes the wire formats; it does not decide what is valid.
