@@ -13,10 +13,12 @@
 # Migrated from the zcashd test to the Z3 stack (zebrad + zaino + zallet). Two
 # behavioural differences from zcashd are pinned deliberately:
 #
-#   * zcashd could source a t-send from `ANY_TADDR`; zallet spends transparent
-#     funds only when `fromaddress` names a single transparent address, and
-#     draws only on that address's UTXOs. So `taddr_source` is funded with
-#     several separate UTXOs, and each send consumes one of them.
+#   * zcashd could source any t-send from `ANY_TADDR`. In zallet `ANY_TADDR`
+#     names the legacy `zcashd` pool of funds specifically (an account, enabled
+#     by config; see wallet_legacy_pool_spend.py), so a send from an ordinary
+#     account must name a single transparent address, and then draws only on
+#     that address's UTXOs. So `taddr_source` is funded with several separate
+#     UTXOs, and each send consumes one of them.
 #
 #   * A t-to-Sapling send is NOT fully transparent (it has a shielded output),
 #     so zallet shields its change rather than returning it to the transparent
