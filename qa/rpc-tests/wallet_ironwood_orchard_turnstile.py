@@ -25,11 +25,13 @@
 # t-addr as the `fromaddress`.
 #
 
+import re
 from decimal import Decimal, ROUND_DOWN
 
 from test_framework.util import (
     COIN,
     COINBASE_MATURITY,
+    AuthJSONRPCException,
     Pool,
     PrivacyPolicy,
     account_spendable_zat,
@@ -47,6 +49,16 @@ from test_framework.util_ironwood import IronwoodTestFramework
 from test_framework.util import nu_activation_ironwood_at
 
 IRONWOOD_HEIGHT = 210
+
+# "Failed to propose transaction: Insufficient balance (have 123, need 456
+# including fee)" -- the fee for combining many small notes (e.g. a pool that
+# accumulated several separate coinbase/change notes over the course of the
+# test) can exceed force_shielded_amount()'s fixed safety buffer. Rather than
+# guess a buffer large enough for every possible note layout, extract the
+# exact shortfall from the proposal error and retry with the amount reduced
+# by it.
+_INSUFFICIENT_BALANCE_RE = re.compile(
+    r"Insufficient balance \(have (\d+), need (\d+) including fee\)")
 
 
 def payment_outputs(view, pool):
@@ -92,9 +104,26 @@ class WalletIronwoodOrchardTurnstileTest(IronwoodTestFramework):
             Decimal('0.0001'), rounding=ROUND_DOWN)
 
     def send(self, node, w, from_addr, to_addr, amount, policy):
-        """z_sendmany one recipient, confirm, settle, and return the tx view."""
-        opid = w.z_sendmany(
-            from_addr, [{'address': to_addr, 'amount': amount}], 1, None, policy)
+        """z_sendmany one recipient, confirm, settle, and return the tx view.
+
+        Retries with the amount reduced by the exact reported shortfall if
+        the wallet's proposal fails on insufficient balance -- see
+        _INSUFFICIENT_BALANCE_RE above."""
+        opid = None
+        for attempt in range(5):
+            try:
+                opid = w.z_sendmany(
+                    from_addr, [{'address': to_addr, 'amount': amount}], 1,
+                    None, policy)
+                break
+            except AuthJSONRPCException as e:
+                match = _INSUFFICIENT_BALANCE_RE.search(
+                    e.error.get('message', ''))
+                if not match or attempt == 4:
+                    raise
+                have, need = int(match.group(1)), int(match.group(2))
+                amount = (amount - Decimal(need - have) / COIN).quantize(
+                    Decimal('0.0001'), rounding=ROUND_DOWN)
         txid = wait_and_assert_operationid_status(w, opid)
         assert_true(txid is not None, "send should succeed")
         node.generate(1)
