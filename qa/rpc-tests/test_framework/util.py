@@ -42,6 +42,8 @@ from .authproxy import JSONRPCException as AuthJSONRPCException
 # accept either.
 _RPC_EXCEPTIONS = (JSONRPCException, AuthJSONRPCException)
 
+from pyzcash.consensus import COIN as _COIN, NetworkUpgrade, Zatoshi
+
 from test_framework.config import (
     ZainoConfig,
     ZebraConfig,
@@ -54,17 +56,22 @@ COVERAGE_DIR = None
 PRE_BLOSSOM_BLOCK_TARGET_SPACING = 150
 POST_BLOSSOM_BLOCK_TARGET_SPACING = 75
 
-SPROUT_BRANCH_ID = 0x00000000
-OVERWINTER_BRANCH_ID = 0x5BA81B19
-SAPLING_BRANCH_ID = 0x76B809BB
-BLOSSOM_BRANCH_ID = 0x2BB40E60
-HEARTWOOD_BRANCH_ID = 0xF5B9230B
-CANOPY_BRANCH_ID = 0xE9FF75A6
-NU5_BRANCH_ID = 0xC2D6D0B4
-NU6_BRANCH_ID = 0xC8E71055
-NU6_1_BRANCH_ID = 0x4DEC4DF0
-NU6_2_BRANCH_ID = 0x5437f330
-NU6_3_BRANCH_ID = 0x37A5165B
+# The consensus branch IDs come from pyzcash, so there is one definition of them
+# rather than a copy here. A branch ID is mixed into every sighash from
+# Overwinter onwards: using the wrong one does not produce a rejected
+# transaction, it produces an invalid signature, so two copies that could drift
+# apart is not a risk worth carrying.
+SPROUT_BRANCH_ID = NetworkUpgrade.SPROUT.branch_id
+OVERWINTER_BRANCH_ID = NetworkUpgrade.OVERWINTER.branch_id
+SAPLING_BRANCH_ID = NetworkUpgrade.SAPLING.branch_id
+BLOSSOM_BRANCH_ID = NetworkUpgrade.BLOSSOM.branch_id
+HEARTWOOD_BRANCH_ID = NetworkUpgrade.HEARTWOOD.branch_id
+CANOPY_BRANCH_ID = NetworkUpgrade.CANOPY.branch_id
+NU5_BRANCH_ID = NetworkUpgrade.NU5.branch_id
+NU6_BRANCH_ID = NetworkUpgrade.NU6.branch_id
+NU6_1_BRANCH_ID = NetworkUpgrade.NU6_1.branch_id
+NU6_2_BRANCH_ID = NetworkUpgrade.NU6_2.branch_id
+NU6_3_BRANCH_ID = NetworkUpgrade.NU6_3.branch_id
 
 # The maximum number of nodes a single test can spawn
 MAX_NODES = 8
@@ -1940,14 +1947,23 @@ def wait_for_pool_note(wallet: RpcProxy, pool: Pool | str, minconf: int = 1,
             timeout, pool))
 
 
-# One ZEC in zatoshis. Mirrors test_framework.mininode.COIN; defined here too
-# so wallet tests can convert ZEC amounts without importing mininode.
-COIN = 100000000
+# One ZEC in zatoshis. This used to be defined here AND in mininode.py, two
+# copies of the same constant. pyzcash now has the single definition; it is
+# re-exported here because tests import it from this module.
+COIN = _COIN
 
 
 def zat(zec: str | Decimal | int | float) -> int:
-    """Convert a ZEC amount (str / Decimal / number) to integer zatoshis."""
-    return int((Decimal(str(zec)) * COIN).to_integral_value())
+    """Convert a ZEC amount (str / Decimal / number) to integer zatoshis.
+
+    Goes through pyzcash's Zatoshi, so the result is range-checked against
+    MAX_MONEY rather than being any integer that happened to come out of the
+    arithmetic. A float is stringified first: Zatoshi refuses one outright,
+    because most ZEC amounts are not exactly representable in binary floating
+    point, but the tests have always passed them, and str() gives the value the
+    caller wrote rather than the one the float actually holds.
+    """
+    return Zatoshi.from_zec(Decimal(str(zec))).value
 
 
 def _balance_held(bal: dict) -> int:
