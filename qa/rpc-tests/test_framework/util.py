@@ -1294,7 +1294,7 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
     # Params that update_zallet_conf knows how to apply. Any param set on
     # `extra_args` that is not authorized here is rejected rather than silently
     # ignored.
-    AUTHORIZED_PARAMS = {"activation_heights"}
+    AUTHORIZED_PARAMS = {"activation_heights", "legacy_pool_seed_fingerprint"}
     defaults = vars(ZalletArgs())
     provided = {k for k, v in vars(extra_args).items() if v != defaults.get(k)}
     assert provided <= AUTHORIZED_PARAMS, \
@@ -1306,6 +1306,10 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
         config_file['consensus']['network'] = 'regtest'
         config_file['consensus']['regtest_nuparams'] = \
             render_regtest_nuparams(extra_args.activation_heights)
+
+    if extra_args.legacy_pool_seed_fingerprint:
+        config_file.setdefault('features', {})['legacy_pool_seed_fingerprint'] = \
+            extra_args.legacy_pool_seed_fingerprint
 
     with open(config_path, "w", encoding="utf8") as f:
         toml.dump(config_file, f)
@@ -1515,6 +1519,19 @@ INTERNAL_FEE = None
 # funds with at least this many confirmations. One is the usual choice: it takes
 # confirmed funds only, without waiting beyond a single block.
 MIN_CONFIRMATIONS = 1
+
+# The `fromaddress` of z_sendmany that selects the legacy `zcashd` pool of funds:
+# spend non-coinbase UTXOs from any transparent address in it, rather than from
+# one named address. Zallet holds that pool in a single account, so the wallet
+# must be told which one via `ZalletArgs.legacy_pool_seed_fingerprint`.
+ANY_TADDR = 'ANY_TADDR'
+
+# The ZIP 32 account index at which `zcashd` derived every address handed out by
+# the legacy `getnewaddress` / `z_getnewaddress` methods. It is the account index
+# of the legacy pool, and (with the wallet's seed fingerprint) is what identifies
+# that account to Zallet. `zallet migrate-zcashd-wallet` creates it when importing
+# a `zcashd` wallet; a test creates the same account with `z_recoveraccounts`.
+ZCASHD_LEGACY_ACCOUNT_INDEX = 0x7FFFFFFF
 
 # Wallets and nodes handed to tests are RPC proxies (see `get_rpc_proxy`): a
 # coverage wrapper around an AuthServiceProxy that dispatches arbitrary RPC
