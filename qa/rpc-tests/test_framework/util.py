@@ -511,54 +511,47 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         # restart. Reconnect every node to whichever one is furthest ahead
         # (not necessarily node 0 -- if the last per-round sync above didn't
         # fully seat everyone before the restart, a fixed hub could itself be
-        # behind) so every node converges to a single tip before the cache is
-        # used -- skipping this reconnect was the root cause of
+        # behind) -- skipping this reconnect was the root cause of
         # zcash/integration-tests#136 (nodes left at divergent heights on one
         # non-forked chain, which then hung or timed out in the wallet-sync
         # wait below).
         #
-        # This uses a dedicated, patient poll rather than
-        # sync_blocks_with_reconnect: that helper's budget (3 * 60s) is tuned
-        # for the warm, incremental per-round syncs above, where nodes already
-        # have an established peer connection and are mid-sync. Here every
-        # node is coming up cold with zero peers, so the initial handshake +
-        # catch-up can take longer; CI has been observed to still be
-        # unconverged past 3 minutes. Reconnects are retried every 15s in case
-        # `addnode` was issued before a peer's P2P listener was fully up.
-        # Diagnostics go to stderr+flush: the pull-tester's
-        # subprocess.check_output silently drops stdout on a non-zero exit
-        # (see #136), so a plain print here would vanish on exactly the
-        # failure path where it's needed.
+        # A brief poll gives P2P a chance to catch everyone up on its own
+        # (cheap when it works: usually a couple of seconds). But P2P relay to
+        # a freshly-connected peer has been observed to leave a node stuck
+        # exactly one block short *indefinitely* (zebra #10329/#10332): every
+        # other round in the mining loop above stays synced only because it
+        # mines a NEW block right after connecting, which triggers a fresh
+        # announcement -- there's nothing left to mine here to trigger that
+        # for a straggler. So any node still behind after the brief poll gets
+        # the missing blocks copied directly via getblock/submitblock, which
+        # doesn't depend on P2P relay at all.
         tip_node = max(range(MAX_NODES), key=lambda i: rpcs[i].getblockcount())
         target_height = rpcs[tip_node].getblockcount()
-        deadline = time.time() + 300
-        last_heights = None
-        next_reconnect = time.time()
+        for i in range(MAX_NODES):
+            if i != tip_node:
+                connect_nodes_bi(rpcs, i, tip_node)
+        deadline = time.time() + 30
         while time.time() < deadline:
-            heights = [r.getblockcount() for r in rpcs]
-            if all(h == target_height for h in heights):
+            if all(r.getblockcount() == target_height for r in rpcs):
                 break
-            if heights != last_heights:
-                print(
-                    "[rebuild_cache] post-restart mesh converging to height "
-                    "{} (node {}): {}".format(target_height, tip_node, heights),
-                    file=sys.stderr, flush=True,
-                )
-                last_heights = heights
-            if time.time() >= next_reconnect:
-                for i in range(MAX_NODES):
-                    if i != tip_node:
-                        try:
-                            connect_nodes_bi(rpcs, i, tip_node)
-                        except Exception:
-                            pass
-                next_reconnect = time.time() + 15
             time.sleep(1)
-        else:
-            raise AssertionError(
-                "post-restart mesh did not converge to height {} (node {}) "
-                "within 300s: {}".format(
-                    target_height, tip_node, [r.getblockcount() for r in rpcs]))
+        straggler_heights = {i: rpcs[i].getblockcount() for i in range(MAX_NODES)
+                             if rpcs[i].getblockcount() < target_height}
+        if straggler_heights:
+            print(
+                "[rebuild_cache] P2P left {} node(s) behind height {}: {}; "
+                "copying the missing blocks directly".format(
+                    len(straggler_heights), target_height, straggler_heights),
+                file=sys.stderr, flush=True,
+            )
+            for i, height in straggler_heights.items():
+                for h in range(height + 1, target_height + 1):
+                    rpcs[i].submitblock(rpcs[tip_node].getblock(str(h), 0))
+                assert_equal(
+                    rpcs[i].getblockcount(), target_height,
+                    "node {} still behind after copying blocks {}..{} from "
+                    "node {}".format(i, height + 1, target_height, tip_node))
         # Check that local time isn't going backwards
         assert_greater_than(time.time() + 1, block_time)
 
