@@ -1,99 +1,178 @@
 #!/usr/bin/env python3
-# Copyright (c) 2019-2024 The Zcash developers
+# Copyright (c) 2019-2026 The Zcash developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import (
-    SAPLING_BRANCH_ID,
-    connect_nodes_bi,
-    get_coinbase_address,
-    initialize_chain_clean,
-    nuparams,
-    start_node,
-    wait_and_assert_operationid_status,
-)
-from test_framework.zip317 import conventional_fee, ZIP_317_FEE
+#
+# Transparent change addresses are never reused.
+#
+# A fully-transparent send returns its change to an internal-scope (BIP 44)
+# transparent address. Reusing one across transactions would publicly link them,
+# so each send must reserve a fresh one.
+#
+# Migrated from the zcashd test to the Z3 stack (zebrad + zaino + zallet). Two
+# behavioural differences from zcashd are pinned deliberately:
+#
+#   * zcashd could source any t-send from `ANY_TADDR`. In zallet `ANY_TADDR`
+#     names the legacy `zcashd` pool of funds specifically (an account, enabled
+#     by config; see wallet_legacy_pool_spend.py), so a send from an ordinary
+#     account must name a single transparent address, and then draws only on
+#     that address's UTXOs. So `taddr_source` is funded with several separate
+#     UTXOs, and each send consumes one of them.
+#
+#   * A t-to-Sapling send is NOT fully transparent (it has a shielded output),
+#     so zallet shields its change rather than returning it to the transparent
+#     pool as zcashd did. That case therefore asserts the absence of transparent
+#     change instead of change-address rotation; only the t-to-t case can
+#     exercise transparent change at all.
+#
 
 from decimal import Decimal
 
-# Test wallet change address behaviour
+from test_framework.test_framework import BitcoinTestFramework
+from test_framework.util import (
+    COIN,
+    COINBASE_MATURITY,
+    INTERNAL_FEE,
+    MIN_CONFIRMATIONS,
+    Pool,
+    PrivacyPolicy,
+    assert_equal,
+    assert_true,
+    first_transparent_receiver,
+    transparent_change_address,
+    transparent_output_addresses,
+    unified_address_for,
+    wait_and_assert_operationid_status,
+    wait_for_account_spendable,
+    wait_for_mature_coinbase_count,
+    wait_for_stable_transparent,
+    wait_for_tx_scanned,
+)
+
+# Each send from `taddr_source` consumes one of its UTXOs, and the change goes to
+# a fresh internal address rather than back to the source. Four sends are made
+# (two per policy under test), so fund the source with one UTXO each, plus slack.
+NUM_SOURCE_UTXOS = 6
+SOURCE_UTXO_VALUE = Decimal('2')
+SEND_VALUE = Decimal('1')
+
+DIVERSIFIER_SHIELDED = 10
+DIVERSIFIER_SOURCE = 11
+DIVERSIFIER_TARGET = 12
+
+
 class WalletChangeAddressesTest(BitcoinTestFramework):
 
-    def setup_chain(self):
-        print("Initializing test directory " + self.options.tmpdir)
-        initialize_chain_clean(self.options.tmpdir, 2)
-
-    def setup_network(self):
-        args = [
-            nuparams(SAPLING_BRANCH_ID, 1),
-            '-txindex',              # Avoid JSONRPC error: No information available about transaction
-            '-allowdeprecated=getnewaddress',
-            '-allowdeprecated=z_getnewaddress',
-        ]
-        self.nodes = []
-        self.nodes.append(start_node(0, self.options.tmpdir, args))
-        self.nodes.append(start_node(1, self.options.tmpdir, args))
-        connect_nodes_bi(self.nodes,0,1)
-        self.is_network_split=False
-        self.sync_all()
+    def __init__(self):
+        super().__init__()
+        self.num_nodes = 1
+        self.num_wallets = 1
+        self.cache_behavior = 'clean'
 
     def run_test(self):
-        self.nodes[0].generate(110)
-
-        # Obtain some transparent funds
-        midAddr = self.nodes[0].z_getnewaddress('sapling')
-        coinbase_fee = conventional_fee(12)
-        myopid = self.nodes[0].z_shieldcoinbase(get_coinbase_address(self.nodes[0]), midAddr, coinbase_fee)['opid']
-        wait_and_assert_operationid_status(self.nodes[0], myopid)
+        node = self.nodes[0]
+        w = self.wallets[0]
+        miner_taddr = self.miner_addresses[0]
 
         self.sync_all()
-        self.nodes[1].generate(1)
-        self.sync_all()
+        acct = w.z_listaccounts()[0]['account_uuid']
 
-        taddrSource = self.nodes[0].getnewaddress()
-        recipients = [{"address": taddrSource, "amount": Decimal('2')}]
-        for _ in range(6):
-            myopid = self.nodes[0].z_sendmany(midAddr, recipients, 1, ZIP_317_FEE, 'AllowRevealedRecipients')
-            wait_and_assert_operationid_status(self.nodes[0], myopid)
-            self.sync_all()
-            self.nodes[1].generate(1)
-            self.sync_all()
+        ua_shielded = unified_address_for(w, acct, DIVERSIFIER_SHIELDED)
+        taddr_source = first_transparent_receiver(
+            w, unified_address_for(w, acct, DIVERSIFIER_SOURCE))
+        taddr_target = first_transparent_receiver(
+            w, unified_address_for(w, acct, DIVERSIFIER_TARGET))
 
-        def check_change_taddr_reuse(target, fee, policy):
-            recipients = [{"address": target, "amount": Decimal('1')}]
+        # Shield coinbase: coinbase cannot be spent transparently, so this is the
+        # only route to spendable non-coinbase transparent funds.
+        node.generate(COINBASE_MATURITY + 20)
+        wait_for_mature_coinbase_count(
+            w, node.getblockcount() - COINBASE_MATURITY + 1)
 
-            # Send funds to recipient address twice
-            myopid = self.nodes[0].z_sendmany(taddrSource, recipients, 1, fee, policy)
-            txid1 = wait_and_assert_operationid_status(self.nodes[0], myopid)
-            self.nodes[1].generate(1)
-            self.sync_all()
-            myopid = self.nodes[0].z_sendmany(taddrSource, recipients, 1, fee, policy)
-            txid2 = wait_and_assert_operationid_status(self.nodes[0], myopid)
-            self.nodes[1].generate(1)
-            self.sync_all()
+        result = w.z_shieldcoinbase(miner_taddr, ua_shielded)
+        shielding_value = Decimal(result['shieldingValue'])
+        shield_txid = wait_and_assert_operationid_status(w, result['opid'])
+        node.generate(1)
+        shield_details = wait_for_tx_scanned(w, shield_txid)
+        shielded_zec = shielding_value - Decimal(shield_details['fee'])
+        wait_for_account_spendable(
+            w, acct, Pool.ORCHARD, min_zat=int(shielded_zec * COIN))
 
-            # Verify that the two transactions used different change addresses
-            tx1 = self.nodes[0].getrawtransaction(txid1, 1)
-            tx2 = self.nodes[0].getrawtransaction(txid2, 1)
-            for i in range(len(tx1['vout'])):
-                tx1OutAddrs = tx1['vout'][i]['scriptPubKey']['addresses']
-                tx2OutAddrs = tx2['vout'][i]['scriptPubKey']['addresses']
-                if tx1OutAddrs != [target]:
-                    print('Source address:     %s' % taddrSource)
-                    print('TX1 change address: %s' % tx1OutAddrs[0])
-                    print('TX2 change address: %s' % tx2OutAddrs[0])
-                    assert(tx1OutAddrs != tx2OutAddrs)
+        # Fund `taddr_source` with several distinct UTXOs.
+        print('Funding %s with %d UTXOs of %s ZEC'
+              % (taddr_source, NUM_SOURCE_UTXOS, SOURCE_UTXO_VALUE))
+        for i in range(NUM_SOURCE_UTXOS):
+            opid = w.z_sendmany(
+                ua_shielded,
+                [{'address': taddr_source, 'amount': SOURCE_UTXO_VALUE}],
+                MIN_CONFIRMATIONS,
+                INTERNAL_FEE,
+                PrivacyPolicy.ALLOW_REVEALED_RECIPIENTS)
+            txid = wait_and_assert_operationid_status(w, opid)
+            node.generate(1)
+            wait_for_tx_scanned(w, txid)
+            # Each send consumes the account's Orchard note and returns the
+            # remainder as shielded change; that change must regain a commitment
+            # tree position before the next iteration can spend it.
+            if i + 1 < NUM_SOURCE_UTXOS:
+                wait_for_account_spendable(
+                    w, acct, Pool.ORCHARD,
+                    min_zat=int((SOURCE_UTXO_VALUE + Decimal('0.01')) * COIN))
+        wait_for_stable_transparent(w, min_count=NUM_SOURCE_UTXOS)
 
-        taddr = self.nodes[0].getnewaddress()
-        saplingAddr = self.nodes[0].z_getnewaddress('sapling')
+        source_utxos = [u for u in w.z_listunspent(MIN_CONFIRMATIONS)
+                        if u['pool'] == Pool.TRANSPARENT
+                        and u['address'] == taddr_source]
+        assert_equal(len(source_utxos), NUM_SOURCE_UTXOS)
+
+        def send_twice(target, policy):
+            """Send to `target` twice from `taddr_source`, returning both txids."""
+            txids = []
+            for _ in range(2):
+                opid = w.z_sendmany(
+                    taddr_source,
+                    [{'address': target, 'amount': SEND_VALUE}],
+                    MIN_CONFIRMATIONS,
+                    INTERNAL_FEE,
+                    policy)
+                txid = wait_and_assert_operationid_status(w, opid)
+                node.generate(1)
+                wait_for_tx_scanned(w, txid)
+                txids.append(txid)
+            return txids
 
         print()
-        print('Checking z_sendmany(taddr->Sapling)')
-        check_change_taddr_reuse(saplingAddr, conventional_fee(3), 'AllowFullyTransparent')
+        print('Checking z_sendmany(taddr->Sapling): change is shielded')
+        # Not a fully-transparent flow, so there must be no transparent change:
+        # the only transparent output would be the recipient, and the recipient
+        # here is shielded, so there are no transparent outputs at all.
+        txid1, _txid2 = send_twice(ua_shielded, PrivacyPolicy.ALLOW_FULLY_TRANSPARENT)
+        assert_equal(transparent_output_addresses(node, txid1), [])
+
         print()
-        print('Checking z_sendmany(taddr->taddr)')
-        check_change_taddr_reuse(taddr, conventional_fee(1), 'AllowFullyTransparent')
+        print('Checking z_sendmany(taddr->taddr): change address is not reused')
+        txid1, txid2 = send_twice(taddr_target, PrivacyPolicy.ALLOW_FULLY_TRANSPARENT)
+
+        # Each send is fully transparent, so each has exactly two outputs: the
+        # recipient and the transparent change (asserted by the helper).
+        change1 = transparent_change_address(node, txid1, taddr_target)
+        change2 = transparent_change_address(node, txid2, taddr_target)
+        print('Source address:     %s' % taddr_source)
+        print('TX1 change address: %s' % change1)
+        print('TX2 change address: %s' % change2)
+
+        assert_true(
+            change1 != change2,
+            "the two transactions must use different change addresses")
+        for change in (change1, change2):
+            assert_true(
+                change not in (taddr_source, taddr_target),
+                "change must go to an internal address, not the source or target")
+
+        print()
+        print('All change-address tests passed!')
+
 
 if __name__ == '__main__':
     WalletChangeAddressesTest().main()

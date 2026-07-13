@@ -30,7 +30,7 @@ import re
 import errno
 
 from enum import Enum
-from typing import Callable
+from typing import Callable, Sequence
 
 from . import coverage
 from .proxy import ServiceProxy, JSONRPCException
@@ -1294,7 +1294,7 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
     # Params that update_zallet_conf knows how to apply. Any param set on
     # `extra_args` that is not authorized here is rejected rather than silently
     # ignored.
-    AUTHORIZED_PARAMS = {"activation_heights"}
+    AUTHORIZED_PARAMS = {"activation_heights", "legacy_pool_seed_fingerprint"}
     defaults = vars(ZalletArgs())
     provided = {k for k, v in vars(extra_args).items() if v != defaults.get(k)}
     assert provided <= AUTHORIZED_PARAMS, \
@@ -1306,6 +1306,10 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
         config_file['consensus']['network'] = 'regtest'
         config_file['consensus']['regtest_nuparams'] = \
             render_regtest_nuparams(extra_args.activation_heights)
+
+    if extra_args.legacy_pool_seed_fingerprint:
+        config_file.setdefault('features', {})['legacy_pool_seed_fingerprint'] = \
+            extra_args.legacy_pool_seed_fingerprint
 
     with open(config_path, "w", encoding="utf8") as f:
         toml.dump(config_file, f)
@@ -1505,6 +1509,30 @@ COINBASE_MATURITY = 100
 # (zcash/wallet#316).
 COINBASE_SETTLE_SECS = 35
 
+# The `fee` argument of z_sendmany / z_shieldcoinbase. Zallet always computes the
+# ZIP-317 fee itself and rejects the call if a fee is supplied, so the argument
+# must be null. Named, so that a call site carries `INTERNAL_FEE` rather than a
+# bare `None` whose meaning is unreadable there.
+INTERNAL_FEE = None
+
+# The `minconf` argument of z_sendmany / z_listunspent: spend (or report) only
+# funds with at least this many confirmations. One is the usual choice: it takes
+# confirmed funds only, without waiting beyond a single block.
+MIN_CONFIRMATIONS = 1
+
+# The `fromaddress` of z_sendmany that selects the legacy `zcashd` pool of funds:
+# spend non-coinbase UTXOs from any transparent address in it, rather than from
+# one named address. Zallet holds that pool in a single account, so the wallet
+# must be told which one via `ZalletArgs.legacy_pool_seed_fingerprint`.
+ANY_TADDR = 'ANY_TADDR'
+
+# The ZIP 32 account index at which `zcashd` derived every address handed out by
+# the legacy `getnewaddress` / `z_getnewaddress` methods. It is the account index
+# of the legacy pool, and (with the wallet's seed fingerprint) is what identifies
+# that account to Zallet. `zallet migrate-zcashd-wallet` creates it when importing
+# a `zcashd` wallet; a test creates the same account with `z_recoveraccounts`.
+ZCASHD_LEGACY_ACCOUNT_INDEX = 0x7FFFFFFF
+
 # Wallets and nodes handed to tests are RPC proxies (see `get_rpc_proxy`): a
 # coverage wrapper around an AuthServiceProxy that dispatches arbitrary RPC
 # method names via `__getattr__`.
@@ -1532,6 +1560,18 @@ class TotalBalanceField(str, Enum):
     TRANSPARENT = 'transparent'
     PRIVATE = 'private'
     TOTAL = 'total'
+
+
+class Receiver(str, Enum):
+    """A receiver type of a unified address, as named in the `receivers` argument
+    of `z_getaddressforaccount` and in the keys of `z_listunifiedreceivers`.
+    This is NOT a `Pool`: `p2pkh` and `p2sh` are distinct transparent receiver
+    kinds that share the single transparent `Pool`. Being `str`-valued, a member
+    can be passed straight to the RPC and used as a dict key on its output."""
+    ORCHARD = 'orchard'
+    SAPLING = 'sapling'
+    P2PKH = 'p2pkh'
+    P2SH = 'p2sh'
 
 
 class FundSource(str, Enum):
@@ -1589,6 +1629,40 @@ def ironwood_notes(wallet: RpcProxy, minconf: int = 1) -> list[dict]:
             if u.get('pool') == Pool.IRONWOOD]
 
 
+def transparent_output_addresses(node: RpcProxy, txid: str) -> list[list[str]]:
+    """The addresses of each transparent output of `txid`, in vout order.
+
+    Read from the NODE rather than the wallet, so it reflects what was actually
+    committed on-chain rather than the wallet's view of it. Each entry is the
+    address list of one output (a standard P2PKH/P2SH output has exactly one), so
+    a fully-transparent send with change yields two entries. Shielded outputs are
+    not transparent outputs and so do not appear: a fully-shielded transaction
+    yields an empty list.
+    """
+    raw = node.getrawtransaction(txid, 1)
+    return [vout['scriptPubKey']['addresses'] for vout in raw['vout']]
+
+
+def transparent_change_address(node: RpcProxy, txid: str, recipient: str) -> str:
+    """The transparent change address of a fully-transparent `txid` paying
+    `recipient`.
+
+    A fully-transparent send has exactly two transparent outputs: the payment to
+    `recipient`, and the change at an internal-scope (BIP 44) address. Asserts
+    that shape, so it doubles as a check that the transaction really is a
+    transparent send with change (and not, say, one whose change was shielded).
+    """
+    outs = transparent_output_addresses(node, txid)
+    assert_equal(len(outs), 2,
+                 " expected exactly a recipient and a change output in %s" % txid)
+    change = [addrs for addrs in outs if addrs != [recipient]]
+    assert_equal(len(change), 1,
+                 " expected %s to be exactly one output of %s" % (recipient, txid))
+    assert_equal(len(change[0]), 1,
+                 " expected a single change address in %s" % txid)
+    return change[0][0]
+
+
 def mature_coinbase_on_address(wallet: RpcProxy, taddr: str) -> list[dict]:
     """The wallet's mature transparent coinbase UTXOs held on `taddr`."""
     return [u for u in mature_transparent_utxos(wallet)
@@ -1599,12 +1673,35 @@ def first_transparent_receiver(wallet: RpcProxy, ua: str) -> str:
     """Return the transparent (P2PKH, else P2SH) receiver of a unified address
     created with a transparent component."""
     receivers = wallet.z_listunifiedreceivers(ua)
-    if 'p2pkh' in receivers:
-        return receivers['p2pkh']
-    if 'p2sh' in receivers:
-        return receivers['p2sh']
+    if Receiver.P2PKH in receivers:
+        return receivers[Receiver.P2PKH]
+    if Receiver.P2SH in receivers:
+        return receivers[Receiver.P2SH]
     raise AssertionError(
         "UA has no transparent receiver: {!r} -> {!r}".format(ua, receivers))
+
+
+def unified_address_for(wallet: RpcProxy, account_uuid: str,
+                        diversifier_index: int | None = None,
+                        receivers: Sequence[Receiver] = (Receiver.ORCHARD,
+                                                         Receiver.P2PKH)) -> str:
+    """A unified address of `account_uuid` carrying `receivers`.
+
+    A UA must include a shielded receiver, so a transparent receiver cannot
+    stand alone; the default pairs Orchard with P2PKH, giving an address that is
+    usable as both a shielded and a transparent endpoint (pass the transparent
+    one to `first_transparent_receiver`).
+
+    Pin `diversifier_index` when a test needs stable, distinct addresses: an
+    index may only ever be used with ONE receiver set, so callers wanting several
+    addresses must vary the INDEX, not the receiver set. Left unset, the wallet
+    picks the next available index.
+    """
+    if diversifier_index is None:
+        return wallet.z_getaddressforaccount(
+            account_uuid, list(receivers))['address']
+    return wallet.z_getaddressforaccount(
+        account_uuid, list(receivers), diversifier_index)['address']
 
 
 def nu_activation_all_at_1() -> dict:
