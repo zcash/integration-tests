@@ -4,8 +4,17 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.mininode import NodeConn, NodeConnCB, NetworkThread, \
-    EarlyDisconnectError, CInv, msg_inv, mininode_lock
+from test_framework.mininode import (
+    CInv,
+)
+from test_framework.p2p import (
+    EarlyDisconnectError,
+    NetworkThread,
+    NodeConn,
+    NodeConnCB,
+    mininode_lock,
+    msg_inv,
+)
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import ZCASHD_BINARY, start_nodes, p2p_port
 

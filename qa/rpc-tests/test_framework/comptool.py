@@ -8,18 +8,20 @@ from .blockstore import BlockStore, TxStore
 from .mininode import (
     CBlock,
     CBlockHeader,
-    CTransaction,
     CInv,
+    CTransaction,
+    MAX_INV_SZ,
+)
+from .p2p import (
+    NodeConn,
+    NodeConnCB,
+    mininode_lock,
     msg_block,
     msg_getheaders,
     msg_headers,
     msg_inv,
     msg_mempool,
     msg_ping,
-    mininode_lock,
-    MAX_INV_SZ,
-    NodeConn,
-    NodeConnCB,
 )
 from .util import p2p_port
 

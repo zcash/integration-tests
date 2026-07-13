@@ -4,7 +4,17 @@
 #             and for constructing a getheaders message
 #
 
-from .mininode import CBlock, CBlockHeader, CBlockLocator, CTransaction, msg_block, msg_headers, msg_tx
+from .mininode import (
+    CBlock,
+    CBlockHeader,
+    CBlockLocator,
+    CTransaction,
+)
+from .p2p import (
+    msg_block,
+    msg_headers,
+    msg_tx,
+)
 
 import sys
 from io import BytesIO

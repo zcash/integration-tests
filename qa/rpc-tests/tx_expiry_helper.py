@@ -6,8 +6,15 @@
 #
 # Common code for testing transaction expiry
 #
-from test_framework.mininode import CTransaction, NodeConnCB, mininode_lock, msg_ping, \
-    msg_pong
+from test_framework.mininode import (
+    CTransaction,
+)
+from test_framework.p2p import (
+    NodeConnCB,
+    mininode_lock,
+    msg_ping,
+    msg_pong,
+)
 from test_framework.util import fail
 
 import io
