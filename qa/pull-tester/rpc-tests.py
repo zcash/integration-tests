@@ -130,6 +130,7 @@ DISABLED_SCRIPTS = [
     'wallet_orchard_init.py',  # no zallet equiv yet: resendwallettransactions
     'wallet_orchard_persistence.py',  # deprecated; z_getbalanceforaccount->z_getbalances
     'wallet_orchard_reindex.py',  # deprecated; z_getbalanceforaccount->z_getbalances
+    'wallet_ironwood_migration.py',  # no zallet equiv yet: Orchard->Ironwood migration RPC (zcash_ironwood_migration_backend note-split planner still evolving); scaffolding self-skips
     'wallet_ironwood_reorg.py',  # zebra-backend: wait_for_wallet_sync never converges after invalidateblock (still hangs as of zallet@d168efe, past zallet#560/#563/#576)
     'wallet_ironwood_birthday.py',  # zebra-backend: recovered account's wait_for_wallet_sync(timeout=300) still times out (still hangs as of zallet@d168efe, past zallet#560/#563/#576)
     'wallet_overwintertx.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
@@ -281,6 +282,7 @@ NEW_SCRIPTS= [
     # vv Tests less than 7m vv
     # The two-shield Ironwood tests each mine two coinbase-maturity windows.
     'wallet_ironwood_crosspool.py',
+    'wallet_ironwood_migration.py',
     'wallet_ironwood_spending.py',
     'wallet_ironwood_invariants.py',
     # vv Tests less than 5m vv
