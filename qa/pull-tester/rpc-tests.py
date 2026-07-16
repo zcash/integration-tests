@@ -284,6 +284,7 @@ NEW_SCRIPTS= [
     'addnode.py',
     'wallet_z_shieldcoinbase.py',
     'wallet_z_shieldcoinbase_multi_taddr.py',
+    'wallet_transparent_coinbase_balance.py',
     # vv Tests less than 30s vv
     'feature_nu6.py',
     'feature_backup_non_finalized_state.py',
