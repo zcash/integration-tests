@@ -1564,6 +1564,26 @@ def transparent_change_address(node: RpcProxy, txid: str, recipient: str) -> str
     return change[0][0]
 
 
+def transparent_input_addresses(node: RpcProxy, txid: str) -> list[list[str]]:
+    """The addresses funding each transparent input of `txid`, in vin order.
+
+    Read from the NODE by resolving every input's prevout in its source
+    transaction, so it reflects what was actually spent on-chain. Each entry is
+    the address list of one spent output (a standard P2PKH/P2SH output has
+    exactly one). Coinbase inputs carry no prevout and are skipped, so a spend
+    that gathers UTXOs from several change addresses yields one entry per
+    gathered UTXO.
+    """
+    raw = node.getrawtransaction(txid, 1)
+    addresses = []
+    for vin in raw.get('vin', []):
+        if 'txid' not in vin:
+            continue
+        prev = node.getrawtransaction(vin['txid'], 1)
+        addresses.append(prev['vout'][vin['vout']]['scriptPubKey']['addresses'])
+    return addresses
+
+
 def mature_coinbase_on_address(wallet: RpcProxy, taddr: str) -> list[dict]:
     """The wallet's mature transparent coinbase UTXOs held on `taddr`."""
     return [u for u in mature_transparent_utxos(wallet)
