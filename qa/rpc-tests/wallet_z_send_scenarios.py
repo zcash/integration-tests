@@ -59,6 +59,8 @@ from test_framework.util import (
     first_transparent_receiver,
     nu_activation_all_at_1,
     start_nodes,
+    transparent_change_address,
+    transparent_input_addresses,
     unified_address_for,
     wait_and_assert_operationid_status,
     wait_for_account_balance,
@@ -151,6 +153,12 @@ class WalletZSendScenariosTest(BitcoinTestFramework):
         node.generate(1)
         wait_for_tx_scanned(w0, txid)
         return txid
+
+    @staticmethod
+    def _tx_fee(w0: RpcProxy, txid: str):
+        """The fee `txid` paid, as reported by z_viewtransaction (a positive
+        ZEC amount). The confirming block is already scanned by `_send`."""
+        return w0.z_viewtransaction(txid)['fee']
 
     def _fund_taddr(self, node, w0: RpcProxy, account_uuid: str, taddr: str,
                     amount: str) -> None:
@@ -282,6 +290,136 @@ class WalletZSendScenariosTest(BitcoinTestFramework):
                    PrivacyPolicy.NO_PRIVACY)
         wait_for_account_balance(w0, cold, Pool.TRANSPARENT, pre + zat("1.0"))
         print("  PASSED (transparent reserves consolidated 1.0 ZEC to cold)")
+
+    def scenario_mining_pool_payout_gathers_fragmented_funds(
+            self, node, w0: RpcProxy, external_miner: str,
+            pool_miners: list[str]) -> None:
+        # zcash/zallet#644: a mining pool whose payouts are transparent -> transparent
+        # (exchanges reject deposits with shielded inputs) fragments its own
+        # transparent funds. Every t->t send returns change to a fresh internal
+        # change address the operator never chose, and greedy selection leaves
+        # tails on those addresses. The account then "reports the total as
+        # spendable" but no z_sendmany source can gather it into one payout: no
+        # single address holds enough. `any_transparent` is the fix -- it selects
+        # non-coinbase UTXOs from ANY of the account's transparent addresses
+        # (internal change included) and can never reach a shielded note, so the
+        # gathered payout stays exchange-compatible. This reproduces the miner's
+        # exact pipeline on a FRESH account (the bug is about a wallet created
+        # from scratch), then pays the fragmented round in a single transaction.
+        print("Scenario: mining-pool payout gathers fragmented transparent funds "
+              "(any_transparent, zcash/zallet#644)...")
+
+        # ---- Phase 0: a fresh pool wallet, funded as the miner funds it -------
+        # coinbase -> shield -> de-shield onto the pool's own payout t-addrs.
+        pool = w0.z_getnewaccount("mining-pool")['account_uuid']
+        pool_ua = self._shielded(w0, pool)
+        pool_a = self._taddr(w0, pool)
+        pool_b = self._taddr(w0, pool)
+        assert_true(len({pool_a, pool_b}) == 2, "pool payout addresses must differ")
+        self._shield_coinbase(node, w0, pool_ua, self.miner_addresses[0], 4)
+        self._fund_taddr(node, w0, pool, pool_a, "2.0")
+        self._fund_taddr(node, w0, pool, pool_b, "2.0")
+        wait_for_account_balance(w0, pool, Pool.TRANSPARENT, zat("4.0"))
+
+        # ---- Phase 1: the wallet fragments its own funds ----------------------
+        # A t->t send from pool_a paying an external miner 0.5. The greedy
+        # selector spends pool_a's whole 2.0 UTXO; the ~1.5 change lands on a
+        # wallet-chosen internal change address, not on pool_a or pool_b.
+        ext_taddr = self._taddr(w0, external_miner)
+        txid1 = self._send(node, w0, pool, [pool_a],
+                           [{"address": ext_taddr, "amount": "0.5"}],
+                           PrivacyPolicy.ALLOW_FULLY_TRANSPARENT)
+        fee1 = self._tx_fee(w0, txid1)
+
+        # Recover the change address and prove the wallet moved the funds to an
+        # address the operator never chose.
+        change_addr = transparent_change_address(node, txid1, ext_taddr)
+        assert_true(change_addr not in (pool_a, pool_b, ext_taddr),
+                    "change went to {}, one of the addresses the operator chose; "
+                    "expected a wallet-generated internal change address".format(
+                        change_addr))
+
+        # The pool still owns that change: 4.0 - 0.5 paid out - fee remains,
+        # split across pool_b (2.0) and the new change address (~1.5 - fee).
+        expected_transparent = zat("4.0") - zat("0.5") - zat(fee1)
+        wait_for_account_balance(w0, pool, Pool.TRANSPARENT, expected_transparent)
+
+        # ---- Phase 2: the #644 failure mode, as a genuine precondition --------
+        # A payout round of three miners totalling 3.0. This exceeds every single
+        # address's holding (pool_b: 2.0; change: ~1.5) yet the account's reported
+        # transparent balance covers it -- "balance says spendable, but no single
+        # address can pay" is precisely the bug.
+        amounts = ["1.2", "1.0", "0.8"]
+        recipients = [{"address": self._taddr(w0, m), "amount": a}
+                      for m, a in zip(pool_miners, amounts)]
+
+        # Gate on z_listunspent (the signal the proposal builder's input
+        # selection tracks) before attempting any transparent send.
+        wait_for_stable_transparent(w0, min_count=2, minconf=MIN_CONFIRMATIONS)
+        # The account covers the round, but each of its two transparent addresses
+        # (read on-chain from the node) holds strictly less than it: pool_b 2.0,
+        # the change fragment ~1.5. This is the reported situation exactly.
+        assert_true(account_balance_zat(w0, pool, Pool.TRANSPARENT) >= zat("3.0"),
+                    "the account's transparent balance should cover the 3.0 round")
+        per_address = {addr: node.getaddressbalance(addr)['balance']
+                       for addr in (pool_b, change_addr)}
+        assert_true(max(per_address.values()) < zat("3.0"),
+                    "no single address should cover the 3.0 round; holdings were "
+                    "{}".format(per_address))
+
+        # Naming a single address must fail: pool_b alone cannot cover 3.0.
+        e = expect_rpc_error(
+            w0.z_sendfromaccount, pool, [pool_b], recipients,
+            MIN_CONFIRMATIONS, PrivacyPolicy.NO_PRIVACY)
+        assert_in_message(e, INSUFFICIENT_FUNDS)
+
+        # Under-acknowledgement must fail: covering the round forces >= 2 input
+        # addresses, and linking them with transparent recipients needs NoPrivacy,
+        # so AllowFullyTransparent is refused and no funds move.
+        pre_miner = [account_balance_zat(w0, m, Pool.TRANSPARENT) for m in pool_miners]
+        e = expect_rpc_error(
+            w0.z_sendfromaccount, pool, FundSource.ANY_TRANSPARENT, recipients,
+            MIN_CONFIRMATIONS, PrivacyPolicy.ALLOW_FULLY_TRANSPARENT)
+        assert_true(len(e.error['message']) > 0,
+                    "Expected a privacy-policy rejection for a linking t->t payout")
+        node.generate(1)
+        for m, p in zip(pool_miners, pre_miner):
+            assert_equal(account_balance_zat(w0, m, Pool.TRANSPARENT), p)
+
+        # ---- Phase 3: the fix -- one transaction pays the whole round ---------
+        # The account still holds Orchard notes at this moment; the payout must
+        # NOT touch them (exchanges reject deposits whose tx has shielded inputs).
+        assert_true(account_balance_zat(w0, pool, Pool.ORCHARD) > 0,
+                    "the pool should still hold Orchard notes to prove they are "
+                    "not spent")
+        pre_miner = [account_balance_zat(w0, m, Pool.TRANSPARENT) for m in pool_miners]
+        txid3 = self._send(node, w0, pool, FundSource.ANY_TRANSPARENT, recipients,
+                           PrivacyPolicy.NO_PRIVACY)
+        for m, a, p in zip(pool_miners, amounts, pre_miner):
+            wait_for_account_balance(w0, m, Pool.TRANSPARENT, p + zat(a))
+
+        # The payout gathered the fragments: >= 2 transparent inputs, from more
+        # than one distinct address, one of which is the Phase-1 change address.
+        raw = node.getrawtransaction(txid3, 1)
+        spent_inputs = [vin for vin in raw['vin'] if 'txid' in vin]
+        assert_true(len(spent_inputs) >= 2,
+                    "expected the payout to gather >= 2 transparent inputs, got "
+                    "{}".format(len(spent_inputs)))
+        input_addrs = {a for addrs in transparent_input_addresses(node, txid3)
+                       for a in addrs}
+        assert_true(len(input_addrs) >= 2,
+                    "expected inputs from > 1 distinct address, got {}".format(
+                        input_addrs))
+        assert_true(change_addr in input_addrs,
+                    "expected the Phase-1 change fragment {} to be spent; inputs "
+                    "came from {}".format(change_addr, input_addrs))
+
+        # And it spent NO shielded notes, so an exchange will accept the deposit.
+        assert_equal(len(raw['vjoinsplit']), 0)
+        assert_equal(len(raw.get('vShieldedSpend', [])), 0)
+        assert_equal(len(raw.get('orchard', {}).get('actions', [])), 0)
+        print("  PASSED (3 miners paid 1.2/1.0/0.8 in one tx; gathered the "
+              "internal change fragment, spent no shielded notes)")
 
     def scenario_sapling_legacy_payout(self, node, w0: RpcProxy, hot: str,
                                        sapling_ua: str, recipient: str) -> None:
@@ -450,6 +588,11 @@ class WalletZSendScenariosTest(BitcoinTestFramework):
         cold = w0.z_getnewaccount("cold-storage")['account_uuid']
         merchant = w0.z_getnewaccount("merchant")['account_uuid']
         recipient = w0.z_getnewaccount("sapling-recipient")['account_uuid']
+        # A mining pool's payout counterparties (zcash/zallet#644): an external
+        # miner it pays once, then a round of three miners it pays in one tx.
+        external_miner = w0.z_getnewaccount("external-miner")['account_uuid']
+        pool_miners = [w0.z_getnewaccount("pool-miner%d" % i)['account_uuid']
+                       for i in range(3)]
 
         print("Mining initial blocks to mature coinbase...")
         node.generate(COINBASE_MATURITY + 20)
@@ -469,6 +612,8 @@ class WalletZSendScenariosTest(BitcoinTestFramework):
         self.scenario_merchant_payment(node, w0, hot, merchant)
         self.scenario_exchange_deposit_sweep(node, w0, hot, cold)
         self.scenario_reserve_consolidation(node, w0, hot, cold)
+        self.scenario_mining_pool_payout_gathers_fragmented_funds(
+            node, w0, external_miner, pool_miners)
         self.scenario_sapling_legacy_payout(node, w0, hot, sapling_ua, recipient)
 
         print("\n==== Scenarios: the guarantees the feature is for ====")
