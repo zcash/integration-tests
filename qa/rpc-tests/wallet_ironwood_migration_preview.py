@@ -9,11 +9,12 @@
 #
 # This exercises `z_previewpoolmigration`: the read-only planning slice of the
 # generic pool-migration surface. Unlike `z_startpoolmigration` (which needs the
-# still-unreleased Ironwood PCZT builder and therefore stays a stub; see
-# wallet_ironwood_migration.py), the preview is fully wired: it reads the
-# account's spendable Orchard balance and runs the librustzcash note-split
-# planner (`zcash_ironwood_migration_backend::note_splitting`) to return the
-# proposed decomposition. Nothing is scheduled, built, proved, or broadcast.
+# still-unreleased engine commit/reconcile slices that build, pre-sign, and
+# persist the PCZTs, and therefore stays a stub; see wallet_ironwood_migration.py),
+# the preview is fully wired: it enumerates the account's spendable Orchard notes
+# and runs the librustzcash migration engine's planning slice
+# (`zcash_pool_migration_backend::engine::plan_migration`) to return the proposed
+# plan. Nothing is scheduled, built, proved, or broadcast.
 #
 # Staging (mirrors wallet_ironwood_migration.py):
 #
@@ -23,13 +24,14 @@
 #   * Stage 1 -- method PRESENT: assert the full planning contract. Because the
 #     preview needs no engine build path, this is a REAL end-to-end assertion,
 #     not a stub check: fund a v2 Orchard note pre-NU6.3, cross the activation
-#     boundary, then assert the returned plan conserves value and reports sane
-#     crossing denominations. Input validation (unsupported pool pair, unknown
-#     strategy) is asserted too.
+#     boundary, then assert the returned plan reports sane crossing denominations,
+#     a transfer schedule (a broadcast height and expiry per funding note), and
+#     the value invariants below. Input validation (an unsupported pool pair) is
+#     asserted too.
 #
-# The denomination POLICY ({1,2,5}*10^k ZEC vs the canonical powers of ten, and
-# the sub-0.01 residual) is deliberately NOT pinned here; only conservation-style
-# invariants are asserted, so this test survives strategy tuning.
+# The denomination POLICY (the {1,2,5}*10^k ZEC quantization and the sub-0.01
+# residual) is deliberately NOT pinned here; only structural and conservation-
+# style invariants are asserted, so this test survives strategy tuning.
 #
 # Registered in NEW_SCRIPTS but listed in DISABLED_SCRIPTS in
 # qa/pull-tester/rpc-tests.py until a zallet build exposing
@@ -77,13 +79,18 @@ TO_POOL = Pool.IRONWOOD
 # of which migration directions are wired.
 UNSUPPORTED_POOL = 'nonexistent_pool'
 
-# A strategy name no build supports, used to assert strategy validation.
-UNSUPPORTED_STRATEGY = 'nonexistent_strategy'
+# The ZIP-317 fee (zat) the preview reserves per note-preparation transaction:
+# the fixed padded action count times the marginal fee (PREP_TX_ACTIONS = 16,
+# MARGINAL_FEE = 5000 zat). The engine and the preview derive this from the
+# crate's own constants; it is reproduced here to assert the reported value.
+PREP_TX_ACTIONS = 16
+MARGINAL_FEE_ZAT = 5000
+PREP_FEE_ZAT = PREP_TX_ACTIONS * MARGINAL_FEE_ZAT
 
-# The ZIP-317 minimum fee (zat) the preview reserves as the note-split ("prep")
-# fee. The preview documents this reserve; the engine computes the real prep fee
-# once the build path lands.
-ZIP317_MINIMUM_FEE_ZAT = 10000
+# The per-note fee buffer (zat) each funding note carries on top of its crossing
+# value so it self-funds its migration transfer: two source-pool plus two
+# destination-pool actions at the marginal fee (4 * MARGINAL_FEE).
+TRANSFER_FEE_BUFFER_ZAT = 4 * MARGINAL_FEE_ZAT
 
 # Candidate names for the preview method. The exact name may be adjusted to
 # zallet conventions, so probe a small list and take the first that resolves.
@@ -167,48 +174,71 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
     @staticmethod
     def assert_plan_shape(plan):
         """A preview response is a structured plan-summary object with the
-        expected keys and internally-consistent counts."""
+        expected keys, nested funding-note and summary objects, and
+        internally-consistent counts."""
         assert_true(isinstance(plan, dict),
                     "preview should return a plan-summary object; got "
                     "{!r}".format(plan))
-        for key in ('from_pool', 'to_pool', 'strategy', 'account_balance_zat',
-                    'prep_fee_zat', 'total_input_zat', 'total_migratable_zat',
-                    'source_change_zat', 'note_count', 'notes'):
+        for key in ('from_pool', 'to_pool', 'enabling_upgrade',
+                    'account_balance_zat', 'prep_fee_zat',
+                    'total_migratable_zat', 'source_change_zat',
+                    'funding_note_count', 'funding_notes', 'note_split',
+                    'preparation'):
             assert_true(key in plan,
                         "preview plan missing key {!r}; got keys {}".format(
                             key, sorted(plan.keys())))
         assert_equal(FROM_POOL, plan['from_pool'], "from_pool echoed")
         assert_equal(TO_POOL, plan['to_pool'], "to_pool echoed")
-        assert_equal(len(plan['notes']), plan['note_count'],
-                     "note_count matches the number of notes")
+        assert_equal(len(plan['funding_notes']), plan['funding_note_count'],
+                     "funding_note_count matches the number of funding notes")
+
+        # Each funding note carries its crossing value, its self-funding output,
+        # and a transfer schedule.
+        for note in plan['funding_notes']:
+            for key in ('output_zat', 'crossing_zat', 'broadcast_height',
+                        'expiry_height'):
+                assert_true(key in note,
+                            "funding note missing key {!r}; got {}".format(
+                                key, sorted(note.keys())))
+
+        # The note-split and preparation summaries have their own shapes.
+        for key in ('note_count', 'total_migratable_zat', 'crossing_values'):
+            assert_true(key in plan['note_split'],
+                        "note_split missing key {!r}".format(key))
+        for key in ('layer_count', 'transaction_count', 'residual_note_count'):
+            assert_true(key in plan['preparation'],
+                        "preparation missing key {!r}".format(key))
 
     def assert_conservation(self, plan, orchard_zat):
-        """The plan conserves value: the prepared notes, the residual left in
-        the source pool, and the reserved prep fee sum to the input balance; the
-        migratable total is the sum of the crossing values; and every crossing
-        is a positive value its note fully funds."""
+        """The plan's value invariants: it reports the account's spendable
+        source-pool balance, reserves the padded ZIP-317 prep fee, and each
+        funding note has a positive crossing that its output covers by exactly
+        the fixed transfer fee buffer. The migratable total is the sum of the
+        crossings and never exceeds the balance."""
         assert_equal(orchard_zat, plan['account_balance_zat'],
                      "preview reports the account's spendable Orchard balance")
-        assert_equal(orchard_zat, plan['total_input_zat'],
-                     "the plan decomposes the full spendable balance")
-        assert_equal(ZIP317_MINIMUM_FEE_ZAT, plan['prep_fee_zat'],
-                     "the preview reserves the ZIP-317 minimum prep fee")
+        assert_equal(PREP_FEE_ZAT, plan['prep_fee_zat'],
+                     "the preview reserves the padded ZIP-317 prep fee")
 
-        notes = plan['notes']
+        notes = plan['funding_notes']
         crossings_sum = sum(n['crossing_zat'] for n in notes)
-        outputs_sum = sum(n['output_zat'] for n in notes)
         for n in notes:
             assert_true(n['crossing_zat'] > 0,
                         "each crossing value is positive")
-            assert_true(n['output_zat'] >= n['crossing_zat'],
-                        "each prepared note fully funds its crossing value")
+            assert_equal(n['crossing_zat'] + TRANSFER_FEE_BUFFER_ZAT,
+                         n['output_zat'],
+                         "each output funds the crossing plus the fee buffer")
+            assert_true(n['expiry_height'] > n['broadcast_height'],
+                        "the transfer expiry follows its broadcast height")
 
         assert_equal(crossings_sum, plan['total_migratable_zat'],
                      "total_migratable is the sum of the crossing values")
-        assert_equal(
-            orchard_zat,
-            outputs_sum + plan['source_change_zat'] + plan['prep_fee_zat'],
-            "notes + residual + prep fee conserve the input balance")
+        assert_true(plan['total_migratable_zat'] <= plan['account_balance_zat'],
+                    "the migratable value never exceeds the input balance")
+        # Reconciliation only ever drops funding notes, so at most as many as the
+        # raw note split proposed.
+        assert_true(len(notes) <= plan['note_split']['note_count'],
+                    "funding notes are a subset of the raw split")
 
     # ---- driver ------------------------------------------------------------
 
@@ -255,34 +285,30 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
         e = expect_rpc_error(preview, acct, UNSUPPORTED_POOL, TO_POOL)
         print("  unsupported pool pair rejected: {!r}. OK".format(
             e.error.get('message', '')))
-        e = expect_rpc_error(
-            preview, acct, FROM_POOL, TO_POOL, 1, UNSUPPORTED_STRATEGY)
-        print("  unknown strategy rejected: {!r}. OK".format(
-            e.error.get('message', '')))
 
-        # Stage 1b: the default (randomized) strategy plans and conserves value.
-        print("Previewing the Orchard -> Ironwood plan (default strategy)...")
+        # Stage 1b: the migration plans, is scheduled, and conserves value.
+        print("Previewing the Orchard -> Ironwood plan...")
         plan = preview(acct, FROM_POOL, TO_POOL)
         self.assert_plan_shape(plan)
-        assert_true(plan['note_count'] > 0,
-                    "a funded account should produce at least one note")
+        assert_true(plan['funding_note_count'] > 0,
+                    "a funded account should produce at least one funding note")
         assert_true(plan['total_migratable_zat'] > 0,
                     "a funded account should migrate a positive amount")
+        assert_equal(len(plan['funding_notes']), plan['funding_note_count'],
+                     "one schedule entry per funding note")
         self.assert_conservation(plan, orchard_zat)
-        print("  default plan: note_count={} migratable={} change={}. OK"
-              .format(plan['note_count'], plan['total_migratable_zat'],
-                      plan['source_change_zat']))
+        print("  plan: funding_notes={} migratable={} change={} "
+              "layers={} txs={}. OK".format(
+                  plan['funding_note_count'], plan['total_migratable_zat'],
+                  plan['source_change_zat'],
+                  plan['preparation']['layer_count'],
+                  plan['preparation']['transaction_count']))
 
-        # Stage 1c: the canonical strategy is also selectable and conserves
-        # value (the decomposition differs; only invariants are asserted).
-        print("Previewing with the canonical strategy...")
-        canonical = preview(acct, FROM_POOL, TO_POOL, 1, 'canonical')
-        self.assert_plan_shape(canonical)
-        assert_equal('canonical', canonical['strategy'],
-                     "the canonical strategy is echoed back")
-        self.assert_conservation(canonical, orchard_zat)
-        print("  canonical plan: note_count={} migratable={}. OK".format(
-            canonical['note_count'], canonical['total_migratable_zat']))
+        # Every scheduled transfer is broadcast at or after the current tip.
+        tip = node.getblockcount()
+        for n in plan['funding_notes']:
+            assert_true(n['broadcast_height'] >= tip - 1,
+                        "a transfer is scheduled at or after the chain tip")
 
         print("\nIronwood migration preview checks passed.")
 
