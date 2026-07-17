@@ -115,6 +115,13 @@ def parts_zat(acct, bucket):
     return total
 
 
+def shielded_spendable_zat(balances, account_uuid):
+    """Sum of the `spendable` buckets across the account's shielded pools."""
+    acct = account_section(balances, account_uuid)
+    return sum(bucket_zat(acct.get(pool), 'spendable')
+               for pool in SHIELDED_POOLS)
+
+
 def utxo_zat(utxo):
     """The value of a z_listunspent entry in zatoshis. Prefers the exact
     integer `valueZat` field; falls back to converting the decimal
@@ -353,6 +360,17 @@ class WalletTransparentCoinbaseBalanceTest(BitcoinTestFramework):
         # internally.
         send_zec = Decimal('2.5')
         send_zat = zat(send_zec)
+
+        # `private` (via z_gettotalbalance) counts pending value, but the
+        # freshly-shielded note must become *spendable* before it can fund a
+        # send: the wallet lags between a note being confirmed and being
+        # reported (and usable) as spendable (zcash/wallet#316). Wait on the
+        # spendable bucket, with ZIP-317 fee headroom, before proposing.
+        self.wait_for_balances(
+            w0,
+            lambda b: shielded_spendable_zat(b, account_uuid)
+            >= send_zat + zat(Decimal('0.001')))
+
         opid = w0.z_sendmany(
             ua_shielded, [{'address': taddr_b, 'amount': send_zec}],
             1, None, 'AllowRevealedRecipients')
