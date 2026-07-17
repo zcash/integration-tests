@@ -380,6 +380,24 @@ def wait_for_zebrad_start(process, url, i):
                 raise # unknown JSON RPC exception
         time.sleep(0.25)
 
+def init_wallet_encryption(zallet, datadir, stderr=None):
+    """
+    Initializes wallet encryption for the zallet at `datadir`.
+
+    Newer zallets (after 0.1.0-beta.1) require an age encryption identity to
+    exist before `init-wallet-encryption` will succeed, generated via the
+    `generate-encryption-identity` subcommand. Older zallets do not have that
+    subcommand and create the identity inside `init-wallet-encryption`; the
+    failure of the first invocation is harmless there, so we tolerate it.
+    """
+    args = [ zallet, "-d="+datadir, "generate-encryption-identity" ]
+    process = subprocess.Popen(args, stderr=stderr)
+    process.wait()
+
+    args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
+    process = subprocess.Popen(args, stderr=stderr)
+    process.wait()
+
 def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
     """
     Create a set of node datadirs in `test_dir`, based upon the specified
@@ -422,9 +440,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                                indexer_port=indexer_rpc_port(i),
                                zebra_state_dir=node_dir(cachedir, i))
 
-            args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
-            process = subprocess.Popen(args)
-            process.wait()
+            init_wallet_encryption(zallet, datadir)
 
             args = [ zallet, "-d="+datadir, "generate-mnemonic" ]
             process = subprocess.Popen(args)
@@ -1127,9 +1143,7 @@ def prepare_wallets_for_mining(num_wallets, dirname, binary=None, zallet_args=No
                            indexer_port=indexer_rpc_port(i),
                            zebra_state_dir=node_dir(dirname, i))
 
-        args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
-        process = subprocess.Popen(args)
-        process.wait()
+        init_wallet_encryption(zallet, datadir)
 
         args = [ zallet, "-d="+datadir, "generate-mnemonic" ]
         process = subprocess.Popen(args)
@@ -1179,9 +1193,7 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
 
     # We prepare the wallet if it is new
     if prepare:
-        args = [ binary, "-d="+datadir, "init-wallet-encryption" ]
-        process = subprocess.Popen(args, stderr=stderr)
-        process.wait()
+        init_wallet_encryption(binary, datadir, stderr=stderr)
 
         args = [ binary, "-d="+datadir, "generate-mnemonic" ]
         process = subprocess.Popen(args, stderr=stderr)
