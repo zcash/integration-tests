@@ -131,14 +131,10 @@ def is_canonical_denomination(zat):
         v //= 10
     return v in (1, 2, 5)
 
-# Candidate names for the preview method. The exact name may be adjusted to
-# zallet conventions, so probe a small list and take the first that resolves.
-PREVIEW_RPC_CANDIDATES = (
-    'z_previewpoolmigration',
-    'z_preview_pool_migration',
-    'z_poolmigrationpreview',
-    'z_migratepoolpreview',
-)
+# The preview RPC method name. The zallet RPC interface is stable, so this is a
+# single fixed name (earlier revisions probed a list of candidate names while
+# the naming was unsettled).
+PREVIEW_RPC = 'z_previewpoolmigration'
 
 
 class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
@@ -157,22 +153,16 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
         return (e.error.get('code') == RPC_METHOD_NOT_FOUND
                 or 'method not found' in msg)
 
-    def resolve_rpc_name(self, w, candidates, *probe_args):
-        """Return the first candidate name that resolves to a real method, else
-        None. Probes with `probe_args` (deliberately invalid, so the probe can
-        never trigger real work): an unknown method rejects the CALL
-        (method-not-found); an existing method rejects the ARGUMENTS."""
-        for name in candidates:
-            method = getattr(w, name)
-            try:
-                method(*probe_args)
-            except _RPC_EXCEPTIONS as e:
-                if self._is_method_not_found(e):
-                    continue  # this candidate does not exist; try the next
-                return name  # exists (rejected the arguments, not the method)
-            else:
-                return name  # exists and (surprisingly) accepted the probe
-        return None
+    def resolve_method(self, w, name, *probe_args):
+        """Return `name` if it resolves to a real RPC method, else None. Probes
+        with `probe_args` (deliberately invalid, so the probe can never trigger
+        real work): an unknown method rejects the CALL (method-not-found); an
+        existing method rejects the ARGUMENTS."""
+        try:
+            getattr(w, name)(*probe_args)
+        except _RPC_EXCEPTIONS as e:
+            return None if self._is_method_not_found(e) else name
+        return name
 
     # ---- fixture -----------------------------------------------------------
 
@@ -381,11 +371,11 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
         # Stage 0 gate: skip cleanly until the running zallet exposes the preview
         # method. The probe uses an unsupported pool pair so it can never do real
         # work, only reveal whether the method resolves.
-        preview_name = self.resolve_rpc_name(
-            w, PREVIEW_RPC_CANDIDATES, acct, UNSUPPORTED_POOL, UNSUPPORTED_POOL)
+        preview_name = self.resolve_method(
+            w, PREVIEW_RPC, acct, UNSUPPORTED_POOL, UNSUPPORTED_POOL)
         if preview_name is None:
-            print("SKIP: no zallet pool-migration preview RPC yet (tried {}); "
-                  "scaffolding only.".format(", ".join(PREVIEW_RPC_CANDIDATES)))
+            print("SKIP: no zallet pool-migration preview RPC ({}) yet; "
+                  "scaffolding only.".format(PREVIEW_RPC))
             return
         preview = getattr(w, preview_name)
         print("Pool-migration preview RPC: {}".format(preview_name))

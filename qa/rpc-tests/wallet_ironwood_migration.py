@@ -94,33 +94,15 @@ NOT_IMPLEMENTED_MARKERS = (
     'todo',
 )
 
-# Candidate names per migration method. The exact names may be adjusted to
-# zallet conventions, so probe a small list per method and take the first that
-# resolves to a real method. The `start` method is the capability gate.
-START_RPC_CANDIDATES = (
-    'z_startpoolmigration',
-    'z_start_pool_migration',
-    'z_poolmigrationstart',
-    'z_migratepool',
-    'z_migrate_pool',
-)
-STATUS_RPC_CANDIDATES = (
-    'z_getpoolmigrationstatus',
-    'z_poolmigrationstatus',
-    'z_get_pool_migration_status',
-)
-ADVANCE_RPC_CANDIDATES = (
-    'z_advancepoolmigration',
-    'z_advance_pool_migration',
-)
-CANCEL_RPC_CANDIDATES = (
-    'z_cancelpoolmigration',
-    'z_cancel_pool_migration',
-)
-LIST_RPC_CANDIDATES = (
-    'z_listpoolmigrations',
-    'z_list_pool_migrations',
-)
+# The pool-migration RPC method names. The zallet RPC interface is stable, so
+# each is a single fixed name (earlier revisions probed a list of candidate
+# names while the naming was unsettled). The `start` method is the capability
+# gate.
+START_RPC = 'z_startpoolmigration'
+STATUS_RPC = 'z_getpoolmigrationstatus'
+ADVANCE_RPC = 'z_advancepoolmigration'
+CANCEL_RPC = 'z_cancelpoolmigration'
+LIST_RPC = 'z_listpoolmigrations'
 
 
 def orchard_notes(wallet, minconf=1):
@@ -144,22 +126,16 @@ class WalletIronwoodMigrationTest(IronwoodTestFramework):
         return (e.error.get('code') == RPC_METHOD_NOT_FOUND
                 or 'method not found' in msg)
 
-    def resolve_rpc_name(self, w, candidates, *probe_args):
-        """Return the first candidate name that resolves to a real method, else
-        None. Probes with `probe_args` (deliberately invalid, so the probe can
-        never trigger a migration): an unknown method rejects the CALL
-        (method-not-found); an existing method rejects the ARGUMENTS."""
-        for name in candidates:
-            method = getattr(w, name)
-            try:
-                method(*probe_args)
-            except _RPC_EXCEPTIONS as e:
-                if self._is_method_not_found(e):
-                    continue  # this candidate does not exist; try the next
-                return name  # exists (rejected the arguments, not the method)
-            else:
-                return name  # exists and (surprisingly) accepted the probe
-        return None
+    def resolve_method(self, w, name, *probe_args):
+        """Return `name` if it resolves to a real RPC method, else None. Probes
+        with `probe_args` (deliberately invalid, so the probe can never trigger a
+        migration): an unknown method rejects the CALL (method-not-found); an
+        existing method rejects the ARGUMENTS."""
+        try:
+            getattr(w, name)(*probe_args)
+        except _RPC_EXCEPTIONS as e:
+            return None if self._is_method_not_found(e) else name
+        return name
 
     # ---- Stage 1: RPC-surface (stub-level) assertions ----------------------
 
@@ -283,22 +259,19 @@ class WalletIronwoodMigrationTest(IronwoodTestFramework):
         # Stage 0 gate: skip cleanly until zallet exposes the start method. This
         # keeps the module registered and runnable without failing while the
         # feature (and the librustzcash planner) are still evolving.
-        start_name = self.resolve_rpc_name(
-            w, START_RPC_CANDIDATES, UNSUPPORTED_POOL, UNSUPPORTED_POOL)
+        start_name = self.resolve_method(
+            w, START_RPC, UNSUPPORTED_POOL, UNSUPPORTED_POOL)
         if start_name is None:
-            print("SKIP: no zallet pool-migration start RPC yet (tried {}); "
-                  "scaffolding only.".format(", ".join(START_RPC_CANDIDATES)))
+            print("SKIP: no zallet pool-migration start RPC ({}) yet; "
+                  "scaffolding only.".format(START_RPC))
             return
 
         # Report which of the companion methods this build exposes
         # (informational; only `start` gates the flow).
-        status_name = self.resolve_rpc_name(
-            w, STATUS_RPC_CANDIDATES, UNSUPPORTED_POOL)
-        advance_name = self.resolve_rpc_name(
-            w, ADVANCE_RPC_CANDIDATES, UNSUPPORTED_POOL)
-        cancel_name = self.resolve_rpc_name(
-            w, CANCEL_RPC_CANDIDATES, UNSUPPORTED_POOL)
-        list_name = self.resolve_rpc_name(w, LIST_RPC_CANDIDATES)
+        status_name = self.resolve_method(w, STATUS_RPC, UNSUPPORTED_POOL)
+        advance_name = self.resolve_method(w, ADVANCE_RPC, UNSUPPORTED_POOL)
+        cancel_name = self.resolve_method(w, CANCEL_RPC, UNSUPPORTED_POOL)
+        list_name = self.resolve_method(w, LIST_RPC)
         print("Pool-migration RPCs: start={} status={} advance={} cancel={} "
               "list={}".format(start_name, status_name, advance_name,
                                cancel_name, list_name))
