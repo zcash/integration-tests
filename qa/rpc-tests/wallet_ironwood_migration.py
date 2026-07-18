@@ -92,14 +92,10 @@ MAX_ADVANCE_STEPS = 80
 # transaction and to move the chain tip past each transfer's scheduled height.
 ADVANCE_MINE_BLOCKS = 8
 
-# The Orchard source is funded so the note split is a SINGLE preparation layer:
-# commit_preparation currently supports only single-layer preparation, and the
-# planner otherwise chains dependent layers. 78 ZEC is a known single-layer
-# balance (the engine's own end-to-end test asserts layer_count == 1 for it);
-# larger balances produce more funding notes and dust-heavy small balances
-# fragment, both of which fan out across layers. The preview's layer_count is
-# checked before starting, so if this ever stops being single-layer the test
-# skips rather than fails.
+# A lower bound on the Orchard source balance to migrate; the fund helper shields
+# the available coinbase into Orchard, so the real balance is typically larger and
+# fans the preparation out across several dependent layers. The migration commits
+# and drives those layers phase by phase, so any balance is exercised end to end.
 SOURCE_NOTE_ZEC = 78
 
 # Markers a stub uses to say "the RPC exists but the engine is not wired yet".
@@ -311,15 +307,12 @@ class WalletIronwoodMigrationTest(IronwoodTestFramework):
         assert_true(node.getblockcount() >= IRONWOOD_HEIGHT,
                     "NU6.3 must be active to migrate")
 
-        # commit_preparation supports only single-layer preparation for now.
-        # Preview the plan and skip cleanly if this balance would fan out across
-        # dependent layers (a larger-balance limitation still being addressed).
+        # Preview the plan. A multi-layer preparation (a larger or more fragmented
+        # balance that fans out across dependent layers) is committed phase by
+        # phase: the advance loop below builds each later layer once its
+        # predecessor has mined, so no balance is skipped.
         preview = w.z_previewpoolmigration(acct, FROM_POOL, TO_POOL)
         layers = preview['preparation']['layer_count']
-        if layers > 1:
-            print("SKIP: this balance needs {} preparation layers; "
-                  "commit_preparation supports single-layer only.".format(layers))
-            return
         print("  preview: {} layer(s), {} funding note(s).".format(
             layers, preview['funding_note_count']))
 
