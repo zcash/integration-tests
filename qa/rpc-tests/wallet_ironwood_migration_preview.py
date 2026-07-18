@@ -27,11 +27,13 @@
 #     boundary, then assert the returned plan reports sane crossing denominations,
 #     a transfer schedule (a broadcast height and expiry per funding note), and
 #     the value invariants below. It also covers the real-world cases a caller
-#     hits: realistic bad requests (a pool migrated to itself, the
-#     reverse/unsupported direction, an unsupported source pool, a nonexistent
-#     account, and an unknown pool name) are REJECTED; a minconf larger than any
-#     note's confirmations leaves NOTHING to migrate; and the preview is
-#     SIDE-EFFECT-FREE (no funds move, no Ironwood notes are minted).
+#     hits: previewing BEFORE the upgrade activates is rejected; realistic bad
+#     requests (a pool migrated to itself, the reverse/unsupported direction, an
+#     unsupported source pool, a nonexistent account, and an unknown pool name)
+#     are REJECTED; the account resolves by either its UUID or its ZIP-32 index;
+#     a modest minconf still includes a well-confirmed note while a minconf
+#     larger than any note's confirmations leaves NOTHING to migrate; and the
+#     preview is SIDE-EFFECT-FREE (no funds move, no Ironwood notes are minted).
 #
 # The denomination POLICY (the {1,2,5}*10^k ZEC quantization and the sub-0.01
 # residual) is deliberately NOT pinned here; only structural and conservation-
@@ -106,6 +108,11 @@ DENOM_CAP_ZAT = DENOM_CAP_ZEC * COIN
 # than a recent note has must see "nothing to migrate", never a stale or partial
 # plan. Exercises the preview's minconf filter and its empty-balance path.
 UNREACHABLE_MINCONF = 1_000_000
+
+# A modest confirmation requirement the source note (minted many blocks before
+# activation) easily meets, so an explicit minconf still includes it: the
+# mirror of UNREACHABLE_MINCONF on the included side of the filter.
+MODEST_MINCONF = 3
 
 # A well-formed but nonexistent account id, for the invalid-account rejection.
 NONEXISTENT_ACCOUNT = '00000000-0000-0000-0000-000000000000'
@@ -326,6 +333,19 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
         print("  nonexistent account rejected: {!r}. OK".format(
             e.error.get('message', '')))
 
+    def assert_pre_activation_rejected(self, preview, acct):
+        """Before NU6.3 activates, the Orchard -> Ironwood turnstile is not open,
+        so previewing the migration is rejected with a clear 'network upgrade
+        required' error rather than a plan. This is the case a user hits by
+        trying to migrate before the upgrade. The activation check runs before
+        the balance is consulted, so a funded account still gets this error."""
+        e = expect_rpc_error(preview, acct, FROM_POOL, TO_POOL)
+        message = str(e.error.get('message', ''))
+        assert_true('active' in message.lower() or 'upgrade' in message.lower(),
+                    "the pre-activation rejection should mention the network "
+                    "upgrade; got {!r}".format(message))
+        print("  pre-activation preview rejected: {!r}. OK".format(message))
+
     def assert_high_minconf_has_nothing_to_migrate(self, preview, acct):
         """A confirmation requirement no recent note can meet leaves nothing
         spendable, so a funded account reports nothing to migrate rather than a
@@ -375,6 +395,11 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
         print("Funding an Orchard source note pre-NU6.3...")
         orchard_zat = self.fund_orchard_source(node, w, taddr, acct)
         print("  Orchard source spendable: {} zat.".format(orchard_zat))
+
+        # Before crossing the NU6.3 boundary the migration is not yet enabled,
+        # so previewing it (even for this funded account) is rejected.
+        print("Asserting preview is rejected before NU6.3 activation...")
+        self.assert_pre_activation_rejected(preview, acct)
 
         to_activation = max(0, IRONWOOD_HEIGHT - node.getblockcount())
         if to_activation > 0:
@@ -431,6 +456,28 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
                      sorted(plan2['note_split']['crossing_values']),
                      "the denomination shape is stable across previews")
         print("  denominations stable across two previews. OK")
+
+        # An account can be named by its ZIP-32 index, not only its UUID; a real
+        # caller uses either, and both must resolve to the same plan.
+        print("Asserting preview-by-account-index matches preview-by-UUID...")
+        acct_index = w.z_listaccounts()[0].get('account')
+        assert_true(acct_index is not None,
+                    "the account should expose a ZIP-32 index")
+        plan_by_index = preview(acct_index, FROM_POOL, TO_POOL)
+        assert_equal(sorted(plan['note_split']['crossing_values']),
+                     sorted(plan_by_index['note_split']['crossing_values']),
+                     "previewing by account index matches previewing by UUID")
+        print("  index and UUID agree. OK")
+
+        # A modest confirmation requirement still includes the well-confirmed
+        # source note: the included side of the minconf filter (the excluded
+        # side is asserted just below).
+        print("Asserting a modest minconf still includes the mature note...")
+        plan_minconf = preview(acct, FROM_POOL, TO_POOL, MODEST_MINCONF)
+        assert_equal(sorted(plan['note_split']['crossing_values']),
+                     sorted(plan_minconf['note_split']['crossing_values']),
+                     "a modest minconf keeps the mature note in the plan")
+        print("  modest minconf keeps the note. OK")
 
         # A confirmation requirement no recent note can meet: the funded account
         # still reports nothing to migrate (the minconf filter + empty-balance
