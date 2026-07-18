@@ -255,59 +255,30 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
                 assert_true(len(unmined) > 0,
                             "a dependency-blocked transaction must have an "
                             "unmined dependency: {}".format(t))
-        # Anchor-bucket ordering: no layer-N (>0) transaction is ready while any
-        # layer-(N-1) preparation transaction is unmined.
+        # Anchor-bucket ordering, two ways:
+        # (1) readiness: no layer-N (>0) transaction is ready while any
+        #     layer-(N-1) preparation transaction is unmined;
+        # (2) build order: if any layer-N transaction has been BUILT (its state
+        #     is past `planned`), every layer-(N-1) transaction must be mined,
+        #     because a later layer is signed only once its predecessor mines and
+        #     `mined` is terminal. This is the anchor-bucket invariant, checkable
+        #     within a single snapshot (no cross-step timing to get wrong).
         prep = [t for t in txs if t['kind'] == 'preparation']
-        layers = sorted({t['layer'] for t in prep})
-        for layer in layers:
+        by_layer = {}
+        for t in prep:
+            by_layer.setdefault(t['layer'], []).append(t)
+        built = ('signed', 'proved', 'broadcast', 'mined')
+        for layer in sorted(by_layer):
             if layer == 0:
                 continue
-            prior_unmined = any(
-                t['state'] != 'mined' for t in prep if t['layer'] == layer - 1)
-            if prior_unmined:
-                for t in prep:
-                    if t['layer'] == layer:
-                        assert_true(not t['ready'],
-                                    "layer {} must not be ready while layer {} "
-                                    "is unmined: {}".format(layer, layer - 1, t))
+            prior_all_mined = all(
+                t['state'] == 'mined' for t in by_layer.get(layer - 1, []))
+            for t in by_layer[layer]:
+                if not prior_all_mined:
+                    assert_true(not t['ready'],
+                                "layer {} must not be ready while layer {} is "
+                                "unmined: {}".format(layer, layer - 1, t))
+                    assert_true(t['state'] not in built,
+                                "layer {} was built before layer {} fully "
+                                "mined: {}".format(layer, layer - 1, t))
         return st
-
-    def assert_layers_signed_in_separate_buckets(self, seen_states):
-        """Given the sequence of per-layer states observed across the drive,
-        assert every later preparation layer only became `signed` AFTER its
-        predecessor layer was fully `mined` (distinct anchor buckets). `seen_states`
-        is the list of status snapshots captured per step."""
-        # For each layer > 0, find the first step at which any of its transactions
-        # was `signed`, and assert that at the prior step every predecessor-layer
-        # transaction was already `mined`.
-        for snap_prev, snap in zip(seen_states, seen_states[1:]):
-            prev_by_layer = self._prep_by_layer(snap_prev)
-            cur_by_layer = self._prep_by_layer(snap)
-            for layer, txs in cur_by_layer.items():
-                if layer == 0:
-                    continue
-                became_signed = any(
-                    t['state'] in ('signed', 'proved') for t in txs) and all(
-                    self._was_planned(layer, t['id'], snap_prev) for t in txs
-                    if t['state'] in ('signed', 'proved'))
-                if became_signed:
-                    prior = prev_by_layer.get(layer - 1, [])
-                    assert_true(prior and all(
-                        t['state'] == 'mined' for t in prior),
-                        "layer {} was signed before layer {} fully mined"
-                        .format(layer, layer - 1))
-
-    @staticmethod
-    def _prep_by_layer(snapshot):
-        out = {}
-        for t in snapshot['transactions']:
-            if t['kind'] == 'preparation':
-                out.setdefault(t['layer'], []).append(t)
-        return out
-
-    @staticmethod
-    def _was_planned(layer, tx_id, snapshot):
-        for t in snapshot['transactions']:
-            if t['id'] == tx_id:
-                return t['state'] == 'planned'
-        return False
