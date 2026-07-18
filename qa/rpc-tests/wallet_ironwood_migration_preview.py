@@ -26,8 +26,12 @@
 #     not a stub check: fund a v2 Orchard note pre-NU6.3, cross the activation
 #     boundary, then assert the returned plan reports sane crossing denominations,
 #     a transfer schedule (a broadcast height and expiry per funding note), and
-#     the value invariants below. Input validation (an unsupported pool pair) is
-#     asserted too.
+#     the value invariants below. It also covers the real-world cases a caller
+#     hits: realistic bad requests (a pool migrated to itself, the
+#     reverse/unsupported direction, an unsupported source pool, a nonexistent
+#     account, and an unknown pool name) are REJECTED; a minconf larger than any
+#     note's confirmations leaves NOTHING to migrate; and the preview is
+#     SIDE-EFFECT-FREE (no funds move, no Ironwood notes are minted).
 #
 # The denomination POLICY (the {1,2,5}*10^k ZEC quantization and the sub-0.01
 # residual) is deliberately NOT pinned here; only structural and conservation-
@@ -97,6 +101,15 @@ TRANSFER_FEE_BUFFER_ZAT = 4 * MARGINAL_FEE_ZAT
 DENOM_CAP_ZEC = 10_000
 DENOM_CAP_ZAT = DENOM_CAP_ZEC * COIN
 
+# A confirmation depth larger than any regtest chain height. Requiring it
+# excludes every spendable note, so a caller who asks for more confirmations
+# than a recent note has must see "nothing to migrate", never a stale or partial
+# plan. Exercises the preview's minconf filter and its empty-balance path.
+UNREACHABLE_MINCONF = 1_000_000
+
+# A well-formed but nonexistent account id, for the invalid-account rejection.
+NONEXISTENT_ACCOUNT = '00000000-0000-0000-0000-000000000000'
+
 
 def is_canonical_denomination(zat):
     """True if `zat` is a canonical ZIP-318 crossing value: a {1, 2, 5} * 10^k
@@ -161,7 +174,10 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
         source the preview plans over -- and return its spendable value in zat.
         A direct many-UTXO Orchard shield can be left unspendable by fee
         estimation, so shield into Sapling first, then pay the Orchard-only
-        receiver (mirrors wallet_ironwood_migration.py)."""
+        receiver (mirrors wallet_ironwood_migration.py). The engine then splits
+        this note into the several funding notes/crossings the plan asserts,
+        which is the common real-world case (a wallet consolidates, then
+        migrates)."""
         ua = w.z_getaddressforaccount(acct, ['orchard'])['address']
         sapling_ua = w.z_getaddressforaccount(acct, ['sapling'])['address']
 
@@ -282,6 +298,56 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
             assert_true(is_canonical_denomination(n['crossing_zat']),
                         "each scheduled funding note is a canonical denomination")
 
+    def assert_rejects_invalid_requests(self, preview, acct):
+        """Realistic caller mistakes the preview must reject with an RPC error
+        (never a plan): migrating a pool to itself, an unsupported migration
+        direction, a source pool with no wired migration, and a nonexistent
+        account. The pool-pair checks run before the account is looked up, so
+        they use the real account; the account check uses a valid pool pair so
+        the account is what fails."""
+        # Migrating a pool into itself is meaningless.
+        e = expect_rpc_error(preview, acct, FROM_POOL, FROM_POOL)
+        print("  same-pool rejected: {!r}. OK".format(
+            e.error.get('message', '')))
+        # The reverse direction (Ironwood -> Orchard) is not a supported
+        # migration; only Orchard -> Ironwood is wired.
+        e = expect_rpc_error(preview, acct, TO_POOL, FROM_POOL)
+        print("  reverse direction rejected: {!r}. OK".format(
+            e.error.get('message', '')))
+        # Sapling is a valid pool name but has no wired migration to Ironwood.
+        e = expect_rpc_error(preview, acct, Pool.SAPLING, TO_POOL)
+        print("  unsupported source pool rejected: {!r}. OK".format(
+            e.error.get('message', '')))
+        # A nonexistent account (valid pool pair, so the account is what the
+        # request turns on): it is rejected -- whether because the id does not
+        # resolve or because it holds no spendable source-pool balance, a caller
+        # who names the wrong account gets a clean error, never a plan.
+        e = expect_rpc_error(preview, NONEXISTENT_ACCOUNT, FROM_POOL, TO_POOL)
+        print("  nonexistent account rejected: {!r}. OK".format(
+            e.error.get('message', '')))
+
+    def assert_high_minconf_has_nothing_to_migrate(self, preview, acct):
+        """A confirmation requirement no recent note can meet leaves nothing
+        spendable, so a funded account reports nothing to migrate rather than a
+        stale plan. Exercises the preview's minconf filter and empty-balance
+        path, the case a caller hits by demanding more confirmations than the
+        note has."""
+        e = expect_rpc_error(
+            preview, acct, FROM_POOL, TO_POOL, UNREACHABLE_MINCONF)
+        print("  unreachable minconf yields nothing to migrate: {!r}. OK"
+              .format(e.error.get('message', '')))
+
+    def assert_preview_is_read_only(self, w, acct, before_orchard_zat):
+        """The preview must be side-effect-free: after previewing (and the
+        rejected requests), the account's spendable Orchard balance is unchanged
+        and no Ironwood notes have been minted. A user can preview freely
+        without any funds crossing the turnstile."""
+        assert_equal(
+            before_orchard_zat, account_spendable_zat(w, acct, Pool.ORCHARD),
+            "previewing does not change the Orchard balance")
+        assert_true(len(ironwood_notes(w)) == 0,
+                    "previewing mints no Ironwood notes")
+
     # ---- driver ------------------------------------------------------------
 
     def run_test(self):
@@ -322,11 +388,14 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
                      account_spendable_zat(w, acct, Pool.ORCHARD),
                      "the Orchard source note survives NU6.3 activation")
 
-        # Stage 1a: input validation.
+        # Stage 1a: input validation -- an unknown pool name, plus realistic
+        # caller mistakes (same pool, reverse direction, unsupported source,
+        # nonexistent account).
         print("Asserting preview input validation...")
         e = expect_rpc_error(preview, acct, UNSUPPORTED_POOL, TO_POOL)
-        print("  unsupported pool pair rejected: {!r}. OK".format(
+        print("  unknown pool name rejected: {!r}. OK".format(
             e.error.get('message', '')))
+        self.assert_rejects_invalid_requests(preview, acct)
 
         # Stage 1b: the migration plans, is scheduled, and conserves value.
         print("Previewing the Orchard -> Ironwood plan...")
@@ -362,6 +431,18 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
                      sorted(plan2['note_split']['crossing_values']),
                      "the denomination shape is stable across previews")
         print("  denominations stable across two previews. OK")
+
+        # A confirmation requirement no recent note can meet: the funded account
+        # still reports nothing to migrate (the minconf filter + empty-balance
+        # path), rather than a stale plan.
+        print("Asserting an unreachable minconf yields nothing to migrate...")
+        self.assert_high_minconf_has_nothing_to_migrate(preview, acct)
+
+        # Everything above (every preview and every rejected request) must have
+        # been side-effect-free: no funds moved, no Ironwood notes minted.
+        print("Asserting previewing moved no funds...")
+        self.assert_preview_is_read_only(w, acct, orchard_zat)
+        print("  balance unchanged and no Ironwood notes. OK")
 
         print("\nIronwood migration preview checks passed.")
 
