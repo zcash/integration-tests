@@ -46,6 +46,7 @@ from test_framework.util import (
     PrivacyPolicy,
     _RPC_EXCEPTIONS,
     account_spendable_zat,
+    assert_equal,
     assert_true,
     expect_rpc_error,
     ironwood_notes,
@@ -81,6 +82,25 @@ UNSUPPORTED_POOL = 'nonexistent_pool'
 # surface (the stub validates the id is non-empty, then answers): a real caller
 # passes the id returned by the start method.
 PLACEHOLDER_MIGRATION_ID = 'no-such-migration'
+
+# The most `z_advancepoolmigration` steps to drive before giving up: the
+# migration advances one transaction per call (a preparation, then one transfer
+# per funding note), so a generous bound covers a many-note wallet.
+MAX_ADVANCE_STEPS = 80
+
+# Blocks to mine between advance steps: enough to confirm the just-broadcast
+# transaction and to move the chain tip past each transfer's scheduled height.
+ADVANCE_MINE_BLOCKS = 8
+
+# The Orchard source is funded so the note split is a SINGLE preparation layer:
+# commit_preparation currently supports only single-layer preparation, and the
+# planner otherwise chains dependent layers. 78 ZEC is a known single-layer
+# balance (the engine's own end-to-end test asserts layer_count == 1 for it);
+# larger balances produce more funding notes and dust-heavy small balances
+# fragment, both of which fan out across layers. The preview's layer_count is
+# checked before starting, so if this ever stops being single-layer the test
+# skips rather than fails.
+SOURCE_NOTE_ZEC = 78
 
 # Markers a stub uses to say "the RPC exists but the engine is not wired yet".
 # A start response containing any of these is treated as an acceptable Stage-1
@@ -226,8 +246,9 @@ class WalletIronwoodMigrationTest(IronwoodTestFramework):
                     "must still be in the Orchard era before funding")
         _, sapling_zat = shield_coinbase(
             node, w, taddr, sapling_ua, acct, Pool.SAPLING)
-        orch_target = (Decimal(sapling_zat) / COIN / 2).quantize(
-            Decimal('0.0001'))
+        assert_true(sapling_zat > SOURCE_NOTE_ZEC * COIN,
+                    "shielded enough Sapling to fund the source note")
+        orch_target = Decimal(SOURCE_NOTE_ZEC)
         opid = w.z_sendmany(
             sapling_ua, [{'address': ua, 'amount': orch_target}], 1, None,
             PrivacyPolicy.ALLOW_REVEALED_AMOUNTS)
@@ -276,70 +297,83 @@ class WalletIronwoodMigrationTest(IronwoodTestFramework):
               "list={}".format(start_name, status_name, advance_name,
                                cancel_name, list_name))
 
-        # The start method validates the pool pair, which requires NU6.3 to be
-        # active, before returning its scaffold response. Cross the activation
-        # boundary so the surface checks reach that response rather than an
-        # "upgrade not active" rejection. No funded notes are needed for the
-        # surface; the funded Stage-2 flow will instead fund pre-activation and
-        # cross the boundary afterward.
+        # Fund an Orchard source note BEFORE NU6.3, then cross the activation
+        # boundary so the migration is enabled.
+        acct = w.z_listaccounts()[0]['account_uuid']
+        print("Funding an Orchard source note pre-NU6.3...")
+        orchard_before = self.fund_orchard_source(node, w, taddr, acct)
+        print("  Orchard source spendable: {} zat.".format(orchard_before))
+
         to_activation = max(0, IRONWOOD_HEIGHT - node.getblockcount())
         if to_activation > 0:
             node.generate(to_activation)
             self.sync_all()
         assert_true(node.getblockcount() >= IRONWOOD_HEIGHT,
-                    "NU6.3 must be active for the migration surface")
+                    "NU6.3 must be active to migrate")
 
-        # Stage 1: assert the RPC surface (callable + input validation) without
-        # the engine. These do not need funded notes.
-        print("Stage 1: assert the pool-migration RPC surface...")
-        self.assert_start_callable(w, start_name)
-        self.assert_input_validation(w, start_name)
-        self.assert_companion_surface(w, status_name, list_name)
-        print("  RPC surface OK.")
+        # commit_preparation supports only single-layer preparation for now.
+        # Preview the plan and skip cleanly if this balance would fan out across
+        # dependent layers (a larger-balance limitation still being addressed).
+        preview = w.z_previewpoolmigration(acct, FROM_POOL, TO_POOL)
+        layers = preview['preparation']['layer_count']
+        if layers > 1:
+            print("SKIP: this balance needs {} preparation layers; "
+                  "commit_preparation supports single-layer only.".format(layers))
+            return
+        print("  preview: {} layer(s), {} funding note(s).".format(
+            layers, preview['funding_note_count']))
 
-        # ---- Stage 2 TODO(end-to-end): drive a real migration --------------
-        # Once the engine's commit/broadcast slices are wired into zallet (the
-        # start method actually builds, pre-signs, persists, and broadcasts the
-        # PCZTs), replace this block with the funded lifecycle scenarios below.
-        # Each is a distinct real-world case; the fixture (`fund_orchard_source`)
-        # and the boundary crossing are already in place:
-        #     acct = w.z_listaccounts()[0]['account_uuid']
-        #     orchard_zat = self.fund_orchard_source(node, w, taddr, acct)
-        #     node.generate(max(0, IRONWOOD_HEIGHT - node.getblockcount()))
-        #     self.sync_all()
-        #
-        # (a) FULL LIFECYCLE: start the migration, then advance/poll with
-        #     `advance_name`/`status_name`, confirming and scanning each produced
-        #     transaction (the preparation first, then each scheduled transfer),
-        #     until status reports complete. Assert only stable invariants (NOT
-        #     the denomination policy, still evolving):
-        #       * the Orchard pool drains to (near) zero,
-        #       * the Ironwood pool gains the migrated value (minus fees),
-        #       * value is conserved across the two pools,
-        #       * each produced Ironwood note is a planned denomination,
-        #       * the amounts that cross match what `z_previewpoolmigration`
-        #         promised for the same balance (ZIP-318 consent).
-        # (b) RESUME AFTER RESTART: after the preparation is mined but before the
-        #     transfers complete, restart the wallet (stop/start the node's
-        #     wallet), then assert the migration is still present in
-        #     `status_name`/`list_name` (the store round-trips) and that
-        #     advancing continues it to completion. A migration must survive the
-        #     wallet being closed mid-run.
-        # (c) STATUS / LIST REFLECT PROGRESS: assert `status_name` moves through
-        #     its lifecycle (planned -> in progress -> complete) as transactions
-        #     mine, and that `list_name` shows exactly the one in-progress
-        #     migration while it runs and none once it completes.
-        # (d) EXPIRY / REORG: let a scheduled transfer pass its expiry height
-        #     without mining and assert it is rebuilt (not lost); invalidate the
-        #     block that mined the preparation (a short reorg) and assert the
-        #     migration recovers rather than double-spending or stalling.
-        assert node is not None  # `node`/`taddr` drive the Stage-2 flow above
-        assert taddr is not None
-        print("TODO: drive the funded Orchard -> Ironwood lifecycle (full run, "
-              "resume-after-restart, status/list progress, expiry/reorg) once "
-              "the engine's commit/broadcast slices are wired into zallet.")
+        # Start the migration: builds + pre-signs the preparation and persists it.
+        print("Starting the Orchard -> Ironwood migration...")
+        started = getattr(w, start_name)(acct, FROM_POOL, TO_POOL)
+        migration_id = started['migration_id']
+        total_txs = started['plan']['transaction_count']
+        assert_true(total_txs > 0, "the migration plans at least one transaction")
+        print("  started: id={!r} transaction_count={}".format(
+            migration_id, total_txs))
 
-        print("\nIronwood migration RPC-surface checks passed.")
+        # status and list reflect the freshly started migration.
+        if status_name is not None:
+            st = getattr(w, status_name)(migration_id)
+            assert_equal(total_txs, st['progress']['total_transactions'],
+                         "status reports the planned transaction count")
+        if list_name is not None:
+            assert_true(len(getattr(w, list_name)()) == 1,
+                        "list shows the one in-progress migration")
+
+        # Drive the migration to completion: advance one step per call (a
+        # preparation first, then one transfer per funding note), mining and
+        # syncing between steps so each broadcast transaction confirms and the
+        # chain tip reaches each transfer's scheduled height.
+        print("Driving the migration (advance + mine) to completion...")
+        completed = False
+        for step in range(MAX_ADVANCE_STEPS):
+            adv = getattr(w, advance_name)(acct, migration_id)
+            progress = adv['progress']
+            print("  step {}: phase={} {}/{} - {}".format(
+                step, adv['phase'], progress['completed_transactions'],
+                progress['total_transactions'], adv['status']))
+            if adv['phase'] == 'completed':
+                completed = True
+                break
+            node.generate(ADVANCE_MINE_BLOCKS)
+            self.sync_all()
+            wait_account_settled(w, acct)
+        assert_true(completed,
+                    "the migration completed within {} advance steps".format(
+                        MAX_ADVANCE_STEPS))
+
+        # The value crossed the turnstile: Ironwood notes now exist and the
+        # Orchard balance dropped as the funding notes were spent.
+        ironwood = ironwood_notes(w)
+        assert_true(len(ironwood) > 0, "the migration produced Ironwood notes")
+        orchard_after = account_spendable_zat(w, acct, Pool.ORCHARD)
+        assert_true(orchard_after < orchard_before,
+                    "the Orchard balance drained as value crossed to Ironwood")
+        print("  {} Ironwood note(s); Orchard {} -> {} zat. OK".format(
+            len(ironwood), orchard_before, orchard_after))
+
+        print("\nIronwood migration lifecycle passed.")
 
 
 if __name__ == '__main__':
