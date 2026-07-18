@@ -85,12 +85,14 @@ PLACEHOLDER_MIGRATION_ID = 'no-such-migration'
 
 # The most `z_advancepoolmigration` steps to drive before giving up: the
 # migration advances one transaction per call (a preparation, then one transfer
-# per funding note), so a generous bound covers a many-note wallet.
-MAX_ADVANCE_STEPS = 80
+# per funding note), and the transfers are spread across a randomized privacy
+# schedule, so the bound must be generous enough to cover a wide schedule.
+MAX_ADVANCE_STEPS = 250
 
 # Blocks to mine between advance steps: enough to confirm the just-broadcast
 # transaction and to move the chain tip past each transfer's scheduled height.
-ADVANCE_MINE_BLOCKS = 8
+# The transfer schedule can span many blocks, so mine a healthy batch per step.
+ADVANCE_MINE_BLOCKS = 16
 
 # A lower bound on the Orchard source balance to migrate; the fund helper shields
 # the available coinbase into Orchard, so the real balance is typically larger and
