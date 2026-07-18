@@ -18,15 +18,19 @@
 #   * Stage 1 -- method PRESENT (stub answers, engine not landed): assert the
 #     RPC surface only. The start method must be callable for orchard->ironwood
 #     and either return a plan-summary object OR a clear "not implemented yet"
-#     response, and it must reject an unsupported pool pair with an error. The
-#     end-to-end assertions (notes actually prepared, value actually crossing
-#     the pools) stay TODO until the engine lands.
+#     response, and it must reject an unsupported pool pair with an error; the
+#     status and list methods, when present, must likewise be callable and
+#     return a structured (or "not implemented yet") answer even with no
+#     migration in progress. The end-to-end assertions (notes actually prepared,
+#     value actually crossing the pools) stay TODO until the engine lands.
 #   * Stage 2 -- engine landed (future): wire the funded end-to-end flow. The
 #     `fund_orchard_source` helper already stands up the fixture (a real v2
 #     Orchard note minted pre-NU6.3 as the migration source); the TODO block in
-#     run_test says where the drive-and-assert goes. The denomination policy
-#     ({1,2,5}*10^k ZEC and the sub-0.01 residual) is deliberately NOT pinned
-#     here -- assert only conservation-style invariants when it is finalized.
+#     run_test enumerates the real-world lifecycle scenarios to drive -- the full
+#     run, resume-after-restart, status/list reflecting progress, and
+#     expiry/reorg recovery. The denomination policy ({1,2,5}*10^k ZEC and the
+#     sub-0.01 residual) is deliberately NOT pinned here -- assert only
+#     conservation-style invariants when it is finalized.
 #
 # The module is registered in NEW_SCRIPTS but listed in DISABLED_SCRIPTS in
 # qa/pull-tester/rpc-tests.py (the framework's equivalent of skip/xfail), so the
@@ -72,6 +76,11 @@ TO_POOL = Pool.IRONWOOD
 # A pool name no build supports, used to assert input validation independently
 # of which migration directions are wired.
 UNSUPPORTED_POOL = 'nonexistent_pool'
+
+# A non-empty but nonexistent migration id, for probing the status method's
+# surface (the stub validates the id is non-empty, then answers): a real caller
+# passes the id returned by the start method.
+PLACEHOLDER_MIGRATION_ID = 'no-such-migration'
 
 # Markers a stub uses to say "the RPC exists but the engine is not wired yet".
 # A start response containing any of these is treated as an acceptable Stage-1
@@ -185,6 +194,47 @@ class WalletIronwoodMigrationTest(IronwoodTestFramework):
         print("  unsupported pool pair ({}->{}) rejected: {!r}. OK".format(
             UNSUPPORTED_POOL, TO_POOL, e.error.get('message', '')))
 
+    def assert_companion_surface(self, w, status_name, list_name):
+        """When exposed, the status and list methods must be callable and return
+        a structured response (or a clear 'not implemented yet'), even with no
+        migration in progress: the status of an account with no migration is a
+        well-defined empty answer, and listing is always valid. This is the
+        read-only half of the lifecycle surface, assertable before the engine
+        can actually run a migration."""
+        if status_name is not None:
+            try:
+                result = getattr(w, status_name)(PLACEHOLDER_MIGRATION_ID)
+            except _RPC_EXCEPTIONS as e:
+                message = e.error.get('message', '')
+                assert_true(
+                    any(m in message.lower() for m in NOT_IMPLEMENTED_MARKERS),
+                    "status should return an object or 'not implemented yet'; "
+                    "got {!r}".format(message))
+                print("  status responded 'not implemented yet': {!r}. OK"
+                      .format(message))
+            else:
+                assert_true(isinstance(result, dict),
+                            "status should return a status object; got "
+                            "{!r}".format(result))
+                print("  status returned an object: keys={}. OK".format(
+                    sorted(result.keys())))
+        if list_name is not None:
+            try:
+                result = getattr(w, list_name)()
+            except _RPC_EXCEPTIONS as e:
+                message = e.error.get('message', '')
+                assert_true(
+                    any(m in message.lower() for m in NOT_IMPLEMENTED_MARKERS),
+                    "list should return an array or 'not implemented yet'; "
+                    "got {!r}".format(message))
+                print("  list responded 'not implemented yet': {!r}. OK"
+                      .format(message))
+            else:
+                assert_true(isinstance(result, list),
+                            "list should return an array of migrations; got "
+                            "{!r}".format(result))
+                print("  list returned {} migration(s). OK".format(len(result)))
+
     # ---- Stage 2 fixture (used once the engine lands) ----------------------
 
     def fund_orchard_source(self, node, w, taddr, acct):
@@ -253,33 +303,68 @@ class WalletIronwoodMigrationTest(IronwoodTestFramework):
               "list={}".format(start_name, status_name, advance_name,
                                cancel_name, list_name))
 
+        # The start method validates the pool pair, which requires NU6.3 to be
+        # active, before returning its scaffold response. Cross the activation
+        # boundary so the surface checks reach that response rather than an
+        # "upgrade not active" rejection. No funded notes are needed for the
+        # surface; the funded Stage-2 flow will instead fund pre-activation and
+        # cross the boundary afterward.
+        to_activation = max(0, IRONWOOD_HEIGHT - node.getblockcount())
+        if to_activation > 0:
+            node.generate(to_activation)
+            self.sync_all()
+        assert_true(node.getblockcount() >= IRONWOOD_HEIGHT,
+                    "NU6.3 must be active for the migration surface")
+
         # Stage 1: assert the RPC surface (callable + input validation) without
         # the engine. These do not need funded notes.
         print("Stage 1: assert the pool-migration RPC surface...")
         self.assert_start_callable(w, start_name)
         self.assert_input_validation(w, start_name)
+        self.assert_companion_surface(w, status_name, list_name)
         print("  RPC surface OK.")
 
         # ---- Stage 2 TODO(end-to-end): drive a real migration --------------
-        # Once the note-split engine lands, fund the source and drive the flow:
+        # Once the engine's commit/broadcast slices are wired into zallet (the
+        # start method actually builds, pre-signs, persists, and broadcasts the
+        # PCZTs), replace this block with the funded lifecycle scenarios below.
+        # Each is a distinct real-world case; the fixture (`fund_orchard_source`)
+        # and the boundary crossing are already in place:
         #     acct = w.z_listaccounts()[0]['account_uuid']
         #     orchard_zat = self.fund_orchard_source(node, w, taddr, acct)
-        #     # cross the NU6.3 boundary so the Ironwood pool is live:
         #     node.generate(max(0, IRONWOOD_HEIGHT - node.getblockcount()))
         #     self.sync_all()
-        #     plan = getattr(w, start_name)(FROM_POOL, TO_POOL)
-        #     # advance/poll with `advance_name`/`status_name` until complete,
-        #     # confirming and scanning each produced transaction.
-        # Then assert only stable invariants (NOT the denomination policy,
-        # which is still evolving):
-        #   * the Orchard pool drains to (near) zero,
-        #   * the Ironwood pool gains the migrated value (minus fees),
-        #   * value is conserved across the two pools,
-        #   * each produced Ironwood note is a planned denomination.
+        #
+        # (a) FULL LIFECYCLE: start the migration, then advance/poll with
+        #     `advance_name`/`status_name`, confirming and scanning each produced
+        #     transaction (the preparation first, then each scheduled transfer),
+        #     until status reports complete. Assert only stable invariants (NOT
+        #     the denomination policy, still evolving):
+        #       * the Orchard pool drains to (near) zero,
+        #       * the Ironwood pool gains the migrated value (minus fees),
+        #       * value is conserved across the two pools,
+        #       * each produced Ironwood note is a planned denomination,
+        #       * the amounts that cross match what `z_previewpoolmigration`
+        #         promised for the same balance (ZIP-318 consent).
+        # (b) RESUME AFTER RESTART: after the preparation is mined but before the
+        #     transfers complete, restart the wallet (stop/start the node's
+        #     wallet), then assert the migration is still present in
+        #     `status_name`/`list_name` (the store round-trips) and that
+        #     advancing continues it to completion. A migration must survive the
+        #     wallet being closed mid-run.
+        # (c) STATUS / LIST REFLECT PROGRESS: assert `status_name` moves through
+        #     its lifecycle (planned -> in progress -> complete) as transactions
+        #     mine, and that `list_name` shows exactly the one in-progress
+        #     migration while it runs and none once it completes.
+        # (d) EXPIRY / REORG: let a scheduled transfer pass its expiry height
+        #     without mining and assert it is rebuilt (not lost); invalidate the
+        #     block that mined the preparation (a short reorg) and assert the
+        #     migration recovers rather than double-spending or stalling.
         assert node is not None  # `node`/`taddr` drive the Stage-2 flow above
         assert taddr is not None
-        print("TODO: drive the funded Orchard -> Ironwood migration and assert "
-              "conservation, once the note-split engine lands.")
+        print("TODO: drive the funded Orchard -> Ironwood lifecycle (full run, "
+              "resume-after-restart, status/list progress, expiry/reorg) once "
+              "the engine's commit/broadcast slices are wired into zallet.")
 
         print("\nIronwood migration RPC-surface checks passed.")
 
