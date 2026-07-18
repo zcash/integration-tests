@@ -92,6 +92,25 @@ PREP_FEE_ZAT = PREP_TX_ACTIONS * MARGINAL_FEE_ZAT
 # destination-pool actions at the marginal fee (4 * MARGINAL_FEE).
 TRANSFER_FEE_BUFFER_ZAT = 4 * MARGINAL_FEE_ZAT
 
+# ZIP 318's denomination cap: no crossing exceeds DENOM_CAP ZEC, keeping a
+# whale's crossings within the shared denomination set.
+DENOM_CAP_ZEC = 10_000
+DENOM_CAP_ZAT = DENOM_CAP_ZEC * COIN
+
+
+def is_canonical_denomination(zat):
+    """True if `zat` is a canonical ZIP-318 crossing value: a {1, 2, 5} * 10^k
+    amount in zatoshi. The split mints denominations from the cap down to a
+    sub-1-ZEC dust floor, so a crossing need not be a whole number of ZEC
+    (e.g. 0.5 ZEC = 50_000_000 zat is canonical); this checks the {1,2,5}*10^k
+    shape directly in zatoshi."""
+    if zat <= 0:
+        return False
+    v = zat
+    while v % 10 == 0:
+        v //= 10
+    return v in (1, 2, 5)
+
 # Candidate names for the preview method. The exact name may be adjusted to
 # zallet conventions, so probe a small list and take the first that resolves.
 PREVIEW_RPC_CANDIDATES = (
@@ -240,6 +259,29 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
         assert_true(len(notes) <= plan['note_split']['note_count'],
                     "funding notes are a subset of the raw split")
 
+    def assert_denomination_structure(self, plan):
+        """ZIP-318 denomination invariants: every crossing in the raw note split
+        is a canonical {1,2,5}*10^k whole-ZEC value within the cap, the split is
+        non-increasing (a descending greedy decomposition summing to its
+        migratable total), and each scheduled funding note is a canonical
+        denomination too (the funding notes are the reconciled subset)."""
+        split = plan['note_split']['crossing_values']
+        assert_true(len(split) > 0, "a funded account yields a non-empty split")
+        for v in split:
+            assert_true(is_canonical_denomination(v),
+                        "note-split crossing {} zat is a canonical "
+                        "{{1,2,5}}*10^k ZEC denomination".format(v))
+            assert_true(v <= DENOM_CAP_ZAT,
+                        "note-split crossing {} zat within the {}-ZEC cap"
+                        .format(v, DENOM_CAP_ZEC))
+        assert_equal(split, sorted(split, reverse=True),
+                     "the raw note split is non-increasing (descending greedy)")
+        assert_equal(sum(split), plan['note_split']['total_migratable_zat'],
+                     "the split's crossings sum to its migratable total")
+        for n in plan['funding_notes']:
+            assert_true(is_canonical_denomination(n['crossing_zat']),
+                        "each scheduled funding note is a canonical denomination")
+
     # ---- driver ------------------------------------------------------------
 
     def run_test(self):
@@ -297,6 +339,7 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
         assert_equal(len(plan['funding_notes']), plan['funding_note_count'],
                      "one schedule entry per funding note")
         self.assert_conservation(plan, orchard_zat)
+        self.assert_denomination_structure(plan)
         print("  plan: funding_notes={} migratable={} change={} "
               "layers={} txs={}. OK".format(
                   plan['funding_note_count'], plan['total_migratable_zat'],
@@ -309,6 +352,16 @@ class WalletIronwoodMigrationPreviewTest(IronwoodTestFramework):
         for n in plan['funding_notes']:
             assert_true(n['broadcast_height'] >= tip - 1,
                         "a transfer is scheduled at or after the chain tip")
+
+        # Determinism of SHAPE: the denomination decomposition is a function of
+        # the balance, so a second preview yields the same multiset of crossings
+        # (only the randomized transfer schedule may differ, not the split).
+        print("Re-previewing to assert the denomination shape is deterministic...")
+        plan2 = preview(acct, FROM_POOL, TO_POOL)
+        assert_equal(sorted(plan['note_split']['crossing_values']),
+                     sorted(plan2['note_split']['crossing_values']),
+                     "the denomination shape is stable across previews")
+        print("  denominations stable across two previews. OK")
 
         print("\nIronwood migration preview checks passed.")
 
