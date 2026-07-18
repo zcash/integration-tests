@@ -22,7 +22,13 @@
 #
 
 from test_framework.ironwood_migration_common import IronwoodMigrationScenario
-from test_framework.util import assert_true
+from test_framework.util import (
+    Pool,
+    account_spendable_zat,
+    assert_equal,
+    assert_true,
+    ironwood_notes,
+)
 
 # A balance large enough to force a multi-layer preparation (the engine fans a
 # whale out across dependent layers). The exact layer count is a function of the
@@ -53,16 +59,18 @@ class NextActionsScenario(IronwoodMigrationScenario):
 
         preview = self.preview(w, acct)
         layers = preview['preparation']['layer_count']
+        expected_crossings = preview['funding_note_count']
         print("  preview: {} layer(s), {} funding note(s).".format(
-            layers, preview['funding_note_count']))
+            layers, expected_crossings))
         assert_true(layers > 1,
                     "this scenario needs a multi-layer preparation to exercise "
                     "the anchor-bucket ordering; got {} layer(s)".format(layers))
 
         started = self.start(w, acct)
         migration_id = started['migration_id']
+        total_txs = started['plan']['transaction_count']
         print("  started: id={!r} transaction_count={}".format(
-            migration_id, started['plan']['transaction_count']))
+            migration_id, total_txs))
 
         # The freshly started migration must already expose a consistent
         # next-actions surface: layer 0 ready to broadcast, later layers blocked
@@ -100,11 +108,38 @@ class NextActionsScenario(IronwoodMigrationScenario):
                     "the migration completed within {} advance steps".format(
                         self.MAX_ADVANCE_STEPS))
 
-        ironwood, orchard_after = self.assert_value_crossed(w, acct,
-                                                            orchard_before)
-        print("  {} Ironwood note(s); Orchard {} -> {} zat. Anchor-bucket "
-              "ordering held across all layers. OK".format(
-                  len(ironwood), orchard_before, orchard_after))
+        # ---- assert the exact balances INLINE (self-contained) --------------
+        # A reviewer reads this file alone and sees the source balance, every
+        # individual Ironwood note balance, the count, the residual, and the fee.
+        notes = ironwood_notes(w)
+        note_values = sorted(int(n['valueZat']) for n in notes)
+        ironwood_zat = sum(note_values)
+        orchard_after = account_spendable_zat(w, acct, Pool.ORCHARD)
+        fees = orchard_before - ironwood_zat - orchard_after
+        print("  source Orchard:   {} zat".format(orchard_before))
+        print("  Ironwood notes:   {} = {} zat".format(note_values, ironwood_zat))
+        print("  Orchard residual: {} zat; fees: {} zat over {} txs".format(
+            orchard_after, fees, total_txs))
+
+        # One Ironwood note per scheduled crossing, each with a positive balance.
+        assert_equal(len(note_values), expected_crossings,
+                     "one Ironwood note per crossing")
+        assert_true(all(v > 0 for v in note_values),
+                    "every Ironwood note holds a positive balance")
+        # Value is conserved: nothing created, and the fee is non-negative and
+        # bounded by the transaction count (each transaction pads to at most
+        # PREP_TX_ACTIONS actions at the ZIP-317 marginal fee; 200000 zat is a
+        # safe per-transaction ceiling).
+        assert_true(ironwood_zat + orchard_after <= orchard_before,
+                    "no value was created")
+        assert_true(0 <= fees <= total_txs * 200000,
+                    "fees {} zat within the {} zat bound".format(
+                        fees, total_txs * 200000))
+        # Only a sub-dust residual (< 0.01 ZEC) remains in Orchard.
+        assert_true(orchard_after < 1000000,
+                    "only a sub-dust residual remains in Orchard: {} zat".format(
+                        orchard_after))
+        print("  Anchor-bucket ordering held across all layers. OK")
         print("\nNext-actions / anchor-bucket scenario passed.")
 
 

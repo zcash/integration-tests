@@ -153,6 +153,10 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
             assert_true(txid is not None, "Sapling -> Orchard send should succeed")
             node.generate(1)
             wait_for_tx_scanned(w, txid)
+            # Wait for the Sapling change from this send to become spendable
+            # before the next send draws on it (otherwise a later send can see a
+            # zero balance while the change note is still being scanned).
+            wait_account_settled(w, acct)
             assert_true(node.getblockcount() < IRONWOOD_HEIGHT,
                         "the Orchard notes must be minted before NU6.3 activates")
 
@@ -214,15 +218,17 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
 
     # ---- assertions: cross-cutting invariants ------------------------------
 
-    def assert_value_crossed(self, w, acct, orchard_before):
-        """After a completed migration, Ironwood notes exist and the Orchard
-        balance has drained. (Denomination shape is deliberately not pinned.)"""
-        ironwood = ironwood_notes(w)
-        assert_true(len(ironwood) > 0, "the migration produced Ironwood notes")
-        orchard_after = account_spendable_zat(w, acct, Pool.ORCHARD)
-        assert_true(orchard_after < orchard_before,
-                    "the Orchard balance drained as value crossed to Ironwood")
-        return ironwood, orchard_after
+    def ironwood_balance_zat(self, w):
+        """The account's total spendable Ironwood balance, in zatoshi, summed
+        from its Ironwood notes (each z_listunspent note reports its value in the
+        `valueZat` field). A plain data helper: each scenario asserts the concrete
+        balance relationship (source, Ironwood, residual, fees, note count)
+        INLINE, so the file is self-contained and reviewable."""
+        return sum(int(n['valueZat']) for n in ironwood_notes(w))
+
+    def orchard_balance_zat(self, w, acct):
+        """The account's spendable Orchard balance in zatoshi (data helper)."""
+        return account_spendable_zat(w, acct, Pool.ORCHARD)
 
     # ---- assertions: the next-actions / anchor-bucket surface --------------
 
