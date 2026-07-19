@@ -33,15 +33,20 @@ from test_framework.util import (
 # Three parties with distinct, faithful balances. The whale is many notes so its
 # preparation fans across several dependent layers, exercising the anchor-bucket
 # ordering concurrently with the two single-layer migrations.
+# Amounts chosen so each party's balance decomposes fully into 1-2-5 crossings
+# (a sub-dust residual): the whale's ten 12-ZEC notes force a multi-layer
+# preparation, and the three together stay under the single shielded coinbase the
+# faucet holds (~137 ZEC).
 PARTIES = [
     ("small holder", [Decimal('2')]),
+    ("retail", [Decimal('12')]),
     ("whale", [Decimal('12')] * 10),
 ]
 
 
 class ConcurrentMigrationScenario(IronwoodMigrationScenario):
 
-    NUM_SUBJECTS = 2
+    NUM_SUBJECTS = 3
 
     def run_test(self):
         self.sync_all()

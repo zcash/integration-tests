@@ -31,6 +31,7 @@ is never actionable until its whole predecessor layer has mined), and the
 machine-readable NEXT-ACTIONS surface a mobile wallet renders.
 """
 
+import time
 from decimal import Decimal
 
 from test_framework.util import (
@@ -40,12 +41,9 @@ from test_framework.util import (
     _RPC_EXCEPTIONS,
     account_spendable_zat,
     assert_true,
-    connect_nodes_bi,
     ironwood_notes,
     nu_activation_ironwood_at,
     shield_coinbase,
-    sync_blocks_with_reconnect,
-    sync_mempools,
     wait_account_settled,
     wait_for_account_spendable,
     wait_for_tx_scanned,
@@ -90,7 +88,7 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
     """
 
     # How many SUBJECT wallets the scenario migrates (in addition to the faucet
-    # wallet 0). One faucet plus `NUM_SUBJECTS` subjects share one peered chain.
+    # wallet 0). One faucet plus `NUM_SUBJECTS` subjects all share ONE node.
     NUM_SUBJECTS = 1
 
     # A generous cap: the migration advances one transaction per call, and the
@@ -103,10 +101,13 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
 
     def __init__(self):
         super().__init__()
-        # One node per wallet (each wallet indexes into its own node), all
-        # peered onto one chain by the base framework: wallet 0 is the faucet,
-        # wallets 1.. are subjects.
-        self.num_nodes = 1 + self.NUM_SUBJECTS
+        # A SINGLE shared node hosts every wallet. The framework normally binds
+        # one node per wallet, but multiple peered zebra regtest nodes do not
+        # converge past two (multi-peer propagation bug, zebra #10329 / #10332).
+        # Instead all wallets follow ONE node (node 0) and submit to its mempool,
+        # so there is no inter-node peering to stall: wallet 0 is the faucet (and
+        # node 0 mines to its address); wallets 1.. are subjects.
+        self.num_nodes = 1
         self.num_wallets = 1 + self.NUM_SUBJECTS
         # Deferred activation gives an Orchard era in which to mint the source
         # notes the migration consumes.
@@ -115,32 +116,91 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
         self._faucet_ready = False
 
     def setup_network(self, split=False, do_mempool_sync=True):
-        """Peer every node directly to the faucet node (node 0) in a STAR, rather
-        than the base framework's linear CHAIN (0-1-2-3). The faucet mines every
-        block, so a star lets each subject node receive the faucet's blocks in one
-        hop; a multi-hop chain stalls on the zebra regtest backend (its
-        multi-peer block propagation does not converge past two nodes: zebra
-        #10329 / #10332), which is what makes a many-subject topology viable."""
+        """Single-node setup: start the one shared node, then start every wallet
+        against it (see setup_wallets). A freshly started wallet does not report a
+        committed wallet_tip until it has scanned a block, so mine one block and
+        wait for every wallet to reach the node's tip before the scenario runs.
+        There is no peering (one node), so no cross-node sync is involved."""
         self.prepare_wallets()
         self.nodes = self.setup_nodes()
-        for i in range(1, len(self.nodes)):
-            connect_nodes_bi(self.nodes, 0, i)
         self.is_network_split = split
         self.prepare_chain()
-        self.sync_all(do_mempool_sync)
         self.zainos = self.setup_indexers()
         self.wallets = self.setup_wallets()
+        self.nodes[0].generate(1)
+        self.sync_all()
 
     def sync_all(self, do_mempool_sync=True):
-        """Converge every node's chain on the faucet node's (node 0), retrying
-        with peer reconnects. zebra's regtest multi-peer block propagation
-        intermittently stalls a subject node's download (zebra #10329 / #10332),
-        so a plain one-shot sync flakes with more than two nodes; reconnecting
-        the subject nodes to the faucet and retrying is what makes a
-        many-subject topology converge reliably."""
-        sync_blocks_with_reconnect(self.nodes, 0)
-        if do_mempool_sync:
-            sync_mempools(self.nodes, self.wallets)
+        """Wait until every wallet has committed the shared node's tip. The
+        framework's `sync_blocks` cannot be used here: it compares a length-1
+        node-tip list against a length-N wallet-tip list (it assumes one wallet
+        per node), so it never matches when N wallets share one node, even though
+        each wallet's tip does equal the node's. No mempool sync is needed either
+        (every wallet submits to the single node's mempool, which mines it)."""
+        node = self.nodes[0]
+        deadline = time.time() + 90
+        while time.time() < deadline:
+            tip = node.getbestblockhash()
+            synced = True
+            for w in (self.wallets or []):
+                try:
+                    wt = w.getwalletstatus().get('wallet_tip')
+                except _RPC_EXCEPTIONS:
+                    synced = False
+                    break
+                if not wt or wt.get('blockhash') != tip:
+                    synced = False
+                    break
+            if synced:
+                return
+            time.sleep(0.25)
+        raise AssertionError("wallets did not reach the node tip")
+
+    def setup_wallets(self):
+        """Start every wallet against the SINGLE shared node (node 0), rather than
+        the framework's default one-node-per-wallet binding. All wallets read node
+        0's state (read-only) and submit to its validator RPC, so they share one
+        chain and one mempool with no inter-node peering (which is what avoids the
+        zebra regtest multi-peer bug). Node 0 mines every block and its mempool
+        already holds each wallet's broadcast, so no cross-node propagation is
+        needed. Each wallet keeps its OWN data directory and RPC port; only the
+        validator connection (RPC, gRPC indexer, and read-only state path) is
+        shared. The wallet databases were already created by `prepare_wallets`."""
+        import subprocess
+
+        from test_framework.config import ZalletArgs
+        from test_framework.util import (
+            get_rpc_auth_proxy,
+            indexer_rpc_port,
+            node_dir,
+            rpc_port,
+            rpc_url_wallet,
+            update_zallet_conf,
+            wait_for_wallet_start,
+            wallet_dir,
+            wallet_rpc_port,
+            zallet_binary,
+            zallet_processes,
+        )
+
+        dirname = self.options.tmpdir
+        binary = zallet_binary()
+        wallets = []
+        for i in range(self.num_wallets):
+            datadir = wallet_dir(dirname, i)
+            zallet_args = ZalletArgs(activation_heights=self.activation_heights)
+            # Point this wallet at node 0's validator RPC, gRPC indexer, and
+            # read-only state directory (all wallets share node 0).
+            update_zallet_conf(
+                datadir, rpc_port(0), wallet_rpc_port(i), zallet_args,
+                indexer_port=indexer_rpc_port(0),
+                zebra_state_dir=node_dir(dirname, 0))
+            zallet_processes[i] = subprocess.Popen(
+                [binary, "-d=" + datadir, "start"])
+            url = rpc_url_wallet(i)
+            wait_for_wallet_start(zallet_processes[i], url, i)
+            wallets.append(get_rpc_auth_proxy(url, i))
+        return wallets
 
     # ---- faucet / subject accessors ----------------------------------------
 
@@ -264,8 +324,8 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
 
     def activate_ironwood(self):
         """Advance the chain past the NU6.3 activation height so the migration is
-        allowed (the source notes must already be minted). Mines on the faucet
-        node and syncs every peer."""
+        allowed (the source notes must already be minted). Mines on the shared
+        node and waits for every wallet to reach the tip."""
         node = self.faucet_node
         while node.getblockcount() < IRONWOOD_HEIGHT:
             node.generate(1)
@@ -290,16 +350,13 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
         return getattr(w, ADVANCE_RPC)(acct, migration_id)
 
     def drive_to_completion(self, w, acct, migration_id, on_step=None):
-        """Advance one subject's migration one step per call, mining on the
-        faucet node and syncing between steps, until it completes or the step
-        cap is reached. `on_step(step, adv)` runs after each advance. Returns
-        True if the migration completed.
-
-        The subject broadcasts to its OWN node, but mining happens on the faucet
-        node, so mempools are synced BEFORE mining (`sync_all` propagates the
-        just-broadcast transaction to the miner) and again after (to carry the
-        block back to the subject); otherwise the miner would produce blocks
-        without the subject's transaction and it would never confirm."""
+        """Advance one subject's migration one step per call, mining on the shared
+        node and letting the wallets catch up between steps, until it completes or
+        the step cap is reached. `on_step(step, adv)` runs after each advance.
+        Returns True if the migration completed. All wallets share node 0, so the
+        subject's just-broadcast transaction is already in the node's mempool when
+        it mines; only a post-mine `sync_all` (to let the wallet see the block) is
+        needed."""
         node = self.faucet_node
         for step in range(self.MAX_ADVANCE_STEPS):
             adv = self.advance(w, acct, migration_id)
@@ -307,20 +364,19 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
                 on_step(step, adv)
             if adv['phase'] == 'completed':
                 return True
-            self.sync_all()
             node.generate(self.ADVANCE_MINE_BLOCKS)
             self.sync_all()
             wait_account_settled(w, acct)
         return False
 
     def drive_many_to_completion(self, subjects, on_step=None):
-        """Drive SEVERAL subjects' migrations CONCURRENTLY on one shared chain:
-        round-robin one advance step per still-running subject, then mine once on
-        the faucet node and sync, so every subject's schedule advances together
-        (as they would on the real network). `subjects` is a list of
-        `(wallet, account, migration_id)` tuples. `on_step(step, idx, adv)` runs
-        after each subject's advance. Returns a list of per-subject completion
-        booleans."""
+        """Drive SEVERAL subjects' migrations CONCURRENTLY on the one shared node:
+        round-robin one advance step per still-running subject, then mine one
+        batch that confirms every subject's just-broadcast transaction together
+        (they all submit to the same node's mempool), and let the wallets catch
+        up. `subjects` is a list of `(wallet, account, migration_id)` tuples.
+        `on_step(step, idx, adv)` runs after each subject's advance. Returns a
+        list of per-subject completion booleans."""
         node = self.faucet_node
         done = [False] * len(subjects)
         for step in range(self.MAX_ADVANCE_STEPS):
@@ -334,10 +390,6 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
                     done[idx] = True
             if all(done):
                 return done
-            # Propagate every subject's just-broadcast transaction to the miner
-            # before mining, mine one batch that confirms them all together, then
-            # carry the block back to every subject.
-            self.sync_all()
             node.generate(self.ADVANCE_MINE_BLOCKS)
             self.sync_all()
             for w, acct, _ in subjects:
