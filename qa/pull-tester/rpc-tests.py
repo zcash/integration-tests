@@ -130,8 +130,6 @@ DISABLED_SCRIPTS = [
     'wallet_orchard_init.py',  # no zallet equiv yet: resendwallettransactions
     'wallet_orchard_persistence.py',  # deprecated; z_getbalanceforaccount->z_getbalances
     'wallet_orchard_reindex.py',  # deprecated; z_getbalanceforaccount->z_getbalances
-    'wallet_ironwood_migration.py',  # no zallet equiv yet: generic pool-migration RPC (z_startpoolmigration &c, zcash_ironwood_migration_backend note-split planner still evolving); scaffolding self-skips
-    'wallet_ironwood_migration_preview.py',  # needs a pinned zallet exposing z_previewpoolmigration (the note-split planning-preview RPC); Stage-0 self-skips on older builds
     'wallet_ironwood_reorg.py',  # zebra-backend: wait_for_wallet_sync never converges after invalidateblock (still hangs as of zallet@d168efe, past zallet#560/#563/#576)
     'wallet_ironwood_birthday.py',  # zebra-backend: recovered account's wait_for_wallet_sync(timeout=300) still times out (still hangs as of zallet@d168efe, past zallet#560/#563/#576)
     'wallet_overwintertx.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
@@ -285,6 +283,22 @@ NEW_SCRIPTS= [
     'wallet_ironwood_crosspool.py',
     'wallet_ironwood_migration.py',
     'wallet_ironwood_migration_preview.py',
+    # Orchard -> Ironwood migration scenario suite (personas, lifecycle, and the
+    # multi-layer anchor-bucket ordering). Each drives a real migration on the
+    # Z3 stack and asserts the exact balances inline; the heavier drive-to-
+    # completion cases fan a whale across several dependent layers.
+    'wallet_ironwood_migration_next_actions.py',
+    'wallet_ironwood_migration_monotonic.py',
+    'wallet_ironwood_migration_exchange.py',
+    'wallet_ironwood_migration_dust_heavy.py',
+    'wallet_ironwood_migration_whale_plus_dust.py',
+    'wallet_ironwood_migration_schedule.py',
+    'wallet_ironwood_migration_denominations.py',
+    'wallet_ironwood_migration_cancel.py',
+    'wallet_ironwood_migration_nothing.py',
+    'wallet_ironwood_migration_pre_activation.py',
+    'wallet_ironwood_migration_double_start.py',
+    'wallet_ironwood_migration_unknown_id.py',
     'wallet_ironwood_spending.py',
     'wallet_ironwood_invariants.py',
     # vv Tests less than 5m vv
