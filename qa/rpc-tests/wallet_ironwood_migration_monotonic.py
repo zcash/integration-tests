@@ -10,12 +10,15 @@
 # operation progress must only move FORWARD: the count of completed (mined)
 # transactions never decreases, the phase never regresses from in_progress back
 # to a pre-start phase, and completion happens exactly when every transaction is
-# mined. This scenario drives a multi-layer migration and asserts monotonicity
-# at every step.
+# mined. A faucet funds the subject with many exact notes (a multi-layer
+# migration), and this scenario asserts monotonicity at every step.
 #
+
+from decimal import Decimal
 
 from test_framework.ironwood_migration_common import IronwoodMigrationScenario
 from test_framework.util import (
+    COIN,
     Pool,
     account_spendable_zat,
     assert_equal,
@@ -23,7 +26,10 @@ from test_framework.util import (
     ironwood_notes,
 )
 
-SOURCE_NOTE_ZEC = 78
+# Many source notes -> a multi-layer, multi-transaction migration to exercise
+# progress monotonicity over a long run.
+SOURCE_NOTES = [Decimal('12')] * 10
+SOURCE_ZAT = int(sum(SOURCE_NOTES) * COIN)
 
 # The ordered lifecycle phases, so a regression can be detected by index.
 PHASE_ORDER = ['not_started', 'in_progress', 'completed']
@@ -32,23 +38,20 @@ PHASE_ORDER = ['not_started', 'in_progress', 'completed']
 class MonotonicProgressScenario(IronwoodMigrationScenario):
 
     def run_test(self):
-        node = self.nodes[0]
-        w = self.wallets[0]
-        taddr = self.miner_addresses[0]
-
         self.sync_all()
-        if self.skip_if_rpcs_absent(w):
+        subject = self.subject(0)
+        if self.skip_if_rpcs_absent(subject):
             return
+        sacct = self.subject_account(0)
 
-        acct = w.z_listaccounts()[0]['account_uuid']
+        print("Faucet funds the subject with {} exact notes ({} ZEC)...".format(
+            len(SOURCE_NOTES), int(sum(SOURCE_NOTES))))
+        orchard_before = self.fund_exact_orchard(0, SOURCE_NOTES)
+        assert_equal(orchard_before, SOURCE_ZAT, "exact source balance")
+        self.activate_ironwood()
 
-        print("Funding an Orchard source ({} ZEC)...".format(SOURCE_NOTE_ZEC))
-        orchard_before = self.fund_orchard_note(node, w, taddr, acct,
-                                                SOURCE_NOTE_ZEC)
-        self.activate_ironwood(node)
-
-        expected_crossings = self.preview(w, acct)['funding_note_count']
-        started = self.start(w, acct)
+        expected_crossings = self.preview(subject, sacct)['funding_note_count']
+        started = self.start(subject, sacct)
         migration_id = started['migration_id']
         total = started['plan']['transaction_count']
         print("  started: {} transactions, {} crossings.".format(
@@ -76,17 +79,17 @@ class MonotonicProgressScenario(IronwoodMigrationScenario):
                 assert_true(completed == total,
                             "completion must mean every transaction is mined")
 
-        completed = self.drive_to_completion(w, node, acct, migration_id,
+        completed = self.drive_to_completion(subject, sacct, migration_id,
                                              on_step=on_step)
         assert_true(completed,
                     "the migration completed within {} advance steps".format(
                         self.MAX_ADVANCE_STEPS))
 
         # ---- assert the exact balances INLINE (self-contained) --------------
-        notes = ironwood_notes(w)
+        notes = ironwood_notes(subject)
         note_values = sorted(int(n['valueZat']) for n in notes)
         ironwood_zat = sum(note_values)
-        orchard_after = account_spendable_zat(w, acct, Pool.ORCHARD)
+        orchard_after = account_spendable_zat(subject, sacct, Pool.ORCHARD)
         fees = orchard_before - ironwood_zat - orchard_after
         print("  source Orchard:   {} zat".format(orchard_before))
         print("  Ironwood notes:   {} = {} zat".format(note_values, ironwood_zat))

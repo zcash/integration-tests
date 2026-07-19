@@ -7,22 +7,26 @@
 # Scenario B1/B2 + C1: the multi-layer anchor-bucket invariant and the mobile
 # wallet's machine-readable "what do I sign next" surface.
 #
-# A large Orchard balance fans its preparation out across several dependent
-# layers. Because a later layer spends the feeder notes an earlier layer mints,
-# and those feeders are witnessable only once that earlier layer is mined, each
-# layer must be signed and broadcast in a DIFFERENT anchor bucket: layer N is
-# never actionable until its whole predecessor layer (layer N-1) has mined.
+# A many-note Orchard balance fans its preparation out across several dependent
+# layers (multi-layer preparation is driven by the source note count: many notes
+# must be consolidated across layers). Because a later layer spends the feeder
+# notes an earlier layer mints, and those feeders are witnessable only once that
+# earlier layer is mined, each layer must be signed and broadcast in a DIFFERENT
+# anchor bucket: layer N is never actionable until its whole predecessor layer
+# (layer N-1) has mined.
 #
-# The migration STATE MACHINE that enforces this lives in the librustzcash
-# engine (a mobile wallet drives it directly); this scenario asserts that
-# behavior end to end through zallet's regtest RPCs. At EVERY advance step it
-# checks the per-transaction status surface for internal consistency and for the
-# anchor-bucket ordering, and it records the per-layer state sequence to confirm
-# no later layer was signed before its predecessor fully mined.
+# The migration STATE MACHINE that enforces this lives in the librustzcash engine
+# (a mobile wallet drives it directly); this scenario asserts that behavior end to
+# end through zallet's regtest RPCs. A faucet funds the subject with many exact
+# notes. At EVERY advance step it checks the per-transaction status surface for
+# internal consistency and for the anchor-bucket ordering.
 #
+
+from decimal import Decimal
 
 from test_framework.ironwood_migration_common import IronwoodMigrationScenario
 from test_framework.util import (
+    COIN,
     Pool,
     account_spendable_zat,
     assert_equal,
@@ -30,34 +34,28 @@ from test_framework.util import (
     ironwood_notes,
 )
 
-# A balance large enough to force a multi-layer preparation (the engine fans a
-# whale out across dependent layers). The exact layer count is a function of the
-# planner; the scenario only requires more than one layer.
-SOURCE_NOTE_ZEC = 78
+# Many source notes force a multi-layer preparation (the engine fans the
+# consolidation out across dependent layers). Ten notes yields several layers.
+SOURCE_NOTES = [Decimal('12')] * 10
+SOURCE_ZAT = int(sum(SOURCE_NOTES) * COIN)
 
 
 class NextActionsScenario(IronwoodMigrationScenario):
 
     def run_test(self):
-        node = self.nodes[0]
-        w = self.wallets[0]
-        taddr = self.miner_addresses[0]
-
-        # Bring the wallet up to the chain tip so account RPCs are accepted.
         self.sync_all()
-
-        if self.skip_if_rpcs_absent(w):
+        subject = self.subject(0)
+        if self.skip_if_rpcs_absent(subject):
             return
+        sacct = self.subject_account(0)
 
-        acct = w.z_listaccounts()[0]['account_uuid']
+        print("Faucet funds the subject with {} exact notes ({} ZEC)...".format(
+            len(SOURCE_NOTES), int(sum(SOURCE_NOTES))))
+        orchard_before = self.fund_exact_orchard(0, SOURCE_NOTES)
+        assert_equal(orchard_before, SOURCE_ZAT, "exact source balance")
 
-        print("Funding a whale Orchard source ({} ZEC)...".format(
-            SOURCE_NOTE_ZEC))
-        orchard_before = self.fund_orchard_note(node, w, taddr, acct,
-                                                 SOURCE_NOTE_ZEC)
-        self.activate_ironwood(node)
-
-        preview = self.preview(w, acct)
+        self.activate_ironwood()
+        preview = self.preview(subject, sacct)
         layers = preview['preparation']['layer_count']
         expected_crossings = preview['funding_note_count']
         print("  preview: {} layer(s), {} funding note(s).".format(
@@ -66,7 +64,7 @@ class NextActionsScenario(IronwoodMigrationScenario):
                     "this scenario needs a multi-layer preparation to exercise "
                     "the anchor-bucket ordering; got {} layer(s)".format(layers))
 
-        started = self.start(w, acct)
+        started = self.start(subject, sacct)
         migration_id = started['migration_id']
         total_txs = started['plan']['transaction_count']
         print("  started: id={!r} transaction_count={}".format(
@@ -75,7 +73,7 @@ class NextActionsScenario(IronwoodMigrationScenario):
         # The freshly started migration must already expose a consistent
         # next-actions surface: layer 0 ready to broadcast, later layers blocked
         # on their dependencies.
-        st = self.assert_next_actions_consistent(w, migration_id)
+        st = self.assert_next_actions_consistent(subject, migration_id)
         ready0 = [t for t in st['transactions'] if t['ready']]
         assert_true(len(ready0) > 0,
                     "at least one layer-0 transaction is ready at start")
@@ -93,7 +91,7 @@ class NextActionsScenario(IronwoodMigrationScenario):
         # Drive to completion, asserting the surface's consistency and the
         # anchor-bucket ordering (both readiness and build order) at every step.
         def on_step(step, adv):
-            self.assert_next_actions_consistent(w, migration_id)
+            self.assert_next_actions_consistent(subject, migration_id)
             if step % 20 == 0 or adv['phase'] == 'completed':
                 print("  step {}: phase={} {}/{} - {}".format(
                     step, adv['phase'],
@@ -102,40 +100,32 @@ class NextActionsScenario(IronwoodMigrationScenario):
 
         print("Driving the migration, asserting the next-actions surface each "
               "step...")
-        completed = self.drive_to_completion(w, node, acct, migration_id,
+        completed = self.drive_to_completion(subject, sacct, migration_id,
                                              on_step=on_step)
         assert_true(completed,
                     "the migration completed within {} advance steps".format(
                         self.MAX_ADVANCE_STEPS))
 
         # ---- assert the exact balances INLINE (self-contained) --------------
-        # A reviewer reads this file alone and sees the source balance, every
-        # individual Ironwood note balance, the count, the residual, and the fee.
-        notes = ironwood_notes(w)
+        notes = ironwood_notes(subject)
         note_values = sorted(int(n['valueZat']) for n in notes)
         ironwood_zat = sum(note_values)
-        orchard_after = account_spendable_zat(w, acct, Pool.ORCHARD)
+        orchard_after = account_spendable_zat(subject, sacct, Pool.ORCHARD)
         fees = orchard_before - ironwood_zat - orchard_after
         print("  source Orchard:   {} zat".format(orchard_before))
         print("  Ironwood notes:   {} = {} zat".format(note_values, ironwood_zat))
         print("  Orchard residual: {} zat; fees: {} zat over {} txs".format(
             orchard_after, fees, total_txs))
 
-        # One Ironwood note per scheduled crossing, each with a positive balance.
         assert_equal(len(note_values), expected_crossings,
                      "one Ironwood note per crossing")
         assert_true(all(v > 0 for v in note_values),
                     "every Ironwood note holds a positive balance")
-        # Value is conserved: nothing created, and the fee is non-negative and
-        # bounded by the transaction count (each transaction pads to at most
-        # PREP_TX_ACTIONS actions at the ZIP-317 marginal fee; 200000 zat is a
-        # safe per-transaction ceiling).
         assert_true(ironwood_zat + orchard_after <= orchard_before,
                     "no value was created")
         assert_true(0 <= fees <= total_txs * 200000,
                     "fees {} zat within the {} zat bound".format(
                         fees, total_txs * 200000))
-        # Only a sub-dust residual (< 0.01 ZEC) remains in Orchard.
         assert_true(orchard_after < 1000000,
                     "only a sub-dust residual remains in Orchard: {} zat".format(
                         orchard_after))

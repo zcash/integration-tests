@@ -9,7 +9,7 @@
 # The read and drive methods must reject an id that does not name the wallet's
 # migration, both when no migration exists and when one is in progress. A wallet
 # that polls or resumes with a stale or wrong id must get a clear error, never a
-# crash or a silent no-op that looks like success.
+# crash or a silent no-op that looks like success. A faucet funds the subject.
 #
 
 from test_framework.ironwood_migration_common import (
@@ -43,29 +43,25 @@ class UnknownIdScenario(IronwoodMigrationScenario):
                         name, label))
 
     def run_test(self):
-        node = self.nodes[0]
-        w = self.wallets[0]
-        taddr = self.miner_addresses[0]
-
         self.sync_all()
-        if self.skip_if_rpcs_absent(w):
+        subject = self.subject(0)
+        if self.skip_if_rpcs_absent(subject):
             return
-
-        acct = w.z_listaccounts()[0]['account_uuid']
+        sacct = self.subject_account(0)
 
         # (a) No migration exists yet: an unknown id is rejected.
         print("Probing an unknown id with no migration in progress...")
-        self._expect_rejected(w, acct, "no migration in progress")
+        self._expect_rejected(subject, sacct, "no migration in progress")
 
         # (b) A migration is in progress: an id that is not it is still rejected.
         print("Funding and starting a migration, then probing a wrong id...")
-        self.fund_orchard_note(node, w, taddr, acct, 5)
-        self.activate_ironwood(node)
-        self.start(w, acct)
-        self._expect_rejected(w, acct, "wrong id while one is in progress")
+        self.fund_exact_note(0, 5)
+        self.activate_ironwood()
+        self.start(subject, sacct)
+        self._expect_rejected(subject, sacct, "wrong id while one is in progress")
 
         # The real migration is still addressable by its own id.
-        listed = getattr(w, 'z_listpoolmigrations')()
+        listed = getattr(subject, 'z_listpoolmigrations')()
         assert_true(len(listed) == 1,
                     "the real migration is unaffected by the wrong-id probes")
         print("\nUnknown-id scenario passed.")

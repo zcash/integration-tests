@@ -10,7 +10,8 @@
 # starting another for the same account must be refused: overwriting the
 # in-progress migration would discard its pre-signed transactions. A wallet UI
 # that lets the user tap "migrate" twice must not corrupt an in-flight run. The
-# guard lifts only once the migration reaches a terminal state.
+# guard lifts only once the migration reaches a terminal state. A faucet funds
+# the subject with an exact balance.
 #
 
 from test_framework.ironwood_migration_common import (
@@ -21,28 +22,25 @@ from test_framework.ironwood_migration_common import (
 )
 from test_framework.util import _RPC_EXCEPTIONS, assert_true
 
-SOURCE_NOTE_ZEC = 5
+SOURCE_ZEC = 5
 
 
 class DoubleStartScenario(IronwoodMigrationScenario):
 
     def run_test(self):
-        node = self.nodes[0]
-        w = self.wallets[0]
-        taddr = self.miner_addresses[0]
-
         self.sync_all()
-        if self.skip_if_rpcs_absent(w):
+        subject = self.subject(0)
+        if self.skip_if_rpcs_absent(subject):
             return
+        sacct = self.subject_account(0)
 
-        acct = w.z_listaccounts()[0]['account_uuid']
-
-        print("Funding an Orchard source ({} ZEC)...".format(SOURCE_NOTE_ZEC))
-        self.fund_orchard_note(node, w, taddr, acct, SOURCE_NOTE_ZEC)
-        self.activate_ironwood(node)
+        print("Faucet funds the subject with EXACTLY {} ZEC...".format(
+            SOURCE_ZEC))
+        self.fund_exact_note(0, SOURCE_ZEC)
+        self.activate_ironwood()
 
         # First start commits the migration (builds and pre-signs it).
-        started = self.start(w, acct)
+        started = self.start(subject, sacct)
         migration_id = started['migration_id']
         assert_true(started['plan']['transaction_count'] > 0,
                     "the first start plans at least one transaction")
@@ -50,7 +48,7 @@ class DoubleStartScenario(IronwoodMigrationScenario):
 
         # A second start, while the first is in progress, must be refused.
         try:
-            getattr(w, START_RPC)(acct, FROM_POOL, TO_POOL)
+            getattr(subject, START_RPC)(sacct, FROM_POOL, TO_POOL)
         except _RPC_EXCEPTIONS as e:
             message = str(e.error.get('message', ''))
             print("  second start refused while one is in progress: {!r}. OK"
@@ -60,7 +58,7 @@ class DoubleStartScenario(IronwoodMigrationScenario):
                 "a second start must be refused while a migration is in progress")
 
         # The in-progress migration is intact (still the same one).
-        listed = getattr(w, 'z_listpoolmigrations')()
+        listed = getattr(subject, 'z_listpoolmigrations')()
         assert_true(len(listed) == 1,
                     "exactly one migration is in progress after the refused start")
         print("\nDouble-start guard scenario passed.")

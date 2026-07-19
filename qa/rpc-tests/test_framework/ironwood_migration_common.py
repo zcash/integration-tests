@@ -13,6 +13,18 @@ The migration STATE MACHINE lives in the librustzcash engine
 zallet is a thin consumer, so these scenarios exercise shared-engine behavior
 through zallet's regtest JSON-RPC.
 
+FAUCET model
+------------
+A regtest wallet that mines its own coinbase always ends up holding the WHOLE
+shielded coinbase (~137 ZEC), because a shielded send routes its change back
+into the account's preferred pool; the nominal "amount" cannot shrink it. To
+give each subject a TRUTHFUL balance (a 2 ZEC small holder really holding 2 ZEC),
+the harness separates the MINER from the SUBJECT: wallet 0 is a FAUCET that mines
+and shields the coinbase, and wallets 1.. are SUBJECTS the faucet funds with
+EXACT amounts. The faucet keeps the change, so a subject holds precisely what it
+was sent. This also enables MULTIPLE subjects migrating concurrently on one
+shared chain (`NUM_SUBJECTS` > 1, driven by `drive_many_to_completion`).
+
 Assertion helpers cover the cross-cutting invariants (value conservation, pool
 exclusivity), the multi-layer ANCHOR-BUCKET ordering (a later preparation layer
 is never actionable until its whole predecessor layer has mined), and the
@@ -28,13 +40,16 @@ from test_framework.util import (
     _RPC_EXCEPTIONS,
     account_spendable_zat,
     assert_true,
+    connect_nodes_bi,
     ironwood_notes,
     nu_activation_ironwood_at,
     shield_coinbase,
+    sync_blocks_with_reconnect,
+    sync_mempools,
     wait_account_settled,
-    wait_and_assert_operationid_status,
     wait_for_account_spendable,
     wait_for_tx_scanned,
+    wait_and_assert_operationid_status,
 )
 from test_framework.util_ironwood import IronwoodTestFramework
 
@@ -68,10 +83,15 @@ def orchard_notes(wallet, minconf=1):
 class IronwoodMigrationScenario(IronwoodTestFramework):
     """Base class for one migration scenario.
 
-    Subclasses set any scenario-specific configuration and implement `run_test`,
-    typically: fund a wallet shape, `preview`, `start`, `drive_to_completion` (or
-    a partial drive for resume/cancel scenarios), then assert with the helpers.
+    Subclasses set `NUM_SUBJECTS` (default 1), implement `run_test`, and
+    typically: fund each subject with an exact Orchard balance via the faucet
+    (`fund_exact_orchard`), `preview`, `start`, `drive_to_completion` (or the
+    concurrent `drive_many_to_completion`), then assert with the helpers.
     """
+
+    # How many SUBJECT wallets the scenario migrates (in addition to the faucet
+    # wallet 0). One faucet plus `NUM_SUBJECTS` subjects share one peered chain.
+    NUM_SUBJECTS = 1
 
     # A generous cap: the migration advances one transaction per call, and the
     # transfers are spread across a randomized privacy schedule, so a wide bound
@@ -83,9 +103,67 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
 
     def __init__(self):
         super().__init__()
+        # One node per wallet (each wallet indexes into its own node), all
+        # peered onto one chain by the base framework: wallet 0 is the faucet,
+        # wallets 1.. are subjects.
+        self.num_nodes = 1 + self.NUM_SUBJECTS
+        self.num_wallets = 1 + self.NUM_SUBJECTS
         # Deferred activation gives an Orchard era in which to mint the source
         # notes the migration consumes.
         self.activation_heights = nu_activation_ironwood_at(IRONWOOD_HEIGHT)
+        # Lazily shielded on first fund; the faucet's coinbase is shielded once.
+        self._faucet_ready = False
+
+    def setup_network(self, split=False, do_mempool_sync=True):
+        """Peer every node directly to the faucet node (node 0) in a STAR, rather
+        than the base framework's linear CHAIN (0-1-2-3). The faucet mines every
+        block, so a star lets each subject node receive the faucet's blocks in one
+        hop; a multi-hop chain stalls on the zebra regtest backend (its
+        multi-peer block propagation does not converge past two nodes: zebra
+        #10329 / #10332), which is what makes a many-subject topology viable."""
+        self.prepare_wallets()
+        self.nodes = self.setup_nodes()
+        for i in range(1, len(self.nodes)):
+            connect_nodes_bi(self.nodes, 0, i)
+        self.is_network_split = split
+        self.prepare_chain()
+        self.sync_all(do_mempool_sync)
+        self.zainos = self.setup_indexers()
+        self.wallets = self.setup_wallets()
+
+    def sync_all(self, do_mempool_sync=True):
+        """Converge every node's chain on the faucet node's (node 0), retrying
+        with peer reconnects. zebra's regtest multi-peer block propagation
+        intermittently stalls a subject node's download (zebra #10329 / #10332),
+        so a plain one-shot sync flakes with more than two nodes; reconnecting
+        the subject nodes to the faucet and retrying is what makes a
+        many-subject topology converge reliably."""
+        sync_blocks_with_reconnect(self.nodes, 0)
+        if do_mempool_sync:
+            sync_mempools(self.nodes, self.wallets)
+
+    # ---- faucet / subject accessors ----------------------------------------
+
+    @property
+    def faucet(self):
+        """The miner wallet (wallet 0) that funds the subjects."""
+        return self.wallets[0]
+
+    @property
+    def faucet_node(self):
+        """The node the faucet mines on (node 0)."""
+        return self.nodes[0]
+
+    def subject(self, i=0):
+        """Subject wallet `i` (0-based; wallet i+1)."""
+        return self.wallets[1 + i]
+
+    def subject_account(self, i=0):
+        """Subject `i`'s account UUID."""
+        return self.subject(i).z_listaccounts()[0]['account_uuid']
+
+    def _orchard_ua(self, w, acct):
+        return w.z_getaddressforaccount(acct, ['orchard'])['address']
 
     # ---- capability probing ------------------------------------------------
 
@@ -98,7 +176,12 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
     def migration_rpcs_present(self, w):
         """Whether the pool-migration RPC surface is wired in this build. Probes
         `start` with deliberately invalid arguments: an unknown method rejects
-        the CALL (method-not-found); a wired method rejects the ARGUMENTS."""
+        the CALL (method-not-found); a wired method rejects the ARGUMENTS. The
+        wallet RPC surface is registered synchronously before the endpoint
+        accepts connections, so a single probe is authoritative. (When the run
+        uses the zaino backend, whose binary lacks these methods, this correctly
+        reports absent and the scenario self-skips; set ZALLET_BACKEND=zebra to
+        exercise the migration surface.)"""
         try:
             getattr(w, START_RPC)('__invalid_pool__', '__invalid_pool__')
         except _RPC_EXCEPTIONS as e:
@@ -113,101 +196,82 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
             return True
         return False
 
-    # ---- funding wallet shapes ---------------------------------------------
+    # ---- funding: the faucet mints EXACT subject balances ------------------
 
-    def _orchard_ua(self, w, acct):
-        return w.z_getaddressforaccount(acct, ['orchard'])['address']
-
-    def _sapling_ua(self, w, acct):
-        return w.z_getaddressforaccount(acct, ['sapling'])['address']
-
-    def fund_orchard_notes(self, node, w, taddr, acct, amounts_zec):
-        """Mint one spendable v2 Orchard note per amount in `amounts_zec`
-        (Decimal or number, in ZEC), all pre-NU6.3, and return the account's
-        total spendable Orchard value in zat.
-
-        A direct many-UTXO Orchard shield can be left unspendable by fee
-        estimation, so shield into Sapling first, then pay the Orchard receiver
-        once per note (sequential sends, so each mint is a distinct note and no
-        single transaction has a duplicated recipient).
-        """
-        amounts = [Decimal(a) for a in amounts_zec]
-        ua = self._orchard_ua(w, acct)
-        sapling_ua = self._sapling_ua(w, acct)
-
+    def _ensure_faucet_funded(self):
+        """Shield the faucet's coinbase once (into the faucet's Sapling pool),
+        giving it a large spendable balance to hand out to subjects. Idempotent:
+        later subject funding draws on the faucet's remaining balance."""
+        if self._faucet_ready:
+            return
+        node = self.faucet_node
+        facct = self.faucet.z_listaccounts()[0]['account_uuid']
+        taddr = self.miner_addresses[0]
         assert_true(node.getblockcount() < IRONWOOD_HEIGHT,
                     "must still be in the Orchard era before funding")
-        # A per-note fee buffer so the Sapling shield covers every send.
-        needed = sum(amounts) + Decimal('0.001') * len(amounts)
+        faucet_sapling_ua = self.faucet.z_getaddressforaccount(
+            facct, ['sapling'])['address']
         _, sapling_zat = shield_coinbase(
-            node, w, taddr, sapling_ua, acct, Pool.SAPLING)
-        assert_true(Decimal(sapling_zat) > needed * COIN,
-                    "shielded enough Sapling to fund {} source note(s)"
-                    .format(len(amounts)))
+            node, self.faucet, taddr, faucet_sapling_ua, facct, Pool.SAPLING)
+        assert_true(sapling_zat > 0, "the faucet shielded a spendable balance")
+        self._faucet_ua = self.faucet.z_getaddressforaccount(facct)['address']
+        self._faucet_acct = facct
+        self._faucet_ready = True
 
-        for amount in amounts:
-            opid = w.z_sendmany(
-                sapling_ua, [{'address': ua, 'amount': amount}], 1, None,
-                PrivacyPolicy.ALLOW_REVEALED_AMOUNTS)
-            txid = wait_and_assert_operationid_status(w, opid)
-            assert_true(txid is not None, "Sapling -> Orchard send should succeed")
+    def fund_exact_orchard(self, subject_idx, amounts_zec):
+        """Fund subject `subject_idx` with one distinct Orchard note per amount
+        in `amounts_zec` (ZEC), EXACTLY: the faucet sends each amount to the
+        subject's Orchard receiver, keeping the change itself, so the subject
+        holds precisely `sum(amounts_zec)` and nothing more. All sends happen
+        pre-NU6.3 so the notes are Orchard (the migration source). Returns the
+        subject's exact spendable Orchard balance in zat."""
+        self._ensure_faucet_funded()
+        node = self.faucet_node
+        subject = self.subject(subject_idx)
+        sacct = self.subject_account(subject_idx)
+        subj_ua = self._orchard_ua(subject, sacct)
+
+        for amount in amounts_zec:
+            opid = self.faucet.z_sendmany(
+                self._faucet_ua,
+                [{'address': subj_ua, 'amount': Decimal(amount)}],
+                1, None, PrivacyPolicy.ALLOW_REVEALED_AMOUNTS)
+            txid = wait_and_assert_operationid_status(self.faucet, opid)
+            assert_true(txid is not None,
+                        "faucet -> subject send should succeed")
             node.generate(1)
-            wait_for_tx_scanned(w, txid)
-            # Wait for the Sapling change from this send to become spendable
-            # before the next send draws on it (otherwise a later send can see a
-            # zero balance while the change note is still being scanned).
-            wait_account_settled(w, acct)
+            self.sync_all()
+            wait_for_tx_scanned(self.faucet, txid)
+            # Let the faucet's change settle before the next draw.
+            wait_account_settled(self.faucet, self._faucet_acct)
             assert_true(node.getblockcount() < IRONWOOD_HEIGHT,
-                        "the Orchard notes must be minted before NU6.3 activates")
+                        "the subject's notes must be minted before NU6.3")
 
-        wait_for_account_spendable(w, acct, Pool.ORCHARD, min_zat=1)
-        wait_account_settled(w, acct)
-        orchard_zat = account_spendable_zat(w, acct, Pool.ORCHARD)
-        assert_true(orchard_zat > 0, "the Orchard notes should be spendable")
-        assert_true(len(orchard_notes(w)) >= len(amounts),
-                    "expected {} Orchard source note(s)".format(len(amounts)))
-        assert_true(len(ironwood_notes(w)) == 0,
+        wait_for_account_spendable(subject, sacct, Pool.ORCHARD, min_zat=1)
+        wait_account_settled(subject, sacct)
+        orchard_zat = account_spendable_zat(subject, sacct, Pool.ORCHARD)
+        assert_true(len(orchard_notes(subject)) >= len(amounts_zec),
+                    "expected {} distinct Orchard source note(s)".format(
+                        len(amounts_zec)))
+        assert_true(len(ironwood_notes(subject)) == 0,
                     "no Ironwood notes should exist before migration")
         return orchard_zat
 
-    def fund_orchard_note(self, node, w, taddr, acct, zec):
-        """Fund the account's Orchard balance (the common case). A shielded send
-        routes its change back into Orchard, so this lands the whole shielded
-        coinbase in Orchard across a handful of notes; `zec` sizes only the first
-        output. Use it when the scenario cares about the total balance, not the
-        exact note shape."""
-        return self.fund_orchard_notes(node, w, taddr, acct, [zec])
+    def fund_exact_note(self, subject_idx, zec):
+        """Fund subject `subject_idx` with a single exact Orchard note of `zec`
+        ZEC. Returns the subject's exact spendable Orchard balance in zat."""
+        return self.fund_exact_orchard(subject_idx, [zec])
 
-    def split_orchard_notes(self, node, w, acct, split_amounts):
-        """Split off one distinct Orchard note of each value in `split_amounts`
-        (ZEC) via Orchard self-sends: each self-send peels a note of that value
-        and keeps the change in Orchard, so the wallet ends with those notes plus
-        the change notes. Used to build a many-note or dust-heavy shape on top of
-        an already-funded Orchard balance. Returns the total spendable Orchard
-        balance in zat."""
-        ua = self._orchard_ua(w, acct)
-        for amount in split_amounts:
-            opid = w.z_sendmany(
-                ua, [{'address': ua, 'amount': Decimal(amount)}], 1, None,
-                PrivacyPolicy.ALLOW_REVEALED_AMOUNTS)
-            txid = wait_and_assert_operationid_status(w, opid)
-            assert_true(txid is not None, "Orchard self-send should succeed")
-            node.generate(1)
-            wait_for_tx_scanned(w, txid)
-            wait_account_settled(w, acct)
-            assert_true(node.getblockcount() < IRONWOOD_HEIGHT,
-                        "the Orchard notes must be split before NU6.3 activates")
-        wait_account_settled(w, acct)
-        return account_spendable_zat(w, acct, Pool.ORCHARD)
-
-    def activate_ironwood(self, node):
+    def activate_ironwood(self):
         """Advance the chain past the NU6.3 activation height so the migration is
-        allowed (the source notes must already be minted)."""
+        allowed (the source notes must already be minted). Mines on the faucet
+        node and syncs every peer."""
+        node = self.faucet_node
         while node.getblockcount() < IRONWOOD_HEIGHT:
             node.generate(1)
         self.sync_all()
 
-    # ---- lifecycle ----------------------------------------------------------
+    # ---- lifecycle (per subject wallet) -------------------------------------
 
     def preview(self, w, acct):
         """The migration plan preview (read-only)."""
@@ -225,22 +289,60 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
         """Advance the migration one step."""
         return getattr(w, ADVANCE_RPC)(acct, migration_id)
 
-    def drive_to_completion(self, w, node, acct, migration_id,
-                            on_step=None):
-        """Advance one step per call, mining and syncing between steps, until the
-        migration completes or the step cap is reached. `on_step(step, adv)` is
-        called after each advance (for per-step assertions). Returns True if the
-        migration completed."""
+    def drive_to_completion(self, w, acct, migration_id, on_step=None):
+        """Advance one subject's migration one step per call, mining on the
+        faucet node and syncing between steps, until it completes or the step
+        cap is reached. `on_step(step, adv)` runs after each advance. Returns
+        True if the migration completed.
+
+        The subject broadcasts to its OWN node, but mining happens on the faucet
+        node, so mempools are synced BEFORE mining (`sync_all` propagates the
+        just-broadcast transaction to the miner) and again after (to carry the
+        block back to the subject); otherwise the miner would produce blocks
+        without the subject's transaction and it would never confirm."""
+        node = self.faucet_node
         for step in range(self.MAX_ADVANCE_STEPS):
             adv = self.advance(w, acct, migration_id)
             if on_step is not None:
                 on_step(step, adv)
             if adv['phase'] == 'completed':
                 return True
+            self.sync_all()
             node.generate(self.ADVANCE_MINE_BLOCKS)
             self.sync_all()
             wait_account_settled(w, acct)
         return False
+
+    def drive_many_to_completion(self, subjects, on_step=None):
+        """Drive SEVERAL subjects' migrations CONCURRENTLY on one shared chain:
+        round-robin one advance step per still-running subject, then mine once on
+        the faucet node and sync, so every subject's schedule advances together
+        (as they would on the real network). `subjects` is a list of
+        `(wallet, account, migration_id)` tuples. `on_step(step, idx, adv)` runs
+        after each subject's advance. Returns a list of per-subject completion
+        booleans."""
+        node = self.faucet_node
+        done = [False] * len(subjects)
+        for step in range(self.MAX_ADVANCE_STEPS):
+            for idx, (w, acct, mid) in enumerate(subjects):
+                if done[idx]:
+                    continue
+                adv = self.advance(w, acct, mid)
+                if on_step is not None:
+                    on_step(step, idx, adv)
+                if adv['phase'] == 'completed':
+                    done[idx] = True
+            if all(done):
+                return done
+            # Propagate every subject's just-broadcast transaction to the miner
+            # before mining, mine one batch that confirms them all together, then
+            # carry the block back to every subject.
+            self.sync_all()
+            node.generate(self.ADVANCE_MINE_BLOCKS)
+            self.sync_all()
+            for w, acct, _ in subjects:
+                wait_account_settled(w, acct)
+        return done
 
     # ---- assertions: cross-cutting invariants ------------------------------
 

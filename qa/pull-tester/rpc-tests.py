@@ -284,16 +284,21 @@ NEW_SCRIPTS= [
     'wallet_ironwood_migration.py',
     'wallet_ironwood_migration_preview.py',
     # Orchard -> Ironwood migration scenario suite (personas, lifecycle, and the
-    # multi-layer anchor-bucket ordering). Each drives a real migration on the
-    # Z3 stack and asserts the exact balances inline; the heavier drive-to-
-    # completion cases fan a whale across several dependent layers.
+    # multi-layer anchor-bucket ordering). Each uses a faucet wallet to fund one
+    # or more SUBJECT wallets with EXACT balances, then drives a real migration on
+    # the Z3 stack and asserts the exact balances inline; the heavier drive-to-
+    # completion cases fan a whale across several dependent layers, and the
+    # concurrent case migrates three parties at once on one shared chain.
+    'wallet_ironwood_migration_concurrent.py',
     'wallet_ironwood_migration_next_actions.py',
     'wallet_ironwood_migration_monotonic.py',
     'wallet_ironwood_migration_exchange.py',
     'wallet_ironwood_migration_dust_heavy.py',
     'wallet_ironwood_migration_whale_plus_dust.py',
-    'wallet_ironwood_migration_schedule.py',
     'wallet_ironwood_migration_denominations.py',
+    'wallet_ironwood_migration_retail.py',
+    'wallet_ironwood_migration_small_holder.py',
+    'wallet_ironwood_migration_schedule.py',
     'wallet_ironwood_migration_cancel.py',
     'wallet_ironwood_migration_nothing.py',
     'wallet_ironwood_migration_pre_activation.py',

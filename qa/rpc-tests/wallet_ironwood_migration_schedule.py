@@ -7,39 +7,36 @@
 # Scenario E1: the transfer broadcast schedule is spread for privacy.
 #
 # To avoid linking the crossings, the migration does not broadcast every transfer
-# at once: each is scheduled at a different height across a window. This scenario
-# starts a migration and asserts inline that the transfer transactions carry
-# distinct scheduled heights spanning a range of blocks, so a driver broadcasts
-# them spread out rather than in a single burst.
+# at once: each is scheduled at a different height across a window. A faucet funds
+# the subject with an EXACT balance; the scenario starts a migration and asserts
+# inline that the transfer transactions carry distinct scheduled heights spanning
+# a range of blocks, so a driver broadcasts them spread out rather than at once.
 #
 
 from test_framework.ironwood_migration_common import IronwoodMigrationScenario
 from test_framework.util import assert_true
 
-SOURCE_NOTE_ZEC = 60
+SOURCE_ZEC = 60
 
 
 class ScheduleScenario(IronwoodMigrationScenario):
 
     def run_test(self):
-        node = self.nodes[0]
-        w = self.wallets[0]
-        taddr = self.miner_addresses[0]
-
         self.sync_all()
-        if self.skip_if_rpcs_absent(w):
+        subject = self.subject(0)
+        if self.skip_if_rpcs_absent(subject):
             return
+        sacct = self.subject_account(0)
 
-        acct = w.z_listaccounts()[0]['account_uuid']
+        print("Faucet funds the subject with EXACTLY {} ZEC...".format(
+            SOURCE_ZEC))
+        self.fund_exact_note(0, SOURCE_ZEC)
+        self.activate_ironwood()
 
-        print("Funding an Orchard balance...")
-        self.fund_orchard_note(node, w, taddr, acct, SOURCE_NOTE_ZEC)
-        self.activate_ironwood(node)
-
-        started = self.start(w, acct)
+        started = self.start(subject, sacct)
         migration_id = started['migration_id']
 
-        st = self.status(w, migration_id)
+        st = self.status(subject, migration_id)
         transfers = [t for t in st['transactions'] if t['kind'] == 'transfer']
         heights = sorted(t['scheduled_height'] for t in transfers)
         print("  {} transfers; scheduled heights: {}".format(

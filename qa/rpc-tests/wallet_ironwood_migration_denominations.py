@@ -8,13 +8,14 @@
 #
 # The migration crosses value in canonical 1-2-5 denominations (each crossing is
 # d * 10^k ZEC for d in {1, 2, 5}), which is what gives the on-chain footprint
-# its intended anonymity. This scenario migrates a balance and asserts inline
-# that every Ironwood note value, reduced by its factors of ten, is 1, 2, or 5,
-# in addition to the usual conservation checks.
+# its intended anonymity. A faucet funds the subject with an EXACT balance; the
+# scenario migrates it and asserts inline that every Ironwood note value, reduced
+# by its factors of ten, is 1, 2, or 5, in addition to the conservation checks.
 #
 
 from test_framework.ironwood_migration_common import IronwoodMigrationScenario
 from test_framework.util import (
+    COIN,
     Pool,
     account_spendable_zat,
     assert_equal,
@@ -22,7 +23,8 @@ from test_framework.util import (
     ironwood_notes,
 )
 
-SOURCE_NOTE_ZEC = 60
+SOURCE_ZEC = 60
+SOURCE_ZAT = SOURCE_ZEC * COIN
 
 
 def _leading_digit(value_zat):
@@ -37,44 +39,41 @@ def _leading_digit(value_zat):
 class DenominationsScenario(IronwoodMigrationScenario):
 
     def run_test(self):
-        node = self.nodes[0]
-        w = self.wallets[0]
-        taddr = self.miner_addresses[0]
-
         self.sync_all()
-        if self.skip_if_rpcs_absent(w):
+        subject = self.subject(0)
+        if self.skip_if_rpcs_absent(subject):
             return
+        sacct = self.subject_account(0)
 
-        acct = w.z_listaccounts()[0]['account_uuid']
+        print("Faucet funds the subject with EXACTLY {} ZEC...".format(
+            SOURCE_ZEC))
+        orchard_before = self.fund_exact_note(0, SOURCE_ZEC)
+        assert_equal(orchard_before, SOURCE_ZAT, "exact source balance")
 
-        print("Funding an Orchard balance ({} ZEC nominal)...".format(
-            SOURCE_NOTE_ZEC))
-        orchard_before = self.fund_orchard_note(node, w, taddr, acct,
-                                                SOURCE_NOTE_ZEC)
-        self.activate_ironwood(node)
-
-        preview = self.preview(w, acct)
+        self.activate_ironwood()
+        preview = self.preview(subject, sacct)
         expected_crossings = preview['funding_note_count']
         print("  preview: {} layer(s), {} funding note(s).".format(
             preview['preparation']['layer_count'], expected_crossings))
 
-        started = self.start(w, acct)
+        started = self.start(subject, sacct)
         migration_id = started['migration_id']
         total_txs = started['plan']['transaction_count']
 
-        completed = self.drive_to_completion(w, node, acct, migration_id)
+        completed = self.drive_to_completion(subject, sacct, migration_id)
         assert_true(completed,
                     "the migration completed within {} advance steps".format(
                         self.MAX_ADVANCE_STEPS))
 
         # ---- assert the exact balances and denominations INLINE -------------
-        notes = ironwood_notes(w)
+        notes = ironwood_notes(subject)
         note_values = sorted(int(n['valueZat']) for n in notes)
         ironwood_zat = sum(note_values)
-        orchard_after = account_spendable_zat(w, acct, Pool.ORCHARD)
+        orchard_after = account_spendable_zat(subject, sacct, Pool.ORCHARD)
         fees = orchard_before - ironwood_zat - orchard_after
         digits = sorted({_leading_digit(v) for v in note_values})
-        print("  source Orchard:   {} zat".format(orchard_before))
+        print("  source Orchard:   {} zat ({} ZEC)".format(
+            orchard_before, SOURCE_ZEC))
         print("  Ironwood notes:   {} = {} zat".format(note_values, ironwood_zat))
         print("  leading digits:   {}".format(digits))
         print("  Orchard residual: {} zat; fees: {} zat over {} txs".format(
@@ -84,7 +83,7 @@ class DenominationsScenario(IronwoodMigrationScenario):
         assert_true(all(_leading_digit(v) in (1, 2, 5) for v in note_values),
                     "every Ironwood note is a 1-2-5 denomination: {}".format(
                         note_values))
-        # One Ironwood note per crossing; value conserved with a bounded fee.
+        assert_equal(orchard_before, SOURCE_ZAT, "the subject started at 60 ZEC")
         assert_equal(len(note_values), expected_crossings,
                      "one Ironwood note per crossing")
         assert_true(ironwood_zat + orchard_after <= orchard_before,

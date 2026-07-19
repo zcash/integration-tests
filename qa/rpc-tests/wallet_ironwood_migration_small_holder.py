@@ -4,17 +4,14 @@
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
 #
-# Scenario A4: exchange / hot-wallet shape (many Orchard source notes).
+# Scenario A1: small holder, a single clean note holding an EXACT small balance.
 #
-# An exchange hot wallet holds its balance across many notes rather than one. A
-# faucet funds the subject with ten distinct 5-ZEC Orchard notes (EXACT), so the
-# migration's preparation must consolidate a many-note source. It drives the
-# migration to completion and asserts the exact balances inline: the Ironwood
-# note count equals the plan's crossing count, every note is positive, and value
-# is conserved (source = Ironwood + residual + a bounded fee).
+# A separate faucet wallet funds the subject with exactly 2 ZEC in one Orchard
+# note (the faucet keeps its coinbase change, so the subject holds precisely
+# 2 ZEC, not the whole coinbase). The subject migrates to completion. The balance
+# checks are inline and EXACT so a reviewer confirms from this file alone that a
+# real 2-ZEC holder migrated its 2 ZEC into Ironwood.
 #
-
-from decimal import Decimal
 
 from test_framework.ironwood_migration_common import (
     IronwoodMigrationScenario,
@@ -29,12 +26,12 @@ from test_framework.util import (
     ironwood_notes,
 )
 
-# Ten distinct 5-ZEC notes: a many-note hot-wallet source.
-SOURCE_NOTES = [Decimal('5')] * 10
-SOURCE_ZAT = int(sum(SOURCE_NOTES) * COIN)
+# The subject's exact starting balance: a single clean 2-ZEC Orchard note.
+SOURCE_ZEC = 2
+SOURCE_ZAT = SOURCE_ZEC * COIN
 
 
-class ExchangeScenario(IronwoodMigrationScenario):
+class SmallHolderScenario(IronwoodMigrationScenario):
 
     def run_test(self):
         self.sync_all()
@@ -43,15 +40,16 @@ class ExchangeScenario(IronwoodMigrationScenario):
             return
         sacct = self.subject_account(0)
 
-        print("Faucet funds the subject with {} distinct 5-ZEC notes...".format(
-            len(SOURCE_NOTES)))
-        orchard_before = self.fund_exact_orchard(0, SOURCE_NOTES)
+        print("Faucet funds the subject with EXACTLY {} ZEC (one Orchard "
+              "note)...".format(SOURCE_ZEC))
+        orchard_before = self.fund_exact_note(0, SOURCE_ZEC)
         source_notes = sorted(int(n['valueZat']) for n in orchard_notes(subject))
-        print("  {} Orchard source notes = {} zat".format(
-            len(source_notes), source_notes))
-        assert_equal(orchard_before, SOURCE_ZAT, "exact source balance")
-        assert_equal(len(source_notes), len(SOURCE_NOTES),
-                     "the source is a {}-note wallet".format(len(SOURCE_NOTES)))
+        print("  subject Orchard: {} zat in notes {}".format(
+            orchard_before, source_notes))
+        assert_equal(orchard_before, SOURCE_ZAT,
+                     "the subject holds EXACTLY {} ZEC, not the whole coinbase"
+                     .format(SOURCE_ZEC))
+        assert_equal(len(source_notes), 1, "a single clean source note")
 
         self.activate_ironwood()
         preview = self.preview(subject, sacct)
@@ -69,17 +67,21 @@ class ExchangeScenario(IronwoodMigrationScenario):
                     "the migration completed within {} advance steps".format(
                         self.MAX_ADVANCE_STEPS))
 
-        # ---- assert the exact balances INLINE (self-contained) --------------
+        # ---- assert the EXACT balances INLINE (self-contained) --------------
         notes = ironwood_notes(subject)
         note_values = sorted(int(n['valueZat']) for n in notes)
         ironwood_zat = sum(note_values)
         orchard_after = account_spendable_zat(subject, sacct, Pool.ORCHARD)
         fees = orchard_before - ironwood_zat - orchard_after
-        print("  source Orchard:   {} zat".format(orchard_before))
+        print("  source Orchard:   {} zat ({} ZEC)".format(
+            orchard_before, SOURCE_ZEC))
         print("  Ironwood notes:   {} = {} zat".format(note_values, ironwood_zat))
         print("  Orchard residual: {} zat; fees: {} zat over {} txs".format(
             orchard_after, fees, total_txs))
 
+        # A genuine 2-ZEC migration: one Ironwood note per crossing, each
+        # positive, value conserved, and fees within the per-transaction bound.
+        assert_equal(orchard_before, SOURCE_ZAT, "the subject started at 2 ZEC")
         assert_equal(len(note_values), expected_crossings,
                      "one Ironwood note per crossing")
         assert_true(all(v > 0 for v in note_values),
@@ -92,8 +94,8 @@ class ExchangeScenario(IronwoodMigrationScenario):
         assert_true(orchard_after < 1000000,
                     "only a sub-dust residual remains in Orchard: {} zat".format(
                         orchard_after))
-        print("\nExchange scenario passed.")
+        print("\nSmall-holder scenario passed.")
 
 
 if __name__ == '__main__':
-    ExchangeScenario().main()
+    SmallHolderScenario().main()
