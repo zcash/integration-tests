@@ -171,8 +171,34 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
         return orchard_zat
 
     def fund_orchard_note(self, node, w, taddr, acct, zec):
-        """Mint a single Orchard source note of `zec` ZEC (the common case)."""
+        """Fund the account's Orchard balance (the common case). A shielded send
+        routes its change back into Orchard, so this lands the whole shielded
+        coinbase in Orchard across a handful of notes; `zec` sizes only the first
+        output. Use it when the scenario cares about the total balance, not the
+        exact note shape."""
         return self.fund_orchard_notes(node, w, taddr, acct, [zec])
+
+    def split_orchard_notes(self, node, w, acct, split_amounts):
+        """Split off one distinct Orchard note of each value in `split_amounts`
+        (ZEC) via Orchard self-sends: each self-send peels a note of that value
+        and keeps the change in Orchard, so the wallet ends with those notes plus
+        the change notes. Used to build a many-note or dust-heavy shape on top of
+        an already-funded Orchard balance. Returns the total spendable Orchard
+        balance in zat."""
+        ua = self._orchard_ua(w, acct)
+        for amount in split_amounts:
+            opid = w.z_sendmany(
+                ua, [{'address': ua, 'amount': Decimal(amount)}], 1, None,
+                PrivacyPolicy.ALLOW_REVEALED_AMOUNTS)
+            txid = wait_and_assert_operationid_status(w, opid)
+            assert_true(txid is not None, "Orchard self-send should succeed")
+            node.generate(1)
+            wait_for_tx_scanned(w, txid)
+            wait_account_settled(w, acct)
+            assert_true(node.getblockcount() < IRONWOOD_HEIGHT,
+                        "the Orchard notes must be split before NU6.3 activates")
+        wait_account_settled(w, acct)
+        return account_spendable_zat(w, acct, Pool.ORCHARD)
 
     def activate_ironwood(self, node):
         """Advance the chain past the NU6.3 activation height so the migration is
