@@ -14,7 +14,7 @@ codebase, with the Python test framework (and some of the tests) inherited from
 
 [`zebrad`]: https://github.com/ZcashFoundation/zebra
 [`zainod`]: https://github.com/zingolabs/zaino
-[`zallet`]: https://github.com/zcash/wallet
+[`zallet`]: https://github.com/zcash/zallet
 [`zcashd`]: https://github.com/zcash/zcash
 [Bitcoin Core]: https://github.com/bitcoin/bitcoin
 <!-- ANCHOR_END: summary -->
@@ -25,7 +25,15 @@ codebase, with the Python test framework (and some of the tests) inherited from
 
 - Clone the repository.
 - Build `zebrad`, `zainod`, and `zallet` binaries, and place them in a folder
-  `./src/` under the repository root.
+  `./src/` under the repository root. `zallet` is a thin launcher that execs a
+  per-backend binary, so also build the backend binaries (`zallet-zaino`, and
+  `zallet-zebra` to exercise the zebra backend) and place them in `./src/`
+  alongside the launcher (the launcher looks for the backend binary next to
+  itself). The launcher selects the backend from the top-level `backend` key in
+  `qa/defaults/zallet/zallet.toml` (default `zaino`); set `ZALLET_BACKEND=zebra`
+  to run the suite against the zebra backend instead. The zebra backend reads
+  the co-located zebrad's state database directly, so it needs a `zebrad` built
+  with the (non-default) `indexer` feature.
 
 #### With uv (recommended)
 

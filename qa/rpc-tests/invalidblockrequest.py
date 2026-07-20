@@ -7,7 +7,9 @@
 from test_framework.test_framework import ComparisonTestFramework
 from test_framework.util import assert_equal
 from test_framework.comptool import TestManager, TestInstance, RejectResult
-from test_framework.mininode import NetworkThread
+from test_framework.p2p import (
+    NetworkThread,
+)
 from test_framework.blocktools import create_block, create_coinbase, create_transaction
 
 import copy

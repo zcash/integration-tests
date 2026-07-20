@@ -6,6 +6,7 @@
 from test_framework.config import ZebraArgs
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
+    UpgradeStatus,
     assert_equal,
     start_nodes,
     nustr,
@@ -50,37 +51,37 @@ class NuparamsTest(BitcoinTestFramework):
         overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
         assert_equal(overwinter['name'], 'Overwinter')
         assert_equal(overwinter['activationheight'], 1)
-        assert_equal(overwinter['status'], 'pending')
+        assert_equal(overwinter['status'], UpgradeStatus.PENDING)
 
         sapling = upgrades[nustr(SAPLING_BRANCH_ID)]
         assert_equal(sapling['name'], 'Sapling')
         assert_equal(sapling['activationheight'], 1)
-        assert_equal(sapling['status'], 'pending')
+        assert_equal(sapling['status'], UpgradeStatus.PENDING)
 
         blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
         assert_equal(blossom['name'], 'Blossom')
         assert_equal(blossom['activationheight'], 1)
-        assert_equal(blossom['status'], 'pending')
+        assert_equal(blossom['status'], UpgradeStatus.PENDING)
 
         heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
         assert_equal(heartwood['name'], 'Heartwood')
         assert_equal(heartwood['activationheight'], 1)
-        assert_equal(heartwood['status'], 'pending')
+        assert_equal(heartwood['status'], UpgradeStatus.PENDING)
 
         canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
         assert_equal(canopy['name'], 'Canopy')
         assert_equal(canopy['activationheight'], 1)
-        assert_equal(canopy['status'], 'pending')
+        assert_equal(canopy['status'], UpgradeStatus.PENDING)
 
         nu5 = upgrades[nustr(NU5_BRANCH_ID)]
         assert_equal(nu5['name'], 'NU5')
         assert_equal(nu5['activationheight'], 7)
-        assert_equal(nu5['status'], 'pending')
+        assert_equal(nu5['status'], UpgradeStatus.PENDING)
 
         nu6 = upgrades[nustr(NU6_BRANCH_ID)]
         assert_equal(nu6['name'], 'NU6')
         assert_equal(nu6['activationheight'], 9)
-        assert_equal(nu6['status'], 'pending')
+        assert_equal(nu6['status'], UpgradeStatus.PENDING)
 
         # Initial subsidy at the genesis block is 12.5 ZEC
         assert_equal(node.getblocksubsidy()["totalblocksubsidy"], Decimal("12.5"))
@@ -96,37 +97,37 @@ class NuparamsTest(BitcoinTestFramework):
         overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
         assert_equal(overwinter['name'], 'Overwinter')
         assert_equal(overwinter['activationheight'], 1)
-        assert_equal(overwinter['status'], 'active')
+        assert_equal(overwinter['status'], UpgradeStatus.ACTIVE)
 
         sapling = upgrades[nustr(SAPLING_BRANCH_ID)]
         assert_equal(sapling['name'], 'Sapling')
         assert_equal(sapling['activationheight'], 1)
-        assert_equal(sapling['status'], 'active')
+        assert_equal(sapling['status'], UpgradeStatus.ACTIVE)
 
         blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
         assert_equal(blossom['name'], 'Blossom')
         assert_equal(blossom['activationheight'], 1)
-        assert_equal(blossom['status'], 'active')
+        assert_equal(blossom['status'], UpgradeStatus.ACTIVE)
 
         heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
         assert_equal(heartwood['name'], 'Heartwood')
         assert_equal(heartwood['activationheight'], 1)
-        assert_equal(heartwood['status'], 'active')
+        assert_equal(heartwood['status'], UpgradeStatus.ACTIVE)
 
         canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
         assert_equal(canopy['name'], 'Canopy')
         assert_equal(canopy['activationheight'], 1)
-        assert_equal(canopy['status'], 'active')
+        assert_equal(canopy['status'], UpgradeStatus.ACTIVE)
 
         nu5 = upgrades[nustr(NU5_BRANCH_ID)]
         assert_equal(nu5['name'], 'NU5')
         assert_equal(nu5['activationheight'], 7)
-        assert_equal(nu5['status'], 'pending')
+        assert_equal(nu5['status'], UpgradeStatus.PENDING)
 
         nu6 = upgrades[nustr(NU6_BRANCH_ID)]
         assert_equal(nu6['name'], 'NU6')
         assert_equal(nu6['activationheight'], 9)
-        assert_equal(nu6['status'], 'pending')
+        assert_equal(nu6['status'], UpgradeStatus.PENDING)
 
         # Block subsidy halves at Blossom due to block time halving
         # The founders' reward ends at Canopy and there are no funding streams
@@ -143,37 +144,37 @@ class NuparamsTest(BitcoinTestFramework):
         overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
         assert_equal(overwinter['name'], 'Overwinter')
         assert_equal(overwinter['activationheight'], 1)
-        assert_equal(overwinter['status'], 'active')
+        assert_equal(overwinter['status'], UpgradeStatus.ACTIVE)
 
         sapling = upgrades[nustr(SAPLING_BRANCH_ID)]
         assert_equal(sapling['name'], 'Sapling')
         assert_equal(sapling['activationheight'], 1)
-        assert_equal(sapling['status'], 'active')
+        assert_equal(sapling['status'], UpgradeStatus.ACTIVE)
 
         blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
         assert_equal(blossom['name'], 'Blossom')
         assert_equal(blossom['activationheight'], 1)
-        assert_equal(blossom['status'], 'active')
+        assert_equal(blossom['status'], UpgradeStatus.ACTIVE)
 
         heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
         assert_equal(heartwood['name'], 'Heartwood')
         assert_equal(heartwood['activationheight'], 1)
-        assert_equal(heartwood['status'], 'active')
+        assert_equal(heartwood['status'], UpgradeStatus.ACTIVE)
 
         canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
         assert_equal(canopy['name'], 'Canopy')
         assert_equal(canopy['activationheight'], 1)
-        assert_equal(canopy['status'], 'active')
+        assert_equal(canopy['status'], UpgradeStatus.ACTIVE)
 
         nu5 = upgrades[nustr(NU5_BRANCH_ID)]
         assert_equal(nu5['name'], 'NU5')
         assert_equal(nu5['activationheight'], 7)
-        assert_equal(nu5['status'], 'active')
+        assert_equal(nu5['status'], UpgradeStatus.ACTIVE)
 
         nu6 = upgrades[nustr(NU6_BRANCH_ID)]
         assert_equal(nu6['name'], 'NU6')
         assert_equal(nu6['activationheight'], 9)
-        assert_equal(nu6['status'], 'pending')
+        assert_equal(nu6['status'], UpgradeStatus.PENDING)
 
         # Block subsidy remains the same after NU5
         assert_equal(node.getblocksubsidy()["totalblocksubsidy"], Decimal("6.25"))
@@ -187,37 +188,37 @@ class NuparamsTest(BitcoinTestFramework):
         overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
         assert_equal(overwinter['name'], 'Overwinter')
         assert_equal(overwinter['activationheight'], 1)
-        assert_equal(overwinter['status'], 'active')
+        assert_equal(overwinter['status'], UpgradeStatus.ACTIVE)
 
         sapling = upgrades[nustr(SAPLING_BRANCH_ID)]
         assert_equal(sapling['name'], 'Sapling')
         assert_equal(sapling['activationheight'], 1)
-        assert_equal(sapling['status'], 'active')
+        assert_equal(sapling['status'], UpgradeStatus.ACTIVE)
 
         blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
         assert_equal(blossom['name'], 'Blossom')
         assert_equal(blossom['activationheight'], 1)
-        assert_equal(blossom['status'], 'active')
+        assert_equal(blossom['status'], UpgradeStatus.ACTIVE)
 
         heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
         assert_equal(heartwood['name'], 'Heartwood')
         assert_equal(heartwood['activationheight'], 1)
-        assert_equal(heartwood['status'], 'active')
+        assert_equal(heartwood['status'], UpgradeStatus.ACTIVE)
 
         canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
         assert_equal(canopy['name'], 'Canopy')
         assert_equal(canopy['activationheight'], 1)
-        assert_equal(canopy['status'], 'active')
+        assert_equal(canopy['status'], UpgradeStatus.ACTIVE)
 
         nu5 = upgrades[nustr(NU5_BRANCH_ID)]
         assert_equal(nu5['name'], 'NU5')
         assert_equal(nu5['activationheight'], 7)
-        assert_equal(nu5['status'], 'active')
+        assert_equal(nu5['status'], UpgradeStatus.ACTIVE)
 
         nu6 = upgrades[nustr(NU6_BRANCH_ID)]
         assert_equal(nu6['name'], 'NU6')
         assert_equal(nu6['activationheight'], 9)
-        assert_equal(nu6['status'], 'active')
+        assert_equal(nu6['status'], UpgradeStatus.ACTIVE)
 
         # Block subsidy remains the same after NU6
         assert_equal(node.getblocksubsidy()["totalblocksubsidy"], Decimal("6.25"))
@@ -231,42 +232,42 @@ class NuparamsTest(BitcoinTestFramework):
         overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
         assert_equal(overwinter['name'], 'Overwinter')
         assert_equal(overwinter['activationheight'], 1)
-        assert_equal(overwinter['status'], 'active')
+        assert_equal(overwinter['status'], UpgradeStatus.ACTIVE)
 
         sapling = upgrades[nustr(SAPLING_BRANCH_ID)]
         assert_equal(sapling['name'], 'Sapling')
         assert_equal(sapling['activationheight'], 1)
-        assert_equal(sapling['status'], 'active')
+        assert_equal(sapling['status'], UpgradeStatus.ACTIVE)
 
         blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
         assert_equal(blossom['name'], 'Blossom')
         assert_equal(blossom['activationheight'], 1)
-        assert_equal(blossom['status'], 'active')
+        assert_equal(blossom['status'], UpgradeStatus.ACTIVE)
 
         heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
         assert_equal(heartwood['name'], 'Heartwood')
         assert_equal(heartwood['activationheight'], 1)
-        assert_equal(heartwood['status'], 'active')
+        assert_equal(heartwood['status'], UpgradeStatus.ACTIVE)
 
         canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
         assert_equal(canopy['name'], 'Canopy')
         assert_equal(canopy['activationheight'], 1)
-        assert_equal(canopy['status'], 'active')
+        assert_equal(canopy['status'], UpgradeStatus.ACTIVE)
 
         nu5 = upgrades[nustr(NU5_BRANCH_ID)]
         assert_equal(nu5['name'], 'NU5')
         assert_equal(nu5['activationheight'], 7)
-        assert_equal(nu5['status'], 'active')
+        assert_equal(nu5['status'], UpgradeStatus.ACTIVE)
 
         nu6 = upgrades[nustr(NU6_BRANCH_ID)]
         assert_equal(nu6['name'], 'NU6')
         assert_equal(nu6['activationheight'], 9)
-        assert_equal(nu6['status'], 'active')
+        assert_equal(nu6['status'], UpgradeStatus.ACTIVE)
 
         nu6_1 = upgrades[nustr(NU6_1_BRANCH_ID)]
         assert_equal(nu6_1['name'], 'NU6.1')
         assert_equal(nu6_1['activationheight'], 11)
-        assert_equal(nu6_1['status'], 'active')
+        assert_equal(nu6_1['status'], UpgradeStatus.ACTIVE)
 
         # Block subsidy remains the same after NU6
         assert_equal(node.getblocksubsidy()["totalblocksubsidy"], Decimal("6.25"))
@@ -280,47 +281,47 @@ class NuparamsTest(BitcoinTestFramework):
         overwinter = upgrades[nustr(OVERWINTER_BRANCH_ID)]
         assert_equal(overwinter['name'], 'Overwinter')
         assert_equal(overwinter['activationheight'], 1)
-        assert_equal(overwinter['status'], 'active')
+        assert_equal(overwinter['status'], UpgradeStatus.ACTIVE)
 
         sapling = upgrades[nustr(SAPLING_BRANCH_ID)]
         assert_equal(sapling['name'], 'Sapling')
         assert_equal(sapling['activationheight'], 1)
-        assert_equal(sapling['status'], 'active')
+        assert_equal(sapling['status'], UpgradeStatus.ACTIVE)
 
         blossom = upgrades[nustr(BLOSSOM_BRANCH_ID)]
         assert_equal(blossom['name'], 'Blossom')
         assert_equal(blossom['activationheight'], 1)
-        assert_equal(blossom['status'], 'active')
+        assert_equal(blossom['status'], UpgradeStatus.ACTIVE)
 
         heartwood = upgrades[nustr(HEARTWOOD_BRANCH_ID)]
         assert_equal(heartwood['name'], 'Heartwood')
         assert_equal(heartwood['activationheight'], 1)
-        assert_equal(heartwood['status'], 'active')
+        assert_equal(heartwood['status'], UpgradeStatus.ACTIVE)
 
         canopy = upgrades[nustr(CANOPY_BRANCH_ID)]
         assert_equal(canopy['name'], 'Canopy')
         assert_equal(canopy['activationheight'], 1)
-        assert_equal(canopy['status'], 'active')
+        assert_equal(canopy['status'], UpgradeStatus.ACTIVE)
 
         nu5 = upgrades[nustr(NU5_BRANCH_ID)]
         assert_equal(nu5['name'], 'NU5')
         assert_equal(nu5['activationheight'], 7)
-        assert_equal(nu5['status'], 'active')
+        assert_equal(nu5['status'], UpgradeStatus.ACTIVE)
 
         nu6 = upgrades[nustr(NU6_BRANCH_ID)]
         assert_equal(nu6['name'], 'NU6')
         assert_equal(nu6['activationheight'], 9)
-        assert_equal(nu6['status'], 'active')
+        assert_equal(nu6['status'], UpgradeStatus.ACTIVE)
 
         nu6_1 = upgrades[nustr(NU6_1_BRANCH_ID)]
         assert_equal(nu6_1['name'], 'NU6.1')
         assert_equal(nu6_1['activationheight'], 11)
-        assert_equal(nu6_1['status'], 'active')
+        assert_equal(nu6_1['status'], UpgradeStatus.ACTIVE)
 
         nu6_2 = upgrades[nustr(NU6_2_BRANCH_ID)]
         assert_equal(nu6_2['name'], 'NU6.2')
         assert_equal(nu6_2['activationheight'], 13)
-        assert_equal(nu6_2['status'], 'active')
+        assert_equal(nu6_2['status'], UpgradeStatus.ACTIVE)
 
         # Block subsidy remains the same after NU6_1
         assert_equal(node.getblocksubsidy()["totalblocksubsidy"], Decimal("6.25"))

@@ -14,7 +14,7 @@ import shutil
 import tempfile
 import traceback
 
-from .config import ZebraArgs
+from .config import ZebraArgs, ZalletArgs
 from .proxy import JSONRPCException
 from .util import (
     zebrad_binary,
@@ -64,7 +64,16 @@ class BitcoinTestFramework(object):
 
     def prepare_wallets(self):
         if self.num_wallets > 0:
-            self.miner_addresses = prepare_wallets_for_mining(self.num_wallets, self.options.tmpdir)
+            # Create each wallet's database with the same network-upgrade
+            # activation heights it will later be started with, so migrations
+            # that bake activation heights into SQL views (e.g. the Ironwood
+            # shard-scan-ranges view) see the correct heights at creation time.
+            zallet_args = [
+                ZalletArgs(activation_heights=self.activation_heights)
+                for _ in range(self.num_wallets)
+            ]
+            self.miner_addresses = prepare_wallets_for_mining(
+                self.num_wallets, self.options.tmpdir, zallet_args=zallet_args)
 
     def setup_nodes(self):
         if self.miner_addresses is None:

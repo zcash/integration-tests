@@ -63,11 +63,22 @@ jobs:
             #   host: x86_64-pc-linux-gnu
             #   rust_target: x86_64-unknown-linux-gnu
 
-            - name: ubuntu-22.04
+            # The tests run on ubuntu-latest (the required test platform). We
+            # additionally build on the pinned ubuntu-22.04 and ubuntu-24.04
+            # images for build coverage, but no test runs on them (they have no
+            # test_os), so they do not gate CI or block the tests.
+            - name: ubuntu-latest
               required: true
+              platform: Ubuntu (latest)
+              build_os: ubuntu-latest
+              test_os: ubuntu-latest
+              host: x86_64-pc-linux-gnu
+              rust_target: x86_64-unknown-linux-gnu
+
+            - name: ubuntu-22.04
+              required: false
               platform: Ubuntu 22.04
               build_os: ${{ vars.UBUNTU_22_04_LARGE_RUNNER || 'ubuntu-22.04' }}
-              test_os: ubuntu-22.04
               host: x86_64-pc-linux-gnu
               rust_target: x86_64-unknown-linux-gnu
 
@@ -75,7 +86,6 @@ jobs:
               required: false
               platform: Ubuntu 24.04
               build_os: ubuntu-24.04
-              test_os: ubuntu-24.04
               host: x86_64-pc-linux-gnu
               rust_target: x86_64-unknown-linux-gnu
 
@@ -116,6 +126,9 @@ jobs:
     outputs:
       build_matrix: ${{ steps.set-matrices.outputs.build_matrix }}
       build_names: ${{ steps.set-matrices.outputs.build_names }}
+      test_build_matrix: ${{ steps.set-matrices.outputs.test_build_matrix }}
+      extra_build_matrix: ${{ steps.set-matrices.outputs.extra_build_matrix }}
+      python_version: ${{ steps.python-version.outputs.version }}
       test_matrix: ${{ steps.set-matrices.outputs.test_matrix }}
       test_names: ${{ steps.set-matrices.outputs.test_names }}
       unix_test_matrix: ${{ steps.set-matrices.outputs.unix_test_matrix }}
@@ -142,6 +155,19 @@ jobs:
           # Empty on direct repo PRs, which selects the default.
           ref: ${{ steps.test-branch.outputs.test_sha }}
           persist-credentials: false
+
+      # Source the Python version for the test jobs from the uv lockfile, so it
+      # has a single point of definition and follows the project's pin. We take
+      # the minimal version from `requires-python` (e.g. ">=3.12" -> "3.12").
+      - id: python-version
+        run: |
+          version=$(grep -m1 '^requires-python' uv.lock \
+            | grep -oE '[0-9]+\.[0-9]+' | head -1)
+          if [ -z "$version" ]; then
+            echo "Could not read requires-python from uv.lock" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       # When triggered by repository_dispatch, callers may specify a subset of
       # platforms to run via client_payload.platforms (a JSON array of platform
@@ -200,6 +226,13 @@ jobs:
         run: |
           jq -r -n 'env.CFG | fromjson | @json "build_matrix=\(.data)"' >> $GITHUB_OUTPUT
           jq -r -n 'env.CFG | fromjson | [.data[] | .name] | @json "build_names=\(.)"' >> $GITHUB_OUTPUT
+          # Split the build matrix into the platforms the tests actually consume
+          # artifacts for, and the build-only platforms (cross-compiled targets
+          # and Windows, which no job here tests). This lets the test jobs depend
+          # only on the former, instead of blocking on every platform's build.
+          # The two selects are exact complements, so they partition the matrix.
+          jq -r -n 'env.CFG | fromjson | [.data[] | select(.test_os and (.test_os != "windows-latest" or .required))] | @json "test_build_matrix=\(.)"' >> $GITHUB_OUTPUT
+          jq -r -n 'env.CFG | fromjson | [.data[] | select((.test_os | not) or (.test_os == "windows-latest" and (.required | not)))] | @json "extra_build_matrix=\(.)"' >> $GITHUB_OUTPUT
           jq -r -n 'env.CFG | fromjson | [.data[] | select(.test_os)] | @json "test_matrix=\(.)"' >> $GITHUB_OUTPUT
           jq -r -n 'env.CFG | fromjson | [.data[] | select(.test_os) | .name] | @json "test_names=\(.)"' >> $GITHUB_OUTPUT
           jq -r -n 'env.CFG | fromjson | [.data[] | select(.test_os and .test_os != "windows-latest")] | @json "unix_test_matrix=\(.)"' >> $GITHUB_OUTPUT
@@ -271,7 +304,7 @@ jobs:
           echo -e "$RPC_MATRIX_JSON\n$RPC_SHARDS_JSON" | jq -r -s 'add | @json "rpc_test_shards_matrix=\(.)"' >> $GITHUB_OUTPUT
 
       - name: Cache Sprout parameters
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: zcash-params
           key: zcash-params
@@ -285,370 +318,139 @@ jobs:
           mkdir zcash-params || echo ""
           curl -L -C - https://download.z.cash/downloads/sprout-groth16.params -o zcash-params/sprout-groth16.params
 
+  # Each binary is built by the reusable build-binary.yml workflow, called twice:
+  # `build-<bin>` builds the platforms the tests consume, and `build-<bin>-extra`
+  # builds the remaining build-only platforms (Windows, cross-compiled targets,
+  # macOS). The test jobs depend only on the `build-<bin>` jobs, so they no
+  # longer wait for the build-only platforms. The `if` guards skip a call when
+  # its slice of the matrix is empty (possible for a platform-filtered interop
+  # request), which avoids an empty build matrix.
   build-zebra:
-    name: Build zebrad on ${{ matrix.platform }}${{ matrix.required_suffix }}
     needs: setup
-    runs-on: ${{ matrix.build_os }}
-    container:
-      image: ${{ matrix.container }}
-      env:
-        HOME: /root
-        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-    continue-on-error: ${{ !matrix.required }}
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.setup.outputs.build_matrix) }}
+    if: ${{ needs.setup.outputs.test_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/build-binary.yml
+    secrets:
+      STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
+      STATUS_APP_PRIVATE_KEY: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
+    with:
+      build_matrix: ${{ needs.setup.outputs.test_build_matrix }}
+      repository: ZcashFoundation/zebra
+      default_ref: refs/heads/main
+      interop_action: zebra-interop-request
+      path: zebra
+      bin: zebrad
+      job_name_prefix: Build zebrad on
+      # The zallet zebra backend follows zebrad's non-finalized tip over its
+      # gRPC indexer interface, which is gated behind the non-default `indexer`
+      # feature. Build it in for both backends (harmless to the zaino backend).
+      extra_build_args: --features indexer
 
-    steps:
-      - name: Check out integration-tests to access actions
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          path: integration-tests
-          persist-credentials: false
-
-      - name: Compute interop repo ids
-        id: repo-ids
-        uses: ./integration-tests/.github/actions/interop-repo-ids
-
-      - id: start-interop
-        uses: ./integration-tests/.github/actions/start-interop
-        with:
-          status-app-id: ${{ secrets.STATUS_APP_ID }}
-          status-app-private-key: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
-          requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
-          requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
-          job-name: "Build zebrad on ${{ matrix.platform }}${{ matrix.required_suffix }}"
-
-      - name: Use specified ZcashFoundation/zebra commit
-        if: github.event.action == 'zebra-interop-request'
-        shell: sh
-        env:
-          SHA: ${{ github.event.client_payload.sha }}
-        run: echo "ZEBRA_REF=${SHA}" >> $GITHUB_ENV
-
-      - name: Use ZcashFoundation/zebra current main
-        if: github.event.action != 'zebra-interop-request'
-        run: echo "ZEBRA_REF=refs/heads/main" >> $GITHUB_ENV
-
-      - name: Check out ZcashFoundation/zebra
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: ZcashFoundation/zebra
-          ref: ${{ env.ZEBRA_REF }}
-          path: zebra
-
-      - name: Install Homebrew build dependencies
-        if: matrix.brew_deps != ''
-        run: brew install ${{ matrix.brew_deps }}
-
-      - name: Install cross-compilation build dependencies
-        if: matrix.cross_deps != ''
-        run: sudo apt update && sudo apt install ${{ matrix.cross_deps }}
-
-      - name: Configure MinGW to use POSIX variant
-        if: matrix.name == 'mingw32'
-        run: |
-          sudo update-alternatives --set x86_64-w64-mingw32-gcc $(update-alternatives --query x86_64-w64-mingw32-gcc | grep Alternative | grep posix | cut -d' ' -f2)
-          sudo update-alternatives --set x86_64-w64-mingw32-g++ $(update-alternatives --query x86_64-w64-mingw32-g++ | grep Alternative | grep posix | cut -d' ' -f2)
-
-      - name: Prepare ccache timestamp
-        id: ccache_cache_timestamp
-        shell: bash
-        run: echo "timestamp=$(date +'%Y-%m-%d-%H;%M;%S')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache ccache files
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ccache' || '~/.cache/ccache' }}
-          key: ${{ matrix.name }}-ccache-${{ steps.ccache_cache_timestamp.outputs.timestamp }}
-          restore-keys: |
-            ${{ matrix.name }}-ccache-
-
-      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
-        with:
-          key: ${{ matrix.name }}
-          workspaces: "./zebra"
-
-      - name: Install Rust target
-        run: rustup target add ${{ matrix.rust_target }}
-        working-directory: ./zebra
-
-      - name: Build zebrad
-        env:
-          HOST: ${{ matrix.host }}
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
-        run: cargo build --release --target ${{ matrix.rust_target }} --bin zebrad
-        working-directory: ./zebra
-
-      - name: Upload zebrad
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: zebrad-${{ matrix.name }}
-          path: |
-              ${{ format('./zebra/target/{0}/release/zebrad{1}', matrix.rust_target, matrix.file_ext) }}
-
-      - uses: ./integration-tests/.github/actions/finish-interop
-        if: always()
-        with:
-          app-token: ${{ steps.start-interop.outputs.app-token }}
-          requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
-          requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
-          job-name: "Build zebrad on ${{ matrix.platform }}${{ matrix.required_suffix }}"
+  build-zebra-extra:
+    needs: setup
+    if: ${{ needs.setup.outputs.extra_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/build-binary.yml
+    secrets:
+      STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
+      STATUS_APP_PRIVATE_KEY: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
+    with:
+      build_matrix: ${{ needs.setup.outputs.extra_build_matrix }}
+      repository: ZcashFoundation/zebra
+      default_ref: refs/heads/main
+      interop_action: zebra-interop-request
+      path: zebra
+      bin: zebrad
+      job_name_prefix: Build zebrad on
+      extra_build_args: --features indexer
 
   build-zaino:
-    name: Build zainod on ${{ matrix.platform }}${{ matrix.required_suffix }}
     needs: setup
-    runs-on: ${{ matrix.build_os }}
-    container:
-      image: ${{ matrix.container }}
-      env:
-        HOME: /root
-        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-    continue-on-error: ${{ !matrix.required }}
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.setup.outputs.build_matrix) }}
+    if: ${{ needs.setup.outputs.test_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/build-binary.yml
+    secrets:
+      STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
+      STATUS_APP_PRIVATE_KEY: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
+    with:
+      build_matrix: ${{ needs.setup.outputs.test_build_matrix }}
+      repository: zingolabs/zaino
+      default_ref: refs/heads/dev
+      interop_action: zaino-interop-request
+      path: zaino
+      bin: zainod
+      job_name_prefix: Build zainod on
 
-    steps:
-      - name: Check out integration-tests to access actions
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          path: integration-tests
-          persist-credentials: false
-
-      - name: Compute interop repo ids
-        id: repo-ids
-        uses: ./integration-tests/.github/actions/interop-repo-ids
-
-      - id: start-interop
-        uses: ./integration-tests/.github/actions/start-interop
-        with:
-          status-app-id: ${{ secrets.STATUS_APP_ID }}
-          status-app-private-key: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
-          requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
-          requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
-          job-name: "Build zainod on ${{ matrix.platform }}${{ matrix.required_suffix }}"
-
-      - name: Use specified zingolabs/zaino commit
-        if: github.event.action == 'zaino-interop-request'
-        shell: sh
-        env:
-          SHA: ${{ github.event.client_payload.sha }}
-        run: echo "ZAINO_REF=${SHA}" >> $GITHUB_ENV
-
-      - name: Use zingolabs/zaino current dev
-        if: github.event.action != 'zaino-interop-request'
-        run: echo "ZAINO_REF=refs/heads/dev" >> $GITHUB_ENV
-
-      - name: Check out zingolabs/zaino
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: zingolabs/zaino
-          ref: ${{ env.ZAINO_REF }}
-          path: zaino
-
-      - name: Install Homebrew build dependencies
-        if: matrix.brew_deps != ''
-        run: brew install ${{ matrix.brew_deps }}
-
-      - name: Install cross-compilation build dependencies
-        if: matrix.cross_deps != ''
-        run: sudo apt update && sudo apt install ${{ matrix.cross_deps }}
-
-      - name: Configure MinGW to use POSIX variant
-        if: matrix.name == 'mingw32'
-        run: |
-          sudo update-alternatives --set x86_64-w64-mingw32-gcc $(update-alternatives --query x86_64-w64-mingw32-gcc | grep Alternative | grep posix | cut -d' ' -f2)
-          sudo update-alternatives --set x86_64-w64-mingw32-g++ $(update-alternatives --query x86_64-w64-mingw32-g++ | grep Alternative | grep posix | cut -d' ' -f2)
-
-      - name: Prepare ccache timestamp
-        id: ccache_cache_timestamp
-        shell: bash
-        run: echo "timestamp=$(date +'%Y-%m-%d-%H;%M;%S')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache ccache files
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ccache' || '~/.cache/ccache' }}
-          key: ${{ matrix.name }}-ccache-${{ steps.ccache_cache_timestamp.outputs.timestamp }}
-          restore-keys: |
-            ${{ matrix.name }}-ccache-
-
-      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
-        with:
-          key: ${{ matrix.name }}
-          workspaces: "./zaino"
-
-      - name: Install Rust target
-        run: rustup target add ${{ matrix.rust_target }}
-        working-directory: ./zaino
-
-      - name: Build zainod
-        env:
-          HOST: ${{ matrix.host }}
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
-        run: cargo build --release --target ${{ matrix.rust_target }} --bin zainod
-        working-directory: ./zaino
-
-      - name: Upload zainod
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: zainod-${{ matrix.name }}
-          path: |
-              ${{ format('./zaino/target/{0}/release/zainod{1}', matrix.rust_target, matrix.file_ext) }}
-
-      - uses: ./integration-tests/.github/actions/finish-interop
-        if: always()
-        with:
-          app-token: ${{ steps.start-interop.outputs.app-token }}
-          requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
-          requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
-          job-name: "Build zainod on ${{ matrix.platform }}${{ matrix.required_suffix }}"
+  build-zaino-extra:
+    needs: setup
+    if: ${{ needs.setup.outputs.extra_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/build-binary.yml
+    secrets:
+      STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
+      STATUS_APP_PRIVATE_KEY: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
+    with:
+      build_matrix: ${{ needs.setup.outputs.extra_build_matrix }}
+      repository: zingolabs/zaino
+      default_ref: refs/heads/dev
+      interop_action: zaino-interop-request
+      path: zaino
+      bin: zainod
+      job_name_prefix: Build zainod on
 
   build-zallet:
-    name: Build zallet on ${{ matrix.platform }}${{ matrix.required_suffix }}
     needs: setup
-    runs-on: ${{ matrix.build_os }}
-    container:
-      image: ${{ matrix.container }}
-      env:
-        HOME: /root
-        PATH: /root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-    continue-on-error: ${{ !matrix.required }}
-    strategy:
-      matrix:
-        include: ${{ fromJson(needs.setup.outputs.build_matrix) }}
+    if: ${{ needs.setup.outputs.test_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/build-binary.yml
+    secrets:
+      STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
+      STATUS_APP_PRIVATE_KEY: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
+    with:
+      build_matrix: ${{ needs.setup.outputs.test_build_matrix }}
+      repository: zcash/zallet
+      default_ref: refs/heads/main
+      interop_action: zallet-interop-request
+      path: zallet
+      bin: zallet
+      job_name_prefix: Build zallet on
+      is_zallet: true
 
-    steps:
-      - name: Check out integration-tests to access actions
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          path: integration-tests
-          persist-credentials: false
-
-      - name: Compute interop repo ids
-        id: repo-ids
-        uses: ./integration-tests/.github/actions/interop-repo-ids
-
-      - id: start-interop
-        uses: ./integration-tests/.github/actions/start-interop
-        with:
-          status-app-id: ${{ secrets.STATUS_APP_ID }}
-          status-app-private-key: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
-          requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
-          requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
-          job-name: "Build zallet on ${{ matrix.platform }}${{ matrix.required_suffix }}"
-
-      - name: Use specified zcash/wallet commit
-        if: github.event.action == 'zallet-interop-request'
-        shell: sh
-        env:
-          SHA: ${{ github.event.client_payload.sha }}
-        run: echo "ZALLET_REF=${SHA}" >> $GITHUB_ENV
-      - name: Use zcash/wallet current main
-        if: github.event.action != 'zallet-interop-request'
-        run: echo "ZALLET_REF=refs/heads/main" >> $GITHUB_ENV
-
-      - name: Check out zcash/wallet
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: zcash/wallet
-          ref: ${{ env.ZALLET_REF }}
-          path: zallet
-
-      - name: Install Homebrew build dependencies
-        if: matrix.brew_deps != ''
-        run: brew install ${{ matrix.brew_deps }}
-
-      - name: Install cross-compilation build dependencies
-        if: matrix.cross_deps != ''
-        run: sudo apt update && sudo apt install ${{ matrix.cross_deps }}
-
-      - name: Configure MinGW to use POSIX variant
-        if: matrix.name == 'mingw32'
-        run: |
-          sudo update-alternatives --set x86_64-w64-mingw32-gcc $(update-alternatives --query x86_64-w64-mingw32-gcc | grep Alternative | grep posix | cut -d' ' -f2)
-          sudo update-alternatives --set x86_64-w64-mingw32-g++ $(update-alternatives --query x86_64-w64-mingw32-g++ | grep Alternative | grep posix | cut -d' ' -f2)
-
-      - name: Prepare ccache timestamp
-        id: ccache_cache_timestamp
-        shell: bash
-        run: echo "timestamp=$(date +'%Y-%m-%d-%H;%M;%S')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache ccache files
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          path: ${{ runner.os == 'macOS' && '~/Library/Caches/ccache' || '~/.cache/ccache' }}
-          key: ${{ matrix.name }}-ccache-${{ steps.ccache_cache_timestamp.outputs.timestamp }}
-          restore-keys: |
-            ${{ matrix.name }}-ccache-
-
-      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
-        with:
-          key: ${{ matrix.name }}
-          workspaces: "./zallet"
-
-      - name: Install Rust target
-        run: rustup target add ${{ matrix.rust_target }}
-        working-directory: ./zallet
-
-      - name: Build zallet
-        env:
-          HOST: ${{ matrix.host }}
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
-        # zcashd-import is disabled on mingw32: its pqcrypto-mlkem dep fails
-        # to cross-compile to windows-gnu, and the tests needing it are
-        # Linux-only. See this commit's message for the full rationale.
-        #
-        # The wallet under test declares its chain-backend build args in
-        # zallet/ci/integration-features (e.g. pinning the Zaino backend, since
-        # the default zebra-state backend does not support regtest, the network
-        # these tests use). Read them here, ignoring comment lines; fall back to
-        # the default build when the file is absent (wallets predating the
-        # backend split). zebra-state regtest support is tracked in
-        # zcash/wallet#495.
-        shell: bash
-        run: |
-          # Read the wallet's declared backend flags into an array (ignoring
-          # comment lines); stays empty when the file is absent.
-          backend=()
-          if [ -f zallet/ci/integration-features ]; then
-            read -ra backend <<< "$(grep -vhE '^[[:space:]]*#' zallet/ci/integration-features | tr '\n' ' ' || true)" || true
-          fi
-          cargo build --release --target ${{ matrix.rust_target }} \
-            "${backend[@]}" ${{ matrix.name != 'mingw32' && '--features zcashd-import' || '' }} \
-            --bin zallet
-        working-directory: ./zallet
-
-      # Ship the BDB 6.2 db_dump vendored by zewif-zcashd alongside zallet:
-      # its build.rs writes the path via cargo:rustc-env, which doesn't survive
-      # the build->test runner hop, and Ubuntu's PATH db_dump is BDB 5.3.
-      - name: Stage vendored db_dump
-        if: matrix.name != 'mingw32' && runner.os != 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          db_dump=$(find ./zallet/target/${{ matrix.rust_target }}/release/build \
-                      -path '*/zewif-zcashd-*/out/db_dump' -type f -print -quit)
-          [ -n "$db_dump" ] || { echo "Vendored db_dump not found under target/.../zewif-zcashd-*/out/" >&2; exit 1; }
-          cp "$db_dump" ./zallet/target/${{ matrix.rust_target }}/release/db_dump
-
-      - name: Upload zallet
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: zallet-${{ matrix.name }}
-          path: |
-              ${{ format('./zallet/target/{0}/release/zallet{1}', matrix.rust_target, matrix.file_ext) }}
-              ${{ format('./zallet/target/{0}/release/db_dump', matrix.rust_target) }}
-          if-no-files-found: warn
-
-      - uses: ./integration-tests/.github/actions/finish-interop
-        if: always()
-        with:
-          app-token: ${{ steps.start-interop.outputs.app-token }}
-          requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
-          requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
-          job-name: "Build zallet on ${{ matrix.platform }}${{ matrix.required_suffix }}"
+  build-zallet-extra:
+    needs: setup
+    if: ${{ needs.setup.outputs.extra_build_matrix != '[]' }}
+    # actions: write lets build-binary.yml prune old binary caches (issue #156).
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/build-binary.yml
+    secrets:
+      STATUS_APP_ID: ${{ secrets.STATUS_APP_ID }}
+      STATUS_APP_PRIVATE_KEY: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
+    with:
+      build_matrix: ${{ needs.setup.outputs.extra_build_matrix }}
+      repository: zcash/zallet
+      default_ref: refs/heads/main
+      interop_action: zallet-interop-request
+      path: zallet
+      bin: zallet
+      job_name_prefix: Build zallet on
+      is_zallet: true
 
   # Not working in Windows
   sec-hard:
@@ -720,10 +522,10 @@ jobs:
 
       - name: Make artifact executable
         if: runner.os != 'Windows'
-        run: |
-          chmod +x ${{ format('./src/zebrad{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zainod{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zallet{0}', matrix.file_ext) }}
+        shell: bash
+        env:
+          FILE_EXT: ${{ matrix.file_ext }}
+        run: ./.github/scripts/make-zcash-artifacts-executable.sh
 
       - name: Run sec-hard test
         shell: bash
@@ -755,12 +557,17 @@ jobs:
         include: ${{ fromJson(needs.setup.outputs.rpc_test_matrix) }}
 
     steps:
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ needs.setup.outputs.python_version }}
+
       - name: Cache Python dependencies for RPC tests
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           enableCrossOsArchive: true
           path: venv
-          key: test-rpc-venv-${{ matrix.name }}
+          key: test-rpc-venv-${{ matrix.name }}-py${{ needs.setup.outputs.python_version }}
 
       - name: Get Python dependencies for RPC tests
         run: |
@@ -769,7 +576,7 @@ jobs:
           pip install zmq asyncio base58 toml embit
 
   test-rpc:
-    name: RPC tests ${{ matrix.platform }} ${{ matrix.shard }}${{ matrix.required_suffix }}
+    name: RPC tests ${{ matrix.platform }} ${{ matrix.backend }} ${{ matrix.shard }}${{ matrix.required_suffix }}
     needs:
       - setup
       - build-zebra
@@ -786,6 +593,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Run the same RPC suite against each zallet backend. The launcher execs
+        # the matching per-backend binary, selected by the ZALLET_BACKEND env var
+        # the test step exports (see the "RPC test" step). Both backends are
+        # required on the required platforms (no continue-on-error for zebra).
+        backend: [zaino, zebra]
         name: ${{ fromJson(needs.setup.outputs.rpc_test_names) }}
         shard : ${{ fromJson(needs.setup.outputs.rpc_test_shards) }}
         include: ${{ fromJson(needs.setup.outputs.rpc_test_shards_matrix) }}
@@ -819,14 +631,19 @@ jobs:
           status-app-private-key: ${{ secrets.STATUS_APP_PRIVATE_KEY }}
           requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
           requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
-          job-name: "RPC tests ${{ matrix.platform }} ${{ matrix.shard }}${{ matrix.required_suffix }}"
+          job-name: "RPC tests ${{ matrix.platform }} ${{ matrix.backend }} ${{ matrix.shard }}${{ matrix.required_suffix }}"
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ needs.setup.outputs.python_version }}
 
       - name: Cache Python dependencies for RPC tests
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           enableCrossOsArchive: true
           path: venv
-          key: test-rpc-venv-${{ matrix.name }}
+          key: test-rpc-venv-${{ matrix.name }}-py${{ needs.setup.outputs.python_version }}
 
       - name: Get Python dependencies for RPC tests if not cached
         run: |
@@ -854,10 +671,10 @@ jobs:
 
       - name: Make artifact executable
         if: runner.os != 'Windows'
-        run: |
-          chmod +x ${{ format('./src/zebrad{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zainod{0}', matrix.file_ext) }}
-          chmod +x ${{ format('./src/zallet{0}', matrix.file_ext) }}
+        shell: bash
+        env:
+          FILE_EXT: ${{ matrix.file_ext }}
+        run: ./.github/scripts/make-zcash-artifacts-executable.sh
 
       # Vendored BDB 6.2 db_dump (shipped in the zallet artifact) goes on PATH
       # so zallet's which::which("db_dump") finds it instead of Ubuntu's 5.3.
@@ -871,7 +688,7 @@ jobs:
           fi
 
       - name: Get Sprout parameters
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: zcash-params
           key: zcash-params
@@ -896,7 +713,7 @@ jobs:
             mv zcash-params "$HOME/.zcash-params"
           fi
 
-      - name: RPC test ${{ matrix.shard }}
+      - name: RPC test ${{ matrix.backend }} ${{ matrix.shard }}
         run: |
           cat <<EOF > ./subclass.py
           import importlib
@@ -925,7 +742,7 @@ jobs:
               sys.exit(1)
           EOF
           . ./venv/bin/activate
-          ZEBRAD=$(pwd)/${{ format('src/zebrad{0}', matrix.file_ext) }} ZAINOD=$(pwd)/${{ format('src/zainod{0}', matrix.file_ext) }} ZALLET=$(pwd)/${{ format('src/zallet{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py
+          ZALLET_BACKEND=${{ matrix.backend }} ZEBRAD=$(pwd)/${{ format('src/zebrad{0}', matrix.file_ext) }} ZAINOD=$(pwd)/${{ format('src/zainod{0}', matrix.file_ext) }} ZALLET=$(pwd)/${{ format('src/zallet{0}', matrix.file_ext) }} SRC_DIR=$(pwd) python3 ./subclass.py
 
       - uses: ./.github/actions/finish-interop
         if: always()
@@ -933,4 +750,4 @@ jobs:
           app-token: ${{ steps.start-interop.outputs.app-token }}
           requesting-owner: ${{ steps.repo-ids.outputs.requesting-owner }}
           requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
-          job-name: "RPC tests ${{ matrix.platform }} ${{ matrix.shard }}${{ matrix.required_suffix }}"
+          job-name: "RPC tests ${{ matrix.platform }} ${{ matrix.backend }} ${{ matrix.shard }}${{ matrix.required_suffix }}"

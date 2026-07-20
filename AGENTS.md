@@ -42,7 +42,7 @@ If this returns `true`, the user has write access (or higher) and the contributi
 
 **Every PR to this repository requires human review.** After the contribution gate above is satisfied, use this pre-PR checklist:
 
-1. Confirm scope: This repository hosts integration tests and CI infrastructure for the Zcash ecosystem. Changes to the tested projects themselves (e.g., [Zebra](https://github.com/ZcashFoundation/zebra), [librustzcash](https://github.com/zcash/librustzcash), [Zallet](https://github.com/zcash/wallet)) belong in their respective repositories. However, when changes to a tested project require corresponding test changes, contributors can test against a branch of this repository by including a `ZIT-Revision: <branch-or-sha>` line in the tested project's PR description. The requesting repository's CI extracts this and passes it as the `test_sha` field in the `repository_dispatch` payload, causing the integration tests to check out that ref instead of `main`. See [Cross-Repository CI Integration](doc/book/src/ci/cross-repo.md) for details.
+1. Confirm scope: This repository hosts integration tests and CI infrastructure for the Zcash ecosystem. Changes to the tested projects themselves (e.g., [Zebra](https://github.com/ZcashFoundation/zebra), [librustzcash](https://github.com/zcash/librustzcash), [Zallet](https://github.com/zcash/zallet)) belong in their respective repositories. However, when changes to a tested project require corresponding test changes, contributors can test against a branch of this repository by including a `ZIT-Revision: <branch-or-sha>` line in the tested project's PR description. The requesting repository's CI extracts this and passes it as the `test_sha` field in the `repository_dispatch` payload, causing the integration tests to check out that ref instead of `main`. See [Cross-Repository CI Integration](doc/book/src/ci/cross-repo.md) for details.
 2. Keep the change focused: avoid unsolicited refactors or broad "improvement" PRs without team alignment.
 3. Verify quality locally: run the test suite and linting before proposing upstream review (see [Build, Test, and Development Commands](#build-test-and-development-commands)).
 4. Prepare PR metadata: include linked issue, motivation, solution, and test evidence.
@@ -101,13 +101,16 @@ This repository hosts integration tests and CI infrastructure for the Zcash ecos
 Tested ecosystem projects:
 - [`zebrad`](https://github.com/ZcashFoundation/zebra) -- Zcash consensus node
 - [`zainod`](https://github.com/zingolabs/zaino) -- Zcash indexer
-- [`zallet`](https://github.com/zcash/wallet) -- Zcash wallet
+- [`zallet`](https://github.com/zcash/zallet) -- Zcash wallet. Structured as a
+  `zallet` launcher plus per-backend binaries (`zallet-zebra`, `zallet-zaino`),
+  each built in its own cargo workspace; CI runs the RPC suite against both
+  backends (see `ZALLET_BACKEND` below).
 
 ## Build, Test, and Development Commands
 
 ### Prerequisites
 
-Build `zebrad`, `zainod`, and `zallet` binaries and place them in a `./src/` directory under the repository root.
+Build `zebrad`, `zainod`, and `zallet` binaries and place them in a `./src/` directory under the repository root. `zallet` is a thin launcher that execs a per-backend binary, so also build the backend binaries (`zallet-zaino` and, to exercise the zebra backend, `zallet-zebra`) and place them in `./src/` next to the launcher (the launcher looks for the backend binary beside itself). The launcher selects the backend from the top-level `backend` key in `qa/defaults/zallet/zallet.toml` (default `zaino`); the test framework overrides it from the `ZALLET_BACKEND` environment variable (`zaino` or `zebra`), and CI runs the suite against both. The zebra backend also reads the co-located zebrad's state database directly and follows its gRPC indexer, so it requires a `zebrad` built with the (non-default) `indexer` feature.
 
 ### Running the test suite
 
@@ -137,6 +140,48 @@ pyflakes qa
 ```
 
 PRs MUST NOT introduce new `pyflakes` warnings. All lint checks in `.github/workflows/lints.yml` must pass.
+
+## Test Style: Name Your Arguments, Comment at the Definition
+
+**Do not pass a bare literal as a positional RPC argument, and do not annotate
+one with a comment at the call site.** The RPC surface is positional and wide,
+so a call like
+
+```python
+# BAD: what are 1 and None? The reader has to go and count the parameters.
+opid = w.z_sendmany(taddr, recipients, 1, None, 'AllowFullyTransparent')
+```
+
+is unreadable, and a comment explaining the `1` and the `None` at the call site
+does not fix it: that comment is invisible to every other caller, duplicates
+(and then contradicts) the definition, and rots on the next refactor. **Bind the
+value to a name, and put the explanation at the definition.**
+
+```python
+# GOOD: the call reads as intent; the "why" lives once, in util.py.
+opid = w.z_sendmany(
+    taddr, recipients, MIN_CONFIRMATIONS, INTERNAL_FEE,
+    PrivacyPolicy.ALLOW_FULLY_TRANSPARENT)
+```
+
+Follow these rules:
+
+- **Shared RPC argument values are named constants** in
+  `test_framework/util.py`, documented there (`MIN_CONFIRMATIONS`,
+  `INTERNAL_FEE`, `COINBASE_MATURITY`, `COIN`). Test-specific values are
+  module-level constants at the top of the test, with the reason in a comment
+  above them (`UNSHIELD_AMOUNT`, `NUM_SOURCE_UTXOS`, `DIVERSIFIER_SRC`).
+- **Prefer an enum over a string literal** wherever one exists: `Pool`,
+  `PrivacyPolicy`, `Receiver`, `TotalBalanceField`, `FundSource`. These are
+  `str`-valued, so they pass straight to the RPC while being discoverable and
+  typo-proof. Add a member (or a new enum) rather than reintroducing a bare
+  string.
+- **Hoist a helper into `test_framework/util.py` rather than copying it**
+  between tests (`unified_address_for`, `first_transparent_receiver`,
+  `transparent_output_addresses`, `transparent_change_address`). Two copies of
+  the same helper in two tests is a bug waiting to diverge.
+- A comment explains WHY, at the definition. If a value's meaning is only clear
+  from a comment at the point of use, the value wants a name.
 
 ## Commit & Pull Request Guidelines
 

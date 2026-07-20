@@ -2,3 +2,4 @@ rules:
   secrets-outside-env:
     ignore:
       - ci.yml
+      - build-binary.yml

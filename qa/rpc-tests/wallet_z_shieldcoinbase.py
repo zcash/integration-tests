@@ -34,14 +34,18 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.config import ZebraArgs
 from test_framework.util import (
     COINBASE_MATURITY,
+    TotalBalanceField,
     assert_equal,
     assert_in_message,
+    assert_shieldcoinbase_preflight_shape,
     assert_true,
     expect_rpc_error,
+    nu_activation_all_at_1,
     start_nodes,
     wait_and_assert_operationid_status,
     wait_and_assert_operationid_status_result,
     wait_for_mature_coinbase_count,
+    wait_for_total_balance,
     wait_for_tx_scanned,
 )
 
@@ -72,7 +76,7 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         args = [
             ZebraArgs(
                 miner_address=addr,
-                activation_heights={"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1},
+                activation_heights=nu_activation_all_at_1(),
             ) for addr in self.miner_addresses
         ]
         return start_nodes(self.num_nodes, self.options.tmpdir, args)
@@ -225,17 +229,6 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
                     .format(good_policy, msg))
         print("  PASSED")
 
-    @staticmethod
-    def _first_transparent_receiver(wallet, ua):
-        """Return the P2PKH receiver of a UA created with a transparent component."""
-        receivers = wallet.z_listunifiedreceivers(ua)
-        if 'p2pkh' in receivers:
-            return receivers['p2pkh']
-        if 'p2sh' in receivers:
-            return receivers['p2sh']
-        raise AssertionError(
-            "UA has no transparent receiver: {!r} -> {!r}".format(ua, receivers))
-
     # ------------------------------------------------------------------
     # Functional tests: require mature coinbase.
     # ------------------------------------------------------------------
@@ -263,19 +256,26 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
             node.generate(1)
             tx_details = wait_for_tx_scanned(w0, txid)
             fee = Decimal(tx_details['fee'])
-            post_private = Decimal(w0.z_gettotalbalance(1, True)['private'])
-            assert_equal(post_private, pre_private + shielding_value - fee)
+            expected_private = pre_private + shielding_value - fee
+            # wait_for_tx_scanned only proves the per-tx view is scanned; the
+            # 'private' figure from z_gettotalbalance uses a summary tip that can
+            # lag by a block, so poll until it reflects the shielded note rather
+            # than reading it once.
+            post_private = wait_for_total_balance(
+                w0, TotalBalanceField.PRIVATE, lambda v: v == expected_private)
+            assert_equal(post_private, expected_private)
             return fee, post_private, tx_details
 
         # ---- F1: explicit single-t-addr sweep -----------------------
 
         print("Test F1: explicit single-t-addr sweep (response shape + balance moves)...")
-        pre_private = Decimal(w0.z_gettotalbalance(1, True)['private'])
+        pre_private = Decimal(
+            w0.z_gettotalbalance(1, True)[TotalBalanceField.PRIVATE])
         n_expected = len(wait_for_mature_coinbase_count(w0, expected_unspent_mature()))
         print("  [diag] mature coinbase UTXO count={}".format(n_expected))
 
         result = w0.z_shieldcoinbase(w0_taddr, w0_zaddr)
-        self._assert_preflight_shape(result)
+        assert_shieldcoinbase_preflight_shape(result)
         assert_equal(result['shieldingUTXOs'], n_expected)
         assert_equal(result['remainingUTXOs'], 0)
         assert_equal(Decimal(result['remainingValue']), Decimal('0'))
@@ -301,7 +301,7 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         n_expected = len(wait_for_mature_coinbase_count(w0, expected_unspent_mature()))
 
         result = w0.z_shieldcoinbase(w0_account_uuid, w0_zaddr)
-        self._assert_preflight_shape(result)
+        assert_shieldcoinbase_preflight_shape(result)
         assert_equal(result['shieldingUTXOs'], n_expected,
                      "UUID-form should sweep every mature coinbase")
         assert_equal(result['remainingUTXOs'], 0)
@@ -322,7 +322,7 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
 
         # toaddress is a UA on a different account; fromaddress need not own it.
         result = w0.z_shieldcoinbase(w0_taddr, w0_extra_zaddr)
-        self._assert_preflight_shape(result)
+        assert_shieldcoinbase_preflight_shape(result)
         assert_equal(result['shieldingUTXOs'], n_expected)
         assert_equal(result['remainingUTXOs'], 0)
         assert_equal(Decimal(result['remainingValue']), Decimal('0'))
@@ -350,7 +350,7 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         # Sweep 1: capped at `limit`; the rest are reported as remaining.
         # Positional signature: (fromaddress, toaddress, fee, limit, ...)
         result1 = w0.z_shieldcoinbase(w0_taddr, w0_zaddr, None, limit)
-        self._assert_preflight_shape(result1)
+        assert_shieldcoinbase_preflight_shape(result1)
         assert_equal(result1['shieldingUTXOs'], limit)
         assert_equal(result1['remainingUTXOs'], n_eligible - limit)
         shielding_value1 = Decimal(result1['shieldingValue'])
@@ -365,7 +365,7 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         # sweep 1's now-spent inputs, so it must drain exactly what sweep 1
         # reported as remaining — backend-anchored, no snapshot summing.
         result2 = w0.z_shieldcoinbase(w0_taddr, w0_zaddr)
-        self._assert_preflight_shape(result2)
+        assert_shieldcoinbase_preflight_shape(result2)
         assert_equal(result2['shieldingUTXOs'], remaining_utxos1,
                      "2nd sweep must drain exactly sweep 1's remaining UTXOs")
         assert_equal(Decimal(result2['shieldingValue']), remaining_value1,
@@ -380,10 +380,13 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         node.generate(1)
         fee1 = Decimal(wait_for_tx_scanned(w0, txid1)['fee'])
         fee2 = Decimal(wait_for_tx_scanned(w0, txid2)['fee'])
-        post_private = Decimal(w0.z_gettotalbalance(1, True)['private'])
-        assert_equal(
-            post_private,
+        expected_private = (
             pre_private + shielding_value1 + shielding_value2 - fee1 - fee2)
+        # As in confirm_and_check_balance, the 'private' summary can lag the
+        # scanned txs by a block, so poll rather than reading once.
+        post_private = wait_for_total_balance(
+            w0, TotalBalanceField.PRIVATE, lambda v: v == expected_private)
+        assert_equal(post_private, expected_private)
         mature_spent += n_eligible
         print("  PASSED ({}/{} selected, {} swept in follow-up)".format(
             limit, n_eligible, remaining_utxos1))
@@ -397,7 +400,7 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
 
         huge_limit = n_eligible + 1000
         result = w0.z_shieldcoinbase(w0_taddr, w0_zaddr, None, huge_limit)
-        self._assert_preflight_shape(result)
+        assert_shieldcoinbase_preflight_shape(result)
         # Cap above eligible has no effect: everything is swept.
         assert_equal(result['shieldingUTXOs'], n_eligible)
         assert_equal(result['remainingUTXOs'], 0)
@@ -421,7 +424,7 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
 
         # Positional signature: (fromaddress, toaddress, fee, limit, memo, ...)
         result = w0.z_shieldcoinbase(w0_taddr, w0_zaddr, None, None, my_memo)
-        self._assert_preflight_shape(result)
+        assert_shieldcoinbase_preflight_shape(result)
         assert_equal(result['shieldingUTXOs'], n_expected)
         assert_equal(result['remainingUTXOs'], 0)
         assert_equal(Decimal(result['remainingValue']), Decimal('0'))
@@ -451,7 +454,7 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         n_expected = len(wait_for_mature_coinbase_count(w0, expected_unspent_mature()))
 
         result = w0.z_shieldcoinbase(w0_taddr, w0_zaddr)
-        self._assert_preflight_shape(result)
+        assert_shieldcoinbase_preflight_shape(result)
         assert_equal(result['shieldingUTXOs'], n_expected)
         assert_equal(result['remainingUTXOs'], 0)
         assert_equal(Decimal(result['remainingValue']), Decimal('0'))
@@ -478,24 +481,6 @@ class WalletZShieldCoinbaseTest(BitcoinTestFramework):
         assert_equal(len(remaining), 0)
         mature_spent += n_expected
         print("  PASSED")
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    def _assert_preflight_shape(self, result):
-        assert_true(isinstance(result, dict),
-                    "Expected dict, got {}: {!r}".format(type(result), result))
-        for key in ('remainingUTXOs', 'remainingValue',
-                    'shieldingUTXOs', 'shieldingValue', 'opid'):
-            assert_true(key in result,
-                        "Missing field {!r} in response: {!r}".format(key, result))
-        assert_true(isinstance(result['remainingUTXOs'], int))
-        assert_true(isinstance(result['shieldingUTXOs'], int))
-        assert_true(isinstance(result['opid'], str))
-        # remainingValue / shieldingValue are JSON numbers; Decimal-able.
-        Decimal(result['remainingValue'])
-        Decimal(result['shieldingValue'])
 
     # ------------------------------------------------------------------
 

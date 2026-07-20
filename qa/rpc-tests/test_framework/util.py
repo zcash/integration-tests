@@ -30,7 +30,7 @@ import re
 import errno
 
 from enum import Enum
-from typing import Callable
+from typing import Callable, Sequence
 
 from . import coverage
 from .proxy import ServiceProxy, JSONRPCException
@@ -64,6 +64,7 @@ NU5_BRANCH_ID = 0xC2D6D0B4
 NU6_BRANCH_ID = 0xC8E71055
 NU6_1_BRANCH_ID = 0x4DEC4DF0
 NU6_2_BRANCH_ID = 0x5437f330
+NU6_3_BRANCH_ID = 0x37A5165B
 
 # The maximum number of nodes a single test can spawn
 MAX_NODES = 8
@@ -411,7 +412,9 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         miner_addresses = {}
         for i in range(MAX_NODES):
             datadir = wallet_dir(cachedir, i)
-            update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i))
+            update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i),
+                               indexer_port=indexer_rpc_port(i),
+                               zebra_state_dir=node_dir(cachedir, i))
 
             args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
             process = subprocess.Popen(args)
@@ -491,12 +494,64 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                     wait_for_zebrad_start(bitcoind_processes[i], rpc_url(i), i)
                     if os.getenv("PYTHON_DEBUG", ""):
                         print("initialize_chain: RPC successfully started")
+                # Rebuild, not append: `rpcs` must stay exactly MAX_NODES
+                # live proxies. Appending here would leave stale proxies
+                # from before this restart in the list, growing it by
+                # MAX_NODES on every one of the 8 restart rounds.
+                rpcs = []
                 for i in range(MAX_NODES):
                     try:
                         rpcs.append(get_rpc_proxy(rpc_url(i), i))
                     except:
                         sys.stderr.write("Error connecting to "+rpc_url(i)+"\n")
                         sys.exit(1)
+        # regtest zebrad does not persist a peer list across a restart, so
+        # the last restart above leaves all MAX_NODES nodes with zero peer
+        # connections and each pinned wherever it had synced to before that
+        # restart. Reconnect every node to whichever one is furthest ahead
+        # (not necessarily node 0 -- if the last per-round sync above didn't
+        # fully seat everyone before the restart, a fixed hub could itself be
+        # behind) -- skipping this reconnect was the root cause of
+        # zcash/integration-tests#136 (nodes left at divergent heights on one
+        # non-forked chain, which then hung or timed out in the wallet-sync
+        # wait below).
+        #
+        # A brief poll gives P2P a chance to catch everyone up on its own
+        # (cheap when it works: usually a couple of seconds). But P2P relay to
+        # a freshly-connected peer has been observed to leave a node stuck
+        # exactly one block short *indefinitely* (zebra #10329/#10332): every
+        # other round in the mining loop above stays synced only because it
+        # mines a NEW block right after connecting, which triggers a fresh
+        # announcement -- there's nothing left to mine here to trigger that
+        # for a straggler. So any node still behind after the brief poll gets
+        # the missing blocks copied directly via getblock/submitblock, which
+        # doesn't depend on P2P relay at all.
+        tip_node = max(range(MAX_NODES), key=lambda i: rpcs[i].getblockcount())
+        target_height = rpcs[tip_node].getblockcount()
+        for i in range(MAX_NODES):
+            if i != tip_node:
+                connect_nodes_bi(rpcs, i, tip_node)
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            if all(r.getblockcount() == target_height for r in rpcs):
+                break
+            time.sleep(1)
+        straggler_heights = {i: rpcs[i].getblockcount() for i in range(MAX_NODES)
+                             if rpcs[i].getblockcount() < target_height}
+        if straggler_heights:
+            print(
+                "[rebuild_cache] P2P left {} node(s) behind height {}: {}; "
+                "copying the missing blocks directly".format(
+                    len(straggler_heights), target_height, straggler_heights),
+                file=sys.stderr, flush=True,
+            )
+            for i, height in straggler_heights.items():
+                for h in range(height + 1, target_height + 1):
+                    rpcs[i].submitblock(rpcs[tip_node].getblock(str(h), 0))
+                assert_equal(
+                    rpcs[i].getblockcount(), target_height,
+                    "node {} still behind after copying blocks {}..{} from "
+                    "node {}".format(i, height + 1, target_height, tip_node))
         # Check that local time isn't going backwards
         assert_greater_than(time.time() + 1, block_time)
 
@@ -969,8 +1024,21 @@ def fail(message=""):
     raise AssertionError(message)
 
 
+class OperationStatus(str, Enum):
+    """The lifecycle status of an async wallet operation, as reported in the
+    `status` field of z_getoperationstatus / z_getoperationresult (and accepted
+    by the `wait_and_assert_operationid_status*` helpers below). Being
+    `str`-valued, a member compares equal to the wire string and can be passed
+    straight to those helpers or compared against RPC output."""
+    QUEUED = 'queued'
+    EXECUTING = 'executing'
+    SUCCESS = 'success'
+    FAILED = 'failed'
+    CANCELLED = 'cancelled'
+
+
 # Returns an async operation result
-def wait_and_assert_operationid_status_result(node, myopid, in_status='success', in_errormsg=None, timeout=300):
+def wait_and_assert_operationid_status_result(node, myopid, in_status=OperationStatus.SUCCESS, in_errormsg=None, timeout=300):
     print('waiting for async operation {}'.format(myopid))
     result = None
     for _ in range(1, timeout):
@@ -988,7 +1056,7 @@ def wait_and_assert_operationid_status_result(node, myopid, in_status='success',
         print('...returned status: {}'.format(status))
 
     errormsg = None
-    if status == "failed":
+    if status == OperationStatus.FAILED:
         errormsg = result['error']['message']
         if debug:
             print('...returned error: {}'.format(errormsg))
@@ -1000,9 +1068,9 @@ def wait_and_assert_operationid_status_result(node, myopid, in_status='success',
 
 
 # Returns txid if operation was a success or None
-def wait_and_assert_operationid_status(node, myopid, in_status='success', in_errormsg=None, timeout=300):
+def wait_and_assert_operationid_status(node, myopid, in_status=OperationStatus.SUCCESS, in_errormsg=None, timeout=300):
     result = wait_and_assert_operationid_status_result(node, myopid, in_status, in_errormsg, timeout)
-    if result['status'] == "success":
+    if result['status'] == OperationStatus.SUCCESS:
         return result['result']['txid']
     else:
         return None
@@ -1081,12 +1149,22 @@ def get_rpc_auth_proxy(url, node_number, timeout=None):
 
     return coverage.AuthServiceProxyWrapper(proxy, coverage_logfile)
 
-def prepare_wallets_for_mining(num_wallets, dirname, binary=None):
+def prepare_wallets_for_mining(num_wallets, dirname, binary=None, zallet_args=None):
     """
     Creates the datadir for multiple wallets, sets up their first account, and
     returns a transparent address for each of them to use for mining.
+
+    `zallet_args` (a per-wallet list of `ZalletArgs`, or None) configures the
+    wallet BEFORE its database is created here. This matters because creating the
+    wallet runs the librustzcash migrations, some of which bake network-upgrade
+    activation heights into SQL views (e.g. the Ironwood shard-scan-ranges view
+    embeds the NU6.3 activation height). The database must therefore be created
+    with the SAME activation heights that the wallet is later started with; if a
+    NU is only configured afterwards (in `start_wallets`), the migration bakes a
+    NULL activation height and the pool's notes never become spendable.
     """
     if binary is None: binary = [ zallet_binary() for _ in range(num_wallets) ]
+    if zallet_args is None: zallet_args = [ None for _ in range(num_wallets) ]
     miner_addresses = []
     for i in range(num_wallets):
         datadir = wallet_dir(dirname, i)
@@ -1095,7 +1173,9 @@ def prepare_wallets_for_mining(num_wallets, dirname, binary=None):
 
         zallet = binary[i]
 
-        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i))
+        update_zallet_conf(datadir, rpc_port(i), wallet_rpc_port(i), zallet_args[i],
+                           indexer_port=indexer_rpc_port(i),
+                           zebra_state_dir=node_dir(dirname, i))
 
         args = [ zallet, "-d="+datadir, "init-wallet-encryption" ]
         process = subprocess.Popen(args)
@@ -1143,7 +1223,9 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
     validator_port = rpc_port(i)
     zallet_port = wallet_rpc_port(i)
 
-    update_zallet_conf(datadir, validator_port, zallet_port, zallet_args)
+    update_zallet_conf(datadir, validator_port, zallet_port, zallet_args,
+                       indexer_port=indexer_rpc_port(i),
+                       zebra_state_dir=node_dir(dirname, i))
 
     # We prepare the wallet if it is new
     if prepare:
@@ -1172,7 +1254,15 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
 
     return proxy
 
-def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None):
+# The zallet backend the launcher execs (top-level `backend` key in
+# zallet.toml). CI sets this to run the same RPC suite against both the `zaino`
+# and `zebra` backends; it defaults to `zaino` to match the checked-in default
+# config and local runs.
+def zallet_backend():
+    return os.getenv("ZALLET_BACKEND", "zaino")
+
+def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
+                       indexer_port=None, zebra_state_dir=None):
     config_path = zallet_config(datadir)
 
     with open(config_path, "r", encoding="utf8") as f:
@@ -1181,12 +1271,30 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None):
     config_file['rpc']['bind'][0] = '127.0.0.1:'+str(zallet_port)
     config_file['indexer']['validator_address'] = '127.0.0.1:'+str(validator_port)
 
+    # Select the backend the launcher execs. The `zebra` backend does not talk
+    # to zainod; it opens the co-located zebrad's state database read-only and
+    # follows the tip over zebrad's gRPC indexer interface, so it needs an
+    # [indexer.read_state_service] section pointing at that zebrad. Both the
+    # indexer gRPC port and zebrad's state directory are required for it.
+    backend = zallet_backend()
+    config_file['backend'] = backend
+    if backend == "zebra":
+        assert indexer_port is not None and zebra_state_dir is not None, \
+            "the zebra backend requires indexer_port and zebra_state_dir"
+        config_file['indexer']['read_state_service'] = {
+            'grpc_address': '127.0.0.1:'+str(indexer_port),
+            'zebra_state_path': os.path.abspath(zebra_state_dir),
+        }
+    else:
+        # Never leave a stale zebra section behind when reusing a config file.
+        config_file['indexer'].pop('read_state_service', None)
+
     extra_args = extra_args or ZalletArgs()
 
     # Params that update_zallet_conf knows how to apply. Any param set on
     # `extra_args` that is not authorized here is rejected rather than silently
     # ignored.
-    AUTHORIZED_PARAMS = {"activation_heights"}
+    AUTHORIZED_PARAMS = {"activation_heights", "legacy_pool_seed_fingerprint"}
     defaults = vars(ZalletArgs())
     provided = {k for k, v in vars(extra_args).items() if v != defaults.get(k)}
     assert provided <= AUTHORIZED_PARAMS, \
@@ -1198,6 +1306,10 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None):
         config_file['consensus']['network'] = 'regtest'
         config_file['consensus']['regtest_nuparams'] = \
             render_regtest_nuparams(extra_args.activation_heights)
+
+    if extra_args.legacy_pool_seed_fingerprint:
+        config_file.setdefault('features', {})['legacy_pool_seed_fingerprint'] = \
+            extra_args.legacy_pool_seed_fingerprint
 
     with open(config_path, "w", encoding="utf8") as f:
         toml.dump(config_file, f)
@@ -1397,6 +1509,30 @@ COINBASE_MATURITY = 100
 # (zcash/wallet#316).
 COINBASE_SETTLE_SECS = 35
 
+# The `fee` argument of z_sendmany / z_shieldcoinbase. Zallet always computes the
+# ZIP-317 fee itself and rejects the call if a fee is supplied, so the argument
+# must be null. Named, so that a call site carries `INTERNAL_FEE` rather than a
+# bare `None` whose meaning is unreadable there.
+INTERNAL_FEE = None
+
+# The `minconf` argument of z_sendmany / z_listunspent: spend (or report) only
+# funds with at least this many confirmations. One is the usual choice: it takes
+# confirmed funds only, without waiting beyond a single block.
+MIN_CONFIRMATIONS = 1
+
+# The `fromaddress` of z_sendmany that selects the legacy `zcashd` pool of funds:
+# spend non-coinbase UTXOs from any transparent address in it, rather than from
+# one named address. Zallet holds that pool in a single account, so the wallet
+# must be told which one via `ZalletArgs.legacy_pool_seed_fingerprint`.
+ANY_TADDR = 'ANY_TADDR'
+
+# The ZIP 32 account index at which `zcashd` derived every address handed out by
+# the legacy `getnewaddress` / `z_getnewaddress` methods. It is the account index
+# of the legacy pool, and (with the wallet's seed fingerprint) is what identifies
+# that account to Zallet. `zallet migrate-zcashd-wallet` creates it when importing
+# a `zcashd` wallet; a test creates the same account with `z_recoveraccounts`.
+ZCASHD_LEGACY_ACCOUNT_INDEX = 0x7FFFFFFF
+
 # Wallets and nodes handed to tests are RPC proxies (see `get_rpc_proxy`): a
 # coverage wrapper around an AuthServiceProxy that dispatches arbitrary RPC
 # method names via `__getattr__`.
@@ -1412,6 +1548,30 @@ class Pool(str, Enum):
     TRANSPARENT = 'transparent'
     SAPLING = 'sapling'
     ORCHARD = 'orchard'
+    IRONWOOD = 'ironwood'
+
+
+class TotalBalanceField(str, Enum):
+    """A summary field of `z_gettotalbalance`: the `transparent` pool, the
+    aggregate shielded balance (`private`), or their `total`. This is NOT a
+    `Pool`: `private`/`total` are roll-ups across pools, not value pools, so
+    they have no `Pool` member. Being `str`-valued, a member is usable directly
+    as the dict key into `z_gettotalbalance`'s output."""
+    TRANSPARENT = 'transparent'
+    PRIVATE = 'private'
+    TOTAL = 'total'
+
+
+class Receiver(str, Enum):
+    """A receiver type of a unified address, as named in the `receivers` argument
+    of `z_getaddressforaccount` and in the keys of `z_listunifiedreceivers`.
+    This is NOT a `Pool`: `p2pkh` and `p2sh` are distinct transparent receiver
+    kinds that share the single transparent `Pool`. Being `str`-valued, a member
+    can be passed straight to the RPC and used as a dict key on its output."""
+    ORCHARD = 'orchard'
+    SAPLING = 'sapling'
+    P2PKH = 'p2pkh'
+    P2SH = 'p2sh'
 
 
 class FundSource(str, Enum):
@@ -1440,6 +1600,16 @@ class PrivacyPolicy(str, Enum):
     NO_PRIVACY = 'NoPrivacy'
 
 
+class UpgradeStatus(str, Enum):
+    """The activation status of a network upgrade, as reported in the `status`
+    field of each entry of `getblockchaininfo()['upgrades']`. Being `str`-valued,
+    a member compares equal to the wire string, so it can be asserted directly
+    against RPC output."""
+    DISABLED = 'disabled'
+    PENDING = 'pending'
+    ACTIVE = 'active'
+
+
 def transparent_utxos(wallet: RpcProxy, minconf: int = 1) -> list[dict]:
     """The wallet's transparent UTXOs with at least `minconf` confirmations."""
     return [u for u in wallet.z_listunspent(minconf)
@@ -1450,6 +1620,145 @@ def mature_transparent_utxos(wallet: RpcProxy) -> list[dict]:
     """The wallet's mature transparent coinbase UTXOs (>= COINBASE_MATURITY
     confirmations)."""
     return transparent_utxos(wallet, COINBASE_MATURITY)
+
+
+def ironwood_notes(wallet: RpcProxy, minconf: int = 1) -> list[dict]:
+    """The wallet's unspent Ironwood notes (z_listunspent entries with
+    `pool == "ironwood"`) with at least `minconf` confirmations."""
+    return [u for u in wallet.z_listunspent(minconf)
+            if u.get('pool') == Pool.IRONWOOD]
+
+
+def transparent_output_addresses(node: RpcProxy, txid: str) -> list[list[str]]:
+    """The addresses of each transparent output of `txid`, in vout order.
+
+    Read from the NODE rather than the wallet, so it reflects what was actually
+    committed on-chain rather than the wallet's view of it. Each entry is the
+    address list of one output (a standard P2PKH/P2SH output has exactly one), so
+    a fully-transparent send with change yields two entries. Shielded outputs are
+    not transparent outputs and so do not appear: a fully-shielded transaction
+    yields an empty list.
+    """
+    raw = node.getrawtransaction(txid, 1)
+    return [vout['scriptPubKey']['addresses'] for vout in raw['vout']]
+
+
+def transparent_change_address(node: RpcProxy, txid: str, recipient: str) -> str:
+    """The transparent change address of a fully-transparent `txid` paying
+    `recipient`.
+
+    A fully-transparent send has exactly two transparent outputs: the payment to
+    `recipient`, and the change at an internal-scope (BIP 44) address. Asserts
+    that shape, so it doubles as a check that the transaction really is a
+    transparent send with change (and not, say, one whose change was shielded).
+    """
+    outs = transparent_output_addresses(node, txid)
+    assert_equal(len(outs), 2,
+                 " expected exactly a recipient and a change output in %s" % txid)
+    change = [addrs for addrs in outs if addrs != [recipient]]
+    assert_equal(len(change), 1,
+                 " expected %s to be exactly one output of %s" % (recipient, txid))
+    assert_equal(len(change[0]), 1,
+                 " expected a single change address in %s" % txid)
+    return change[0][0]
+
+
+def mature_coinbase_on_address(wallet: RpcProxy, taddr: str) -> list[dict]:
+    """The wallet's mature transparent coinbase UTXOs held on `taddr`."""
+    return [u for u in mature_transparent_utxos(wallet)
+            if u.get('address') == taddr]
+
+
+def first_transparent_receiver(wallet: RpcProxy, ua: str) -> str:
+    """Return the transparent (P2PKH, else P2SH) receiver of a unified address
+    created with a transparent component."""
+    receivers = wallet.z_listunifiedreceivers(ua)
+    if Receiver.P2PKH in receivers:
+        return receivers[Receiver.P2PKH]
+    if Receiver.P2SH in receivers:
+        return receivers[Receiver.P2SH]
+    raise AssertionError(
+        "UA has no transparent receiver: {!r} -> {!r}".format(ua, receivers))
+
+
+def unified_address_for(wallet: RpcProxy, account_uuid: str,
+                        diversifier_index: int | None = None,
+                        receivers: Sequence[Receiver] = (Receiver.ORCHARD,
+                                                         Receiver.P2PKH)) -> str:
+    """A unified address of `account_uuid` carrying `receivers`.
+
+    A UA must include a shielded receiver, so a transparent receiver cannot
+    stand alone; the default pairs Orchard with P2PKH, giving an address that is
+    usable as both a shielded and a transparent endpoint (pass the transparent
+    one to `first_transparent_receiver`).
+
+    Pin `diversifier_index` when a test needs stable, distinct addresses: an
+    index may only ever be used with ONE receiver set, so callers wanting several
+    addresses must vary the INDEX, not the receiver set. Left unset, the wallet
+    picks the next available index.
+    """
+    if diversifier_index is None:
+        return wallet.z_getaddressforaccount(
+            account_uuid, list(receivers))['address']
+    return wallet.z_getaddressforaccount(
+        account_uuid, list(receivers), diversifier_index)['address']
+
+
+def nu_activation_all_at_1() -> dict:
+    """Activation heights putting every network upgrade at height 1, the
+    standard Z3-stack wallet-test regtest config (NU5+ active from height 1).
+
+    Returns a fresh dict on each call so callers can pass it to `ZebraArgs`
+    without sharing mutable state."""
+    return {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1}
+
+
+def nu_activation_all_at_1_with_ironwood() -> dict:
+    """Like `nu_activation_all_at_1`, but also activates NU6.3 (Ironwood) at
+    height 1.
+
+    NU6.3 is deliberately kept out of the standard helper/defaults so that
+    existing wallet tests keep receiving shielded funds into the Orchard pool.
+    Once NU6.3 is active, funds received to an Orchard receiver land in the
+    Ironwood pool instead, so only tests that expect Ironwood should use this.
+
+    Both zebrad and zallet must activate NU6.3 at the same height, otherwise
+    zebra's coinbase commits to the NU6.2 branch id while zallet expects the
+    NU6.3 branch id and rejects the first block. Pass this dict to BOTH
+    `ZebraArgs.activation_heights` and `ZalletArgs.activation_heights`."""
+    return {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1, "NU6.3": 1}
+
+
+def nu_activation_ironwood_at(height: int) -> dict:
+    """Activation heights with NU5..NU6.2 at height 1 but NU6.3 (Ironwood)
+    deferred to `height`. This creates an Orchard era (heights 1..height-1,
+    where an Orchard receiver mints real Orchard notes) followed by an Ironwood
+    era (>= `height`, where an Orchard receiver mints Ironwood notes), so a
+    single wallet can hold both Orchard and Ironwood notes.
+
+    As with `nu_activation_all_at_1_with_ironwood`, pass this to BOTH
+    `ZebraArgs.activation_heights` and `ZalletArgs.activation_heights`."""
+    if height < 2:
+        raise ValueError("NU6.3 height must be >= 2 to leave an Orchard era")
+    return {"NU5": 1, "NU6": 1, "NU6.1": 1, "NU6.2": 1, "NU6.3": height}
+
+
+def assert_shieldcoinbase_preflight_shape(result: dict) -> None:
+    """Assert the `z_shieldcoinbase` pre-flight response has the zcashd-shaped
+    fields with the right types:
+    `{ remainingUTXOs, remainingValue, shieldingUTXOs, shieldingValue, opid }`."""
+    assert_true(isinstance(result, dict),
+                "Expected dict, got {}: {!r}".format(type(result), result))
+    for key in ('remainingUTXOs', 'remainingValue',
+                'shieldingUTXOs', 'shieldingValue', 'opid'):
+        assert_true(key in result,
+                    "Missing field {!r} in response: {!r}".format(key, result))
+    assert_true(isinstance(result['remainingUTXOs'], int))
+    assert_true(isinstance(result['shieldingUTXOs'], int))
+    assert_true(isinstance(result['opid'], str))
+    # remainingValue / shieldingValue are JSON numbers; Decimal-able.
+    Decimal(result['remainingValue'])
+    Decimal(result['shieldingValue'])
 
 
 def wait_for_stable_transparent(wallet: RpcProxy, min_count: int = 1,
@@ -1560,8 +1869,11 @@ def wait_for_stable_mature_coinbase(wallet: RpcProxy, min_count: int = 1,
 def wait_for_tx_scanned(wallet: RpcProxy, txid: str, timeout: int = 120) -> dict:
     """
     Return `txid`'s `z_viewtransaction` view once it carries a `fee`, i.e. the
-    confirming block is scanned. Other scan-dependent views (balance,
-    z_listunspent) are then current too, so they can be read without a wait.
+    confirming block is scanned. Note this only guarantees the per-transaction
+    view is current: `z_gettotalbalance`'s summary is computed from a separate
+    internal scan tip that can still lag by a block, so poll it with
+    `wait_for_total_balance` rather than reading it once right after this
+    returns.
     """
     deadline = time.time() + timeout
     last_err = None
@@ -1576,6 +1888,37 @@ def wait_for_tx_scanned(wallet: RpcProxy, txid: str, timeout: int = 120) -> dict
     raise AssertionError(
         "wait_for_tx_scanned: timeout after {}s for txid {} ({})".format(
             timeout, txid, last_err))
+
+
+def wait_for_total_balance(wallet: RpcProxy, field: TotalBalanceField,
+                           predicate: Callable[[Decimal], bool],
+                           minconf: int = 1, include_watchonly: bool = True,
+                           timeout: int = 60) -> Decimal:
+    """
+    Poll `z_gettotalbalance(minconf, include_watchonly)` until `predicate`
+    holds for the `Decimal` value of `field` (a `TotalBalanceField`: the
+    transparent pool, the aggregate `private` balance, or the `total`), then
+    return that value. On timeout, return the last value read so the caller's
+    assertion can report it.
+
+    `z_gettotalbalance`'s summary is computed from an internal scan tip that can
+    lag `wallet_tip` (or a just-scanned transaction) by a block, so a single
+    read right after a `generate`/scan can miss the newest coinbase or note.
+    This rides out that lag; see zcash/wallet#316.
+    """
+    deadline = time.time() + timeout
+    last = None
+    while True:
+        try:
+            last = Decimal(
+                wallet.z_gettotalbalance(minconf, include_watchonly)[field])
+            if predicate(last):
+                return last
+        except Exception:
+            pass
+        if time.time() >= deadline:
+            return last
+        time.sleep(1)
 
 
 def wait_for_pool_note(wallet: RpcProxy, pool: Pool | str, minconf: int = 1,
@@ -1666,6 +2009,20 @@ def account_spendable_zat(wallet: RpcProxy, account_uuid: str, pool: Pool | str,
                for b in _account_pool(wallet, account_uuid, pool, minconf))
 
 
+def wait_for_wallet_sync(node, wallet, timeout: int = 60) -> None:
+    """Block until `wallet` reports `node`'s current tip as its wallet tip."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        target = node.getblockcount()
+        status = wallet.getwalletstatus()
+        if status.get('wallet_tip', {}).get('height') == target:
+            # Give the transparent balance accounting a beat to catch up.
+            time.sleep(2)
+            return
+        time.sleep(0.5)
+    raise AssertionError("wallet did not sync to node tip within %ss" % timeout)
+
+
 def wait_for_account_spendable(wallet: RpcProxy, account_uuid: str, pool: Pool,
                                min_zat: int = 1, minconf: int = 1,
                                timeout: int = 120) -> int:
@@ -1721,6 +2078,118 @@ def wait_for_account_balance(wallet: RpcProxy, account_uuid: str, pool: Pool,
         "wait_for_account_balance: timeout after {}s; account {} {} total "
         "is {} zat, wanted {} zat".format(
             timeout, account_uuid, pool, last, expected_zat))
+
+
+def spends_in_pool(view: dict, pool: Pool | str) -> list[dict]:
+    """The spends of a `z_viewtransaction` result that are in `pool`."""
+    return [s for s in view['spends'] if s['pool'] == pool]
+
+
+def outputs_in_pool(view: dict, pool: Pool | str) -> list[dict]:
+    """The outputs of a `z_viewtransaction` result that are in `pool`."""
+    return [o for o in view['outputs'] if o['pool'] == pool]
+
+
+def mine_to_mature_coinbase(node: RpcProxy, wallet: RpcProxy,
+                            extra: int = 20) -> list[dict]:
+    """Mine `COINBASE_MATURITY + extra` blocks and block until the wallet sees a
+    stable set of at least one mature coinbase UTXO. Returns those UTXOs.
+
+    Uses the at-least/steady variant (`wait_for_stable_mature_coinbase`) rather
+    than an exact count, so it stays correct when called repeatedly after
+    earlier shields have already spent an unknown number of coinbase UTXOs. The
+    timeout is generous because scanning a full maturity window can be slow when
+    several test stacks run concurrently (CI, or local back-to-back runs).
+    """
+    node.generate(COINBASE_MATURITY + extra)
+    return wait_for_stable_mature_coinbase(wallet, min_count=1, timeout=600)
+
+
+def shield_coinbase(node: RpcProxy, wallet: RpcProxy, taddr: str, to_addr: str,
+                    account_uuid: str, pool: Pool,
+                    extra: int = 20) -> tuple[str, int]:
+    """Mine coinbase to maturity, shield it into `to_addr`, confirm, and block
+    until the resulting balance in `pool` is spendable.
+
+    `to_addr`'s receiver type selects the destination pool: a Sapling receiver
+    mints Sapling notes, and an Orchard receiver mints Orchard notes, except
+    that once NU6.3 is active an Orchard receiver mints Ironwood notes. Pass the
+    matching `pool` so the spendability wait targets it.
+
+    Returns `(txid, value_zat)` where `value_zat` is the shielded note's value
+    net of the fee, in zatoshis, measured as the increase in the account's
+    spendable `pool` balance. Taking the balance delta (rather than the
+    pre-flight `shieldingValue`, which can disagree with the value actually
+    swept across the regtest subsidy halving) keeps it exact, and correct when
+    the pool already held a balance from an earlier shield.
+    """
+    pre = account_spendable_zat(wallet, account_uuid, pool)
+
+    mine_to_mature_coinbase(node, wallet, extra)
+
+    result = wallet.z_shieldcoinbase(taddr, to_addr)
+    assert_true(Decimal(result['shieldingValue']) > 0,
+                "Expected a positive shielding value")
+    txid = wait_and_assert_operationid_status(wallet, result['opid'])
+    assert_true(txid is not None, "Shielding tx should have succeeded")
+
+    node.generate(1)
+    wait_for_tx_scanned(wallet, txid)
+
+    # A shielded note becomes spendable atomically, and nothing else changes the
+    # pool balance here, so waiting for any increase past `pre` yields the fully
+    # settled balance; the note's value is the delta.
+    post = wait_for_account_spendable(wallet, account_uuid, pool,
+                                      min_zat=pre + 1)
+    return txid, post - pre
+
+
+def self_send(node: RpcProxy, wallet: RpcProxy, ua: str, amount: Decimal,
+              memo: str | None = None) -> tuple[str, Decimal]:
+    """Send `amount` ZEC (a `Decimal`) from and to `ua` (a self-send), confirm
+    it in a block, and return `(txid, fee_zec)`. `fee` is left null so zallet
+    computes the ZIP-317 fee. An optional `memo` (hex string) rides the payment.
+
+    The value returns to the account as change in `ua`'s pool; callers that need
+    it spendable again should follow up with `wait_for_account_spendable`.
+    """
+    recipient = {'address': ua, 'amount': amount}
+    if memo is not None:
+        recipient['memo'] = memo
+    opid = wallet.z_sendmany(ua, [recipient], 1, None)
+    txid = wait_and_assert_operationid_status(wallet, opid)
+    assert_true(txid is not None, "Self-send should have succeeded")
+
+    node.generate(1)
+    details = wait_for_tx_scanned(wallet, txid)
+    return txid, Decimal(details['fee'])
+
+
+def wait_account_settled(wallet: RpcProxy, account_uuid: str,
+                         pools: tuple = (Pool.SAPLING, Pool.ORCHARD,
+                                         Pool.IRONWOOD),
+                         timeout: int = 120) -> None:
+    """Block until all of the account's shielded value across `pools` is
+    spendable, i.e. the spendable balance equals the total (pending-inclusive)
+    balance. This rides out the post-confirmation spendable lag so a follow-up
+    send in a chain of sends has funds to draw on.
+    """
+    deadline = time.time() + timeout
+    spendable = balance = None
+    while time.time() < deadline:
+        try:
+            spendable = sum(account_spendable_zat(wallet, account_uuid, p)
+                            for p in pools)
+            balance = sum(account_balance_zat(wallet, account_uuid, p)
+                          for p in pools)
+            if spendable == balance:
+                return
+        except Exception:
+            pass
+        time.sleep(1)
+    raise AssertionError(
+        "wait_account_settled: timeout after {}s; account {} spendable {} != "
+        "balance {}".format(timeout, account_uuid, spendable, balance))
 
 
 def expect_rpc_error(callable_: Callable, *args, **kwargs):
