@@ -6,7 +6,12 @@
 
 from test_framework.test_framework import ComparisonTestFramework
 from test_framework.util import hex_str_to_bytes, start_nodes
-from test_framework.mininode import CTransaction, NetworkThread
+from test_framework.mininode import (
+    CTransaction,
+)
+from test_framework.p2p import (
+    NetworkThread,
+)
 from test_framework.blocktools import create_coinbase, create_block
 from test_framework.comptool import TestInstance, TestManager
 from test_framework.script import CScript

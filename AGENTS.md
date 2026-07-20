@@ -141,6 +141,48 @@ pyflakes qa
 
 PRs MUST NOT introduce new `pyflakes` warnings. All lint checks in `.github/workflows/lints.yml` must pass.
 
+## Test Style: Name Your Arguments, Comment at the Definition
+
+**Do not pass a bare literal as a positional RPC argument, and do not annotate
+one with a comment at the call site.** The RPC surface is positional and wide,
+so a call like
+
+```python
+# BAD: what are 1 and None? The reader has to go and count the parameters.
+opid = w.z_sendmany(taddr, recipients, 1, None, 'AllowFullyTransparent')
+```
+
+is unreadable, and a comment explaining the `1` and the `None` at the call site
+does not fix it: that comment is invisible to every other caller, duplicates
+(and then contradicts) the definition, and rots on the next refactor. **Bind the
+value to a name, and put the explanation at the definition.**
+
+```python
+# GOOD: the call reads as intent; the "why" lives once, in util.py.
+opid = w.z_sendmany(
+    taddr, recipients, MIN_CONFIRMATIONS, INTERNAL_FEE,
+    PrivacyPolicy.ALLOW_FULLY_TRANSPARENT)
+```
+
+Follow these rules:
+
+- **Shared RPC argument values are named constants** in
+  `test_framework/util.py`, documented there (`MIN_CONFIRMATIONS`,
+  `INTERNAL_FEE`, `COINBASE_MATURITY`, `COIN`). Test-specific values are
+  module-level constants at the top of the test, with the reason in a comment
+  above them (`UNSHIELD_AMOUNT`, `NUM_SOURCE_UTXOS`, `DIVERSIFIER_SRC`).
+- **Prefer an enum over a string literal** wherever one exists: `Pool`,
+  `PrivacyPolicy`, `Receiver`, `TotalBalanceField`, `FundSource`. These are
+  `str`-valued, so they pass straight to the RPC while being discoverable and
+  typo-proof. Add a member (or a new enum) rather than reintroducing a bare
+  string.
+- **Hoist a helper into `test_framework/util.py` rather than copying it**
+  between tests (`unified_address_for`, `first_transparent_receiver`,
+  `transparent_output_addresses`, `transparent_change_address`). Two copies of
+  the same helper in two tests is a bug waiting to diverge.
+- A comment explains WHY, at the definition. If a value's meaning is only clear
+  from a comment at the point of use, the value wants a name.
+
 ## Commit & Pull Request Guidelines
 
 ### Commit History

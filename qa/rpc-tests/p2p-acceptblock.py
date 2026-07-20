@@ -4,9 +4,21 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-from test_framework.mininode import CBlockHeader, CInv, NodeConn, NodeConnCB, \
-    NetworkThread, msg_block, msg_headers, msg_inv, msg_ping, msg_pong, \
-    mininode_lock
+from test_framework.mininode import (
+    CBlockHeader,
+    CInv,
+)
+from test_framework.p2p import (
+    NetworkThread,
+    NodeConn,
+    NodeConnCB,
+    mininode_lock,
+    msg_block,
+    msg_headers,
+    msg_inv,
+    msg_ping,
+    msg_pong,
+)
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, \
     start_node, p2p_port, ZCASHD_BINARY

@@ -5,15 +5,17 @@
 
 from decimal import Decimal
 from test_framework.mininode import (
-    NU5_PROTO_VERSION,
     CInv,
+    NU5_PROTO_VERSION,
+    uint256_from_reversed_hex,
+)
+from test_framework.p2p import (
     NetworkThread,
     NodeConn,
     mininode_lock,
     msg_getdata,
     msg_mempool,
     msg_reject,
-    uint256_from_reversed_hex,
 )
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (

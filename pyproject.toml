@@ -1,7 +1,7 @@
 [project]
 name = "zcash-integration-tests"
 version = "0.1.0"
-requires-python = "==3.11.*"
+requires-python = ">=3.12"
 dependencies = [
     "base58",
     "embit>=0.8.0",

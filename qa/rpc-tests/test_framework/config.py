@@ -94,6 +94,14 @@ class ZalletArgs:
     # can be configured to match the node.
     activation_heights: dict[str, int] = field(default_factory=dict)
 
+    # The ZIP 32 seed fingerprint (bech32m, as `z_listaccounts` reports it) of
+    # the `zcashd` wallet whose legacy pool of funds this wallet holds, enabling
+    # `zcashd`'s legacy semantics for it. Setting it is what makes `ANY_TADDR`
+    # spendable in `z_sendmany`. A wallet's seed is generated when the wallet is
+    # created, so a test learns the fingerprint from the running wallet and then
+    # restarts it with this set.
+    legacy_pool_seed_fingerprint: str | None = None
+
     def __add__(self, other):
         if other is None:
             return self
@@ -101,6 +109,8 @@ class ZalletArgs:
         defaults = ZalletArgs()
         if other.activation_heights != defaults.activation_heights:
             self.activation_heights = other.activation_heights
+        if other.legacy_pool_seed_fingerprint != defaults.legacy_pool_seed_fingerprint:
+            self.legacy_pool_seed_fingerprint = other.legacy_pool_seed_fingerprint
         return self
 
 

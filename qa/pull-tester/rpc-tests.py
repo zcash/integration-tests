@@ -94,7 +94,6 @@ DISABLED_SCRIPTS = [
     'prioritisetransaction.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
     'proxy_test.py',  # -proxy/tor unsupported
     'rawtransactions.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'regtest_signrawtransaction.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'remove_sprout_shielding.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'reorg_limit.py',  # investigate
     'rest.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
@@ -116,7 +115,6 @@ DISABLED_SCRIPTS = [
     'wallet_addresses.py',  # no zallet equiv yet: z_exportkey, z_importkey
     'wallet_anchorfork.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
     'wallet_broadcast.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'wallet_changeaddresses.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_changeindicator.py',  # no zallet equiv yet: z_exportviewingkey
     'wallet_deprecation.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_doublespend.py',  # deprecated; z_getbalanceforaccount->z_getbalances, gettransaction->z_viewtransaction
@@ -132,6 +130,8 @@ DISABLED_SCRIPTS = [
     'wallet_orchard_init.py',  # no zallet equiv yet: resendwallettransactions
     'wallet_orchard_persistence.py',  # deprecated; z_getbalanceforaccount->z_getbalances
     'wallet_orchard_reindex.py',  # deprecated; z_getbalanceforaccount->z_getbalances
+    'wallet_ironwood_reorg.py',  # zebra-backend: wait_for_wallet_sync never converges after invalidateblock (still hangs as of zallet@d168efe, past zallet#560/#563/#576)
+    'wallet_ironwood_birthday.py',  # zebra-backend: recovered account's wait_for_wallet_sync(timeout=300) still times out (still hangs as of zallet@d168efe, past zallet#560/#563/#576)
     'wallet_overwintertx.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_parsing_amounts.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
     'wallet_persistence.py',  # no zallet equiv yet: z_exportkey, z_importkey, z_exportviewingkey
@@ -176,7 +176,6 @@ BASE_SCRIPTS= [
     'walletbackup.py',
     'zkey_import_export.py',
     'prioritisetransaction.py',
-    'wallet_changeaddresses.py',
     'wallet_listreceived.py',
     'mempool_tx_expiry.py',
     'finalsaplingroot.py',
@@ -248,7 +247,6 @@ BASE_SCRIPTS= [
     'p2p_txexpiry_dos.py',
     'p2p_txexpiringsoon.py',
     'p2p_node_bloom.py',
-    'regtest_signrawtransaction.py',
     'shorter_block_times.py',
     'mining_shielded_coinbase.py',
     'coinbase_funding_streams.py',
@@ -275,16 +273,34 @@ BASE_SCRIPTS= [
 # in CI. This will eventually be merged into BASE_SCRIPTS once everything is working.
 NEW_SCRIPTS= [
     # Longest test should go first, to favor running tests in parallel
+    # vv Tests less than 10m vv
+    # These Ironwood tests span the NU6.3 activation boundary or chain many
+    # cross-pool sends, so they mine several coinbase-maturity windows.
+    'wallet_ironwood_orchard_turnstile.py',
+    'wallet_ironwood_activation.py',
+    # vv Tests less than 7m vv
+    # The two-shield Ironwood tests each mine two coinbase-maturity windows.
+    'wallet_ironwood_crosspool.py',
+    'wallet_ironwood_spending.py',
+    'wallet_ironwood_invariants.py',
     # vv Tests less than 5m vv
     'wallet.py',
+    'wallet_ironwood_persistence.py',
+    'wallet_ironwood_views.py',
+    'wallet_ironwood_conservation.py',
+    'wallet_ironwood_negatives.py',
     # vv Tests less than 2m vv
     'wallet_ironwood.py',
     'grpc_comparison.py',
+    'wallet_changeaddresses.py',
+    'wallet_legacy_pool_spend.py',
     # vv Tests less than 60s vv
     'addnode.py',
     'wallet_z_shieldcoinbase.py',
     'wallet_z_shieldcoinbase_multi_taddr.py',
     'wallet_transparent_coinbase_balance.py',
+    'wallet_transparent_spend.py',
+    'regtest_signrawtransaction.py',
     # vv Tests less than 30s vv
     'feature_nu6.py',
     'feature_backup_non_finalized_state.py',

@@ -4,11 +4,18 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #
 
-from test_framework.mininode import ( \
-        NodeConn, NodeConnCB, CInv, NetworkThread, \
-        msg_ping, msg_pong, msg_getdata, \
-        BLOSSOM_PROTO_VERSION
-        )
+from test_framework.mininode import (
+    BLOSSOM_PROTO_VERSION,
+    CInv,
+)
+from test_framework.p2p import (
+    NetworkThread,
+    NodeConn,
+    NodeConnCB,
+    msg_getdata,
+    msg_ping,
+    msg_pong,
+)
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import ( \
