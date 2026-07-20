@@ -62,6 +62,11 @@ ADVANCE_RPC = 'z_advancepoolmigration'
 CANCEL_RPC = 'z_cancelpoolmigration'
 LIST_RPC = 'z_listpoolmigrations'
 PREVIEW_RPC = 'z_previewpoolmigration'
+# The external-signer surface: build unsigned, sign out of band, apply the
+# signature, then advance proves and broadcasts as usual.
+BUILD_TRANSFERS_RPC = 'z_buildpoolmigrationtransfers'
+SIGN_PCZT_RPC = 'z_signpoolmigrationpczt'
+APPLY_SIGNATURE_RPC = 'z_applypoolmigrationsignature'
 
 # Ironwood notes are Orchard-shaped, so the migration moves value from the
 # Orchard pool into the Ironwood pool.
@@ -395,6 +400,73 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
             for w, acct, _ in subjects:
                 wait_account_settled(w, acct)
         return done
+
+    # ---- external-signer flow ----------------------------------------------
+
+    def start_external(self, w, acct):
+        """Start (build) the migration for an EXTERNAL signer: the preparation
+        is built UNSIGNED. Returns (start_response, unsigned_prep_transactions),
+        where each unsigned transaction is a {'id', 'pczt'} dict."""
+        started = getattr(w, START_RPC)(acct, FROM_POOL, TO_POOL, True)
+        return started, started['unsigned_transactions']
+
+    def sign_pczt(self, w, acct, pczt):
+        """Sign one migration PCZT with the account's spend key. This stands in
+        for the hardware/offline device: in a real deployment the unsigned PCZT
+        is signed off the wallet host. Returns the signed PCZT (base64)."""
+        return getattr(w, SIGN_PCZT_RPC)(acct, pczt)['pczt']
+
+    def apply_signature(self, w, migration_id, tx_id, signed_pczt):
+        """Apply a signed PCZT back to its migration transaction (matched by id),
+        moving it from awaiting-signature to signed."""
+        return getattr(w, APPLY_SIGNATURE_RPC)(migration_id, tx_id, signed_pczt)
+
+    def build_transfers(self, w, acct, migration_id):
+        """Build the phase-2 transfers UNSIGNED once the preparation is mined.
+        Returns the response; its 'unsigned_transactions' list is empty until the
+        whole preparation has mined, and non-empty (awaiting signatures) once the
+        transfers are built."""
+        return getattr(w, BUILD_TRANSFERS_RPC)(acct, migration_id)
+
+    def sign_and_apply_all(self, w, acct, migration_id, unsigned):
+        """Sign each unsigned {'id','pczt'} transaction (device stand-in) and
+        apply the signature back, moving each to signed."""
+        for u in unsigned:
+            signed = self.sign_pczt(w, acct, u['pczt'])
+            self.apply_signature(w, migration_id, u['id'], signed)
+
+    def drive_external_to_completion(self, w, acct, migration_id, unsigned_prep,
+                                     on_step=None):
+        """Drive a migration started for an EXTERNAL signer to completion.
+
+        The wallet builds every transaction UNSIGNED; this test signs each PCZT
+        with the account key (standing in for a hardware device) and applies it,
+        then `advance` proves and broadcasts it exactly as for the in-process
+        path. The preparation PCZTs (passed in as `unsigned_prep`) are signed and
+        applied first; then each step, until the transfers are built, it calls
+        `build_transfers` (which builds them unsigned only once the preparation
+        has mined, so `advance` never signs them in process), signs and applies
+        them, and advances. Mines on the shared node between steps. Returns True
+        if the migration completed within MAX_ADVANCE_STEPS."""
+        node = self.faucet_node
+        self.sign_and_apply_all(w, acct, migration_id, unsigned_prep)
+        transfers_built = False
+        for step in range(self.MAX_ADVANCE_STEPS):
+            if not transfers_built:
+                bt = self.build_transfers(w, acct, migration_id)
+                if bt['unsigned_transactions']:
+                    self.sign_and_apply_all(
+                        w, acct, migration_id, bt['unsigned_transactions'])
+                    transfers_built = True
+            adv = self.advance(w, acct, migration_id)
+            if on_step is not None:
+                on_step(step, adv)
+            if adv['phase'] == 'completed':
+                return True
+            node.generate(self.ADVANCE_MINE_BLOCKS)
+            self.sync_all()
+            wait_account_settled(w, acct)
+        return False
 
     # ---- assertions: cross-cutting invariants ------------------------------
 

@@ -297,6 +297,7 @@ NEW_SCRIPTS= [
     'wallet_ironwood_migration_whale_plus_dust.py',
     'wallet_ironwood_migration_denominations.py',
     'wallet_ironwood_migration_retail.py',
+    'wallet_ironwood_migration_external_signer.py',
     'wallet_ironwood_migration_small_holder.py',
     'wallet_ironwood_migration_schedule.py',
     'wallet_ironwood_migration_cancel.py',
