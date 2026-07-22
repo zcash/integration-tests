@@ -283,6 +283,18 @@ NEW_SCRIPTS= [
     'wallet_ironwood_crosspool.py',
     'wallet_ironwood_spending.py',
     'wallet_ironwood_invariants.py',
+    # Note-locking scenario suite: overlapping spend operations on one account
+    # lock their selected inputs (zallet builder.note_lock_blocks); these cover
+    # the in-flight locked-balance surface, concurrent-send conflicts, crash
+    # recovery (restart persistence, z_clearlockedoutputs, height expiry),
+    # account scoping, the transparent/shielding path, and the short-window
+    # expiry trade-off. The isolation test funds two accounts (two coinbase
+    # maturity windows); the others fund one.
+    'wallet_note_locking_isolation.py',
+    'wallet_note_locking_crash.py',
+    'wallet_note_locking.py',
+    'wallet_note_locking_expiry_window.py',
+    'wallet_note_locking_shielding.py',
     # vv Tests less than 5m vv
     'wallet.py',
     'wallet_ironwood_persistence.py',
