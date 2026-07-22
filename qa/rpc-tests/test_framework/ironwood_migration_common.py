@@ -35,7 +35,6 @@ import time
 from decimal import Decimal
 
 from test_framework.util import (
-    COIN,
     Pool,
     PrivacyPolicy,
     _RPC_EXCEPTIONS,
