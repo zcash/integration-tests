@@ -367,6 +367,7 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
             if on_step is not None:
                 on_step(step, adv)
             if adv['phase'] == 'completed':
+                self.assert_states_match_chain(w, migration_id)
                 return True
             node.generate(self.ADVANCE_MINE_BLOCKS)
             self.sync_all()
@@ -391,6 +392,7 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
                 if on_step is not None:
                     on_step(step, idx, adv)
                 if adv['phase'] == 'completed':
+                    self.assert_states_match_chain(w, mid)
                     done[idx] = True
             if all(done):
                 return done
@@ -461,6 +463,7 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
             if on_step is not None:
                 on_step(step, adv)
             if adv['phase'] == 'completed':
+                self.assert_states_match_chain(w, migration_id)
                 return True
             node.generate(self.ADVANCE_MINE_BLOCKS)
             self.sync_all()
@@ -538,4 +541,41 @@ class IronwoodMigrationScenario(IronwoodTestFramework):
                     assert_true(t['state'] not in built,
                                 "layer {} was built before layer {} fully "
                                 "mined: {}".format(layer, layer - 1, t))
+        return st
+
+    def assert_states_match_chain(self, w, migration_id):
+        """Cross-check zallet's per-transaction state against the NODE's chain.
+
+        Every transaction zallet reports as `mined` MUST actually be on-chain: in
+        the node's block at the exact height zallet claims, looked up by the txid
+        zallet reports. The check queries the node directly, so it does not trust
+        zallet's own `mined` state; a migration zallet believes complete whose
+        transactions are not truly on-chain fails here. This is what makes the
+        proving load-bearing: an unproven transfer is invalid, the node never
+        mines it, so zallet's `mined` would then DISAGREE with the chain and this
+        assertion would catch it (previously the suite could pass without real
+        proving because nothing cross-checked the chain)."""
+        node = self.faucet_node
+        st = self.status(w, migration_id)
+        txs = st['transactions']
+        assert_true(len(txs) > 0, "a migration has transactions to verify")
+        for t in txs:
+            assert_true(
+                t['state'] == 'mined',
+                "every transaction must be mined per zallet before the on-chain "
+                "check, but this one is not: {}".format(t))
+            txid = t.get('txid')
+            height = t.get('mined_height')
+            assert_true(
+                txid is not None and height is not None,
+                "a mined transaction must report its txid and mined height: {}"
+                .format(t))
+            # Independent node lookup: the block zallet names must contain this
+            # exact txid, so zallet's state and the on-chain reality agree.
+            block = node.getblock(str(height), 1)
+            assert_true(
+                txid in block['tx'],
+                "zallet reports tx {} mined at height {}, but the node's block "
+                "at that height does not contain it: zallet and the chain "
+                "disagree".format(txid, height))
         return st
