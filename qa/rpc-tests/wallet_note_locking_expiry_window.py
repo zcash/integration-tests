@@ -68,6 +68,11 @@ class WalletNoteLockingExpiryWindowTest(NoteLockingScenario):
         if self.skip_if_locking_absent(w):
             return
 
+        # Support is confirmed; restart zallet with the 1-block window (the
+        # initial startup used the stock configuration, so the probe above
+        # can run against any binary).
+        w = self.apply_lock_window()
+
         acct = w.z_listaccounts()[0]['account_uuid']
         ua = w.z_getaddressforaccount(acct, ['orchard'])['address']
 
