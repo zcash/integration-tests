@@ -242,6 +242,33 @@ def sync_blocks_with_reconnect(rpcs, peer_idx, max_attempts=3, reconnect_pause=2
                 time.sleep(reconnect_pause)
     raise last_err
 
+def copy_missing_blocks(rpcs, tip_idx):
+    """Bring every node up to `rpcs[tip_idx]`'s tip by copying the missing
+    blocks directly via getblock/submitblock.
+
+    Deterministic alternative to waiting on P2P relay, which can leave a
+    peer stuck behind indefinitely (zebra #10329, #10332). Only valid while
+    all nodes are on one non-forked chain, as in `rebuild_cache`.
+    """
+    target_height = rpcs[tip_idx].getblockcount()
+    stragglers = {i: rpcs[i].getblockcount() for i in range(len(rpcs))
+                  if rpcs[i].getblockcount() < target_height}
+    if not stragglers:
+        return
+    print(
+        "[copy_missing_blocks] {} node(s) behind height {}: {}; "
+        "copying the missing blocks directly".format(
+            len(stragglers), target_height, stragglers),
+        file=sys.stderr, flush=True,
+    )
+    for i, height in stragglers.items():
+        for h in range(height + 1, target_height + 1):
+            rpcs[i].submitblock(rpcs[tip_idx].getblock(str(h), 0))
+        assert_equal(
+            rpcs[i].getblockcount(), target_height,
+            "node {} still behind after copying blocks {}..{} from "
+            "node {}".format(i, height + 1, target_height, tip_idx))
+
 def sync_mempools(nodes, wallets=None, wait=0.5, timeout=60):
     """
     Wait until everybody has the same transactions in their memory
@@ -475,7 +502,14 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                     block_time += PRE_BLOSSOM_BLOCK_TARGET_SPACING
                 # Must sync before next peer mines; retry variant handles the
                 # 8-node mesh occasionally missing sync_blocks's 60s window.
-                sync_blocks_with_reconnect(rpcs, peer)
+                # If P2P still hasn't converged after the retries, copy the
+                # blocks over RPC instead of failing: the mining peer is by
+                # construction the unique tip, so a straggler just needs its
+                # blocks replayed.
+                try:
+                    sync_blocks_with_reconnect(rpcs, peer)
+                except AssertionError:
+                    copy_missing_blocks(rpcs, peer)
                 # Shut down and restart every zebrad node.
                 # This works around a zebrad problem where it won't broadcast
                 # received blocks to other connected nodes, and is a workaround
@@ -536,22 +570,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
             if all(r.getblockcount() == target_height for r in rpcs):
                 break
             time.sleep(1)
-        straggler_heights = {i: rpcs[i].getblockcount() for i in range(MAX_NODES)
-                             if rpcs[i].getblockcount() < target_height}
-        if straggler_heights:
-            print(
-                "[rebuild_cache] P2P left {} node(s) behind height {}: {}; "
-                "copying the missing blocks directly".format(
-                    len(straggler_heights), target_height, straggler_heights),
-                file=sys.stderr, flush=True,
-            )
-            for i, height in straggler_heights.items():
-                for h in range(height + 1, target_height + 1):
-                    rpcs[i].submitblock(rpcs[tip_node].getblock(str(h), 0))
-                assert_equal(
-                    rpcs[i].getblockcount(), target_height,
-                    "node {} still behind after copying blocks {}..{} from "
-                    "node {}".format(i, height + 1, target_height, tip_node))
+        copy_missing_blocks(rpcs, tip_node)
         # Check that local time isn't going backwards
         assert_greater_than(time.time() + 1, block_time)
 

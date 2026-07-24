@@ -21,6 +21,10 @@ We do not publish package releases or Git tags for this project. Each version en
 
 - Support Zallet's launcher-plus-backend structure: `zallet` is a launcher that execs a per-backend binary. CI builds the launcher plus the `zallet-zaino` backend binary and ships both to the test runners, and the default `zallet.toml` selects the Zaino backend via its top-level `backend` key. The build falls back to the single-binary layout when the checked-out wallet has no `backends/` directory.
 
+### Fixed
+
+- `rebuild_cache` no longer fails when the 8-node zebrad mesh does not converge over P2P within `sync_blocks_with_reconnect`'s retries (zebra #10329, #10332): the straggler recovery that already backstopped the post-restart reconnect — copying the missing blocks directly via `getblock`/`submitblock` — is hoisted into a shared `copy_missing_blocks` helper and now also backstops the per-round sync in the mining loop. Cache creation therefore no longer depends on P2P block relay for correctness, only for speed.
+
 ## [0.1.0] - 2025-11-11
 
 In this first (pseudo)-release, we document all the changes made while migrating from the original Zcash test framework (`zcashd` only) to the new Z3 stack (`zebrad` + `zallet`), now hosted within the Zebra repository as part of the zebra-rpc crate.
