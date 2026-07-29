@@ -5,9 +5,9 @@
 
 """Exercise current Zallet recovery against a fresh native Zinder runtime.
 
-The runtime smoke includes the two P2a chain-view expiry proofs.  Transaction
-submission, transparent-history correctness, and an Ironwood transaction
-producer remain outside this scenario.
+The runtime smoke includes the P2a chain-view expiry proofs and the P2b
+transparent receive, spend, restart, and historical-rescan proof. Transaction
+submission through Zinder remains outside this scenario.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 
 import toml
@@ -35,17 +36,32 @@ from test_framework.config import ZebraArgs, ZalletArgs
 from test_framework.proxy import JSONRPCException
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
+    COIN,
+    COINBASE_MATURITY,
+    INTERNAL_FEE,
+    MIN_CONFIRMATIONS,
+    Pool,
+    PrivacyPolicy,
+    Receiver,
     bitcoind_processes,
+    first_transparent_receiver,
     get_rpc_auth_proxy,
     get_rpc_proxy,
     indexer_rpc_port,
     node_dir,
     p2p_port,
+    prepare_wallets_for_mining,
     rpc_port,
     rpc_url,
+    unified_address_for,
     update_zallet_conf,
     update_zebrad_conf,
+    wait_and_assert_operationid_status,
+    wait_for_account_spendable,
+    wait_for_stable_mature_coinbase,
+    wallet_dir,
 )
+from test_framework.zip317 import MINIMUM_FEE
 
 
 NETWORK_NAME = "zcash-regtest"
@@ -56,6 +72,7 @@ PROCESS_STOP_TIMEOUT_SECONDS = 15
 # database and key operations to complete.
 HTTP_TIMEOUT_SECONDS = 30
 POLL_INTERVAL_SECONDS = 0.2
+ZALLET_SCANNED_PRIORITY = 10
 FULL_BLOCK_PAGE_SIZE = 1_000
 STEADY_STATE_REGION_BLOCKS = 100
 HISTORY_BLOCK_COUNT = (
@@ -64,6 +81,13 @@ HISTORY_BLOCK_COUNT = (
 STEADY_BLOCK_COUNT = FULL_BLOCK_PAGE_SIZE + 1
 BLOCK_GENERATION_BATCH_SIZE = 100
 PAIR_PUBLICATION_METRIC = "zinder_wallet_serving_pair_publisher_publications_total"
+INGEST_CONTROL_ADMISSION_SETTLE_SECONDS = 3
+TRANSPARENT_FUNDING_ZEC = Decimal("0.02")
+TRANSPARENT_SPEND_ZEC = Decimal("0.01")
+PRODUCER_COINBASE_DIVERSIFIER = 19
+PRODUCER_SHIELDED_DIVERSIFIER = 20
+TRANSPARENT_SOURCE_DIVERSIFIER = 21
+TRANSPARENT_DESTINATION_DIVERSIFIER = 22
 RANGE_BARRIER_DIRECTORY_ENVIRONMENT = "ZIT_RANGE_BARRIER_DIR"
 RANGE_REQUEST_PAUSE_START_HEIGHT_ENVIRONMENT = (
     "ZIT_RANGE_REQUEST_PAUSE_START_HEIGHT"
@@ -77,12 +101,13 @@ RANGE_MARKER_FIELDS = {
     "requested_end_height_inclusive",
     "chain_epoch_id",
 }
-ZINDER_REVISION = "515b98b490575a87d8cd629d01551114f42a5735"
-ZALLET_REVISION = "05fcb9ec374cb4fdc2c230b8d572570fad176a80"
+ZINDER_REVISION = "df770c5ccb21bb8af4485a44d0815628388459e4"
+ZALLET_REVISION = "edb239a0562fd5fd3dede88e90b05d7fddb7f09b"
 ZEBRA_REVISION = "7121c82ba6795a151523d5b308a19743f4a1ade7"
 EVIDENCE_DIRECTORY_ENVIRONMENT = "ZIT_ZINDER_EVIDENCE_DIR"
+CERTIFICATION_SLICE_ENVIRONMENT = "ZIT_ZALLET_CERTIFICATION_SLICE"
 
-# This is the current Zallet P2a requirement constant.  The endpoint can
+# This is the current Zallet P2b requirement constant.  The endpoint can
 # advertise additive capabilities, but the launcher must admit this complete,
 # ordered set before opening either wallet database for a live process.
 ZALLET_REQUIRED_CAPABILITIES = (
@@ -96,6 +121,8 @@ ZALLET_REQUIRED_CAPABILITIES = (
     "wallet.read.full_block_at_v1",
     "wallet.read.full_block_range_v1",
     "wallet.read.transaction_by_id_v2",
+    "wallet.address.transparent_unspent_outputs_v1",
+    "wallet.address.transparent_history_v1",
     "wallet.events.chain_v1",
     "wallet.snapshot.mempool_v3",
     "wallet.events.mempool_v2",
@@ -114,6 +141,7 @@ ARTIFACTS = {
     "zinder_query": ("ZIT_ZINDER_QUERY", "ZIT_ZINDER_QUERY_SHA256"),
     "zallet": ("ZIT_ZALLET_LAUNCHER", "ZIT_ZALLET_LAUNCHER_SHA256"),
     "zallet_zinder": ("ZIT_ZALLET_ZINDER", "ZIT_ZALLET_ZINDER_SHA256"),
+    "zallet_zebra": ("ZIT_ZALLET_ZEBRA", "ZIT_ZALLET_ZEBRA_SHA256"),
 }
 
 
@@ -166,6 +194,18 @@ def require_evidence_directory() -> Path:
     else:
         path.mkdir(parents=True)
     return path
+
+
+def certification_slice() -> str:
+    selected = os.environ.get(
+        CERTIFICATION_SLICE_ENVIRONMENT,
+        "complete",
+    )
+    if selected not in {"complete", "p2b"}:
+        raise RuntimeError(
+            "{} must be complete or p2b".format(
+                CERTIFICATION_SLICE_ENVIRONMENT))
+    return selected
 
 
 def allocate_port(allocated: set[int]) -> int:
@@ -284,12 +324,60 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         self.zebra_files: tuple[object, object] | None = None
         self.zebra_health_endpoint = ""
         self.suspended_backend_pids: set[int] = set()
+        self.producer_config: Path | None = None
+        self.bulk_miner_address = ""
+        self.seed_coinbase_block_hash = ""
+        self.seed_coinbase_tip = 0
+        self.producer_seedfp = ""
+        self.producer_account_uuid = ""
+        self.producer_coinbase_address = ""
+        self.producer_shielded_address = ""
+        self.transparent_source_address = ""
+        self.transparent_seed_snapshot: Path | None = None
 
     def setup_chain(self):
         super().setup_chain()
         self.artifacts, self.artifact_hashes = required_artifacts()
         self.evidence = require_evidence_directory()
         self._record_artifacts()
+        self.allocated_ports.update(
+            (rpc_port(0), p2p_port(0), indexer_rpc_port(0)))
+        producer_root = Path(self.options.tmpdir) / "transparent-producer"
+        previous_backend = os.environ.get("ZALLET_BACKEND")
+        os.environ["ZALLET_BACKEND"] = "zebra"
+        try:
+            producer_launcher = self._staged_producer_launcher()
+            miner_addresses = prepare_wallets_for_mining(
+                2,
+                str(producer_root),
+                binary=[producer_launcher, producer_launcher],
+                zallet_args=[
+                    ZalletArgs(activation_heights=self.activation_heights),
+                    ZalletArgs(activation_heights=self.activation_heights),
+                ],
+            )
+            self.bulk_miner_address = miner_addresses[1].strip()
+        finally:
+            if previous_backend is None:
+                del os.environ["ZALLET_BACKEND"]
+            else:
+                os.environ["ZALLET_BACKEND"] = previous_backend
+        self.producer_config = Path(
+            wallet_dir(str(producer_root), 0)) / "zallet.toml"
+        producer_config = toml.load(self.producer_config)
+        producer_config["indexer"]["validator_address"] = (
+            "127.0.0.1:{}".format(rpc_port(0)))
+        producer_config["indexer"]["read_state_service"] = {
+            "grpc_address": "127.0.0.1:{}".format(indexer_rpc_port(0)),
+            "zebra_state_path": str(
+                Path(node_dir(self.options.tmpdir, 0)).resolve()),
+        }
+        self.producer_config.write_text(
+            toml.dumps(producer_config),
+            encoding="utf8",
+        )
+        self.allocated_ports.add(int(
+            producer_config["rpc"]["bind"][0].rsplit(":", 1)[1]))
 
     def setup_nodes(self):
         self.allocated_ports.update((rpc_port(0), p2p_port(0), indexer_rpc_port(0)))
@@ -298,7 +386,9 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         data_directory = Path(node_dir(self.options.tmpdir, 0))
         config_path = Path(update_zebrad_conf(
             str(data_directory), rpc_port(0), p2p_port(0), indexer_rpc_port(0),
-            ZebraArgs(activation_heights=self.activation_heights)))
+            ZebraArgs(
+                miner_address=self.bulk_miner_address,
+                activation_heights=self.activation_heights)))
         config = toml.load(config_path)
         config["health"] = {"listen_addr": health_address, "enforce_on_test_networks": False}
         with config_path.open("w", encoding="utf8") as destination:
@@ -373,6 +463,19 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             "required_capabilities": list(ZALLET_REQUIRED_CAPABILITIES),
             "advertised_capabilities": capabilities,
         })
+        self._prepare_transparent_seed_snapshot()
+        p2a_starting_tip = self.seed_coinbase_tip
+        selected_slice = certification_slice()
+        if selected_slice == "p2b":
+            transparent_recovery = self._run_transparent_recovery()
+            self._write_json("smoke-result.json", {
+                "initial_height": INITIAL_HEIGHT,
+                "p2b_starting_height": p2a_starting_tip,
+                "transparent_recovery": transparent_recovery,
+                "certification_slice": selected_slice,
+                "scope": "P2b transparent recovery",
+            })
+            return
 
         source_config = self._write_wallet_config("source")
         watcher_config = self._write_wallet_config("watcher")
@@ -380,15 +483,15 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         self._initialize_wallet("watcher", watcher_config, generate_mnemonic=False)
         source = self._start_wallet("source", source_config)
         watcher = self._start_wallet("watcher", watcher_config)
-        self._wait_wallet_tip(source, INITIAL_HEIGHT)
-        self._wait_wallet_tip(watcher, INITIAL_HEIGHT)
+        self._wait_wallet_tip(source, p2a_starting_tip)
+        self._wait_wallet_tip(watcher, p2a_starting_tip)
 
         if source.z_listaccounts(False):
             raise RuntimeError("source wallet unexpectedly contained an offline-created account")
         if watcher.z_listaccounts(False):
             raise RuntimeError("watcher wallet unexpectedly contained an offline-created account")
         live_accounts = self._create_live_accounts(source, source_seedfp)
-        self._wait_wallet_fully_synced(source, INITIAL_HEIGHT)
+        self._wait_wallet_fully_synced(source, p2a_starting_tip)
         viewing_key = live_accounts[0]["viewing_key"]
         try:
             imported = watcher.z_importviewingkey(viewing_key, "yes", 1)
@@ -398,7 +501,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                 "import: {}".format(error)) from error
         if imported.get("address_type") != "sapling":
             raise RuntimeError("viewing-key import did not create a Sapling watch-only address")
-        self._wait_wallet_fully_synced(watcher, INITIAL_HEIGHT)
+        self._wait_wallet_fully_synced(watcher, p2a_starting_tip)
 
         known_block_hash = self.nodes[0].getblockhash(1)
         known_transaction = self.nodes[0].getblock(known_block_hash)["tx"][0]
@@ -441,8 +544,10 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             viewing_key,
             advanced_tip,
         )
+        transparent_recovery = self._run_transparent_recovery()
         self._write_json("smoke-result.json", {
             "initial_height": INITIAL_HEIGHT,
+            "p2a_starting_height": p2a_starting_tip,
             "advanced_height": advanced_tip,
             "known_coinbase_transaction_id": known_transaction,
             "quiet_mempool_follow": {
@@ -454,7 +559,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                 "RPC accepted rescan=yes for the existing account and the "
                 "wallet returned to fully synced"),
             "live_account_creation": {
-                "creation_height": INITIAL_HEIGHT,
+                "creation_height": p2a_starting_tip,
                 "accounts": [
                     {
                         "account_uuid": account["account_uuid"],
@@ -471,8 +576,702 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                 "accounts_after_restart": accounts_after_restart,
             },
             "expiry_recovery": expiry_recovery,
-            "scope": "runtime smoke plus P2a history and steady-state expiry recovery",
+            "transparent_recovery": transparent_recovery,
+            "certification_slice": selected_slice,
+            "scope": "P2a expiry recovery plus P2b transparent recovery",
         })
+
+    def _prepare_transparent_seed_snapshot(self):
+        assert self.runtime is not None and self.children is not None
+        assert self.producer_config is not None and self.evidence is not None
+        producer = self._start_wallet(
+            "transparent-producer-seed",
+            self.producer_config,
+            launcher=self._staged_producer_launcher(),
+        )
+        self._wait_wallet_fully_synced(producer, INITIAL_HEIGHT)
+        accounts = producer.z_listaccounts(False)
+        if len(accounts) != 1:
+            raise RuntimeError(
+                "producer wallet did not contain exactly its regtest account")
+        self.producer_account_uuid = accounts[0]["account_uuid"]
+        self.producer_seedfp = accounts[0].get("seedfp", "")
+        if not self.producer_seedfp.startswith("zip32seedfp1"):
+            raise RuntimeError(
+                "producer wallet account did not report its seed fingerprint")
+        self.producer_shielded_address = unified_address_for(
+            producer,
+            self.producer_account_uuid,
+            PRODUCER_SHIELDED_DIVERSIFIER,
+            receivers=(Receiver.ORCHARD,),
+        )
+        self.producer_coinbase_address = first_transparent_receiver(
+            producer,
+            unified_address_for(
+                producer,
+                self.producer_account_uuid,
+                PRODUCER_COINBASE_DIVERSIFIER,
+            ),
+        )
+        source_unified_address = unified_address_for(
+            producer,
+            self.producer_account_uuid,
+            TRANSPARENT_SOURCE_DIVERSIFIER,
+        )
+        self.transparent_source_address = first_transparent_receiver(
+            producer,
+            source_unified_address,
+        )
+        seed_coinbase_blocks = self.nodes[0].generatetoaddress(
+            1,
+            self.producer_coinbase_address,
+        )
+        if len(seed_coinbase_blocks) != 1:
+            raise RuntimeError(
+                "Zebra did not mine the producer seed coinbase")
+        self.seed_coinbase_block_hash = seed_coinbase_blocks[0]
+        self.seed_coinbase_tip = self.nodes[0].getblockcount()
+        if self.seed_coinbase_tip != INITIAL_HEIGHT + 1:
+            raise RuntimeError(
+                "producer seed coinbase did not advance the initial tip")
+        self._wait_zinder_tip(self.seed_coinbase_tip)
+        self._wait_wallet_fully_synced(
+            producer,
+            self.seed_coinbase_tip,
+        )
+        self._stop_wallet(
+            producer,
+            "zallet-transparent-producer-seed",
+        )
+
+        self.transparent_seed_snapshot = (
+            self.runtime.root / "transparent-seed-snapshot"
+        )
+
+    def _run_transparent_recovery(self) -> dict:
+        assert self.runtime is not None and self.children is not None
+        assert self.producer_config is not None
+        assert self.transparent_seed_snapshot is not None
+        current_tip = self.nodes[0].getblockcount()
+        warm_producer = self._start_wallet(
+            "transparent-producer-warm",
+            self.producer_config,
+            launcher=self._staged_producer_launcher(),
+        )
+        self._wait_wallet_fully_synced(warm_producer, current_tip)
+        current_confirmations = (
+            current_tip - self.seed_coinbase_tip + 1
+        )
+        maturity_and_data_barrier = max(
+            1,
+            COINBASE_MATURITY - current_confirmations + 1,
+        )
+        self._mine_blocks(maturity_and_data_barrier)
+        pre_p2b_tip = self.nodes[0].getblockcount()
+        self._wait_zinder_tip(pre_p2b_tip)
+        self._wait_wallet_fully_synced(warm_producer, pre_p2b_tip)
+        mature_coinbase = wait_for_stable_mature_coinbase(
+            warm_producer,
+            min_count=1,
+            timeout=READINESS_TIMEOUT_SECONDS,
+        )
+        if (len(mature_coinbase) != 1
+                or mature_coinbase[0].get("address")
+                != self.producer_coinbase_address):
+            raise RuntimeError(
+                "warmed producer did not expose exactly its dedicated "
+                "mature coinbase")
+        warm_blocks = self._scanned_blocks(self.producer_config.parent)
+        warm_heights = [height for height, _ in warm_blocks]
+        if warm_heights != list(range(1, pre_p2b_tip + 1)):
+            raise RuntimeError(
+                "warmed producer did not scan a contiguous pre-P2b chain")
+        if warm_blocks[-1][1] != self.nodes[0].getblockhash(pre_p2b_tip):
+            raise RuntimeError(
+                "warmed producer tip hash differed from Zebra")
+        self._stop_wallet(
+            warm_producer,
+            "zallet-transparent-producer-warm",
+        )
+        shutil.copytree(
+            self.producer_config.parent,
+            self.transparent_seed_snapshot,
+        )
+        self._write_json("transparent-seed-snapshot.json", {
+            "height": pre_p2b_tip,
+            "account_uuid": self.producer_account_uuid,
+            "coinbase_address": self.producer_coinbase_address,
+            "coinbase_block_hash": self.seed_coinbase_block_hash,
+            "coinbase_mined_tip": self.seed_coinbase_tip,
+            "source_address": self.transparent_source_address,
+            "scanned_blocks": self._scanned_block_summary(warm_blocks),
+            "producer_wallet_writes_isolated": True,
+        })
+
+        producer = self._start_wallet(
+            "transparent-producer",
+            self.producer_config,
+            launcher=self._staged_producer_launcher(),
+        )
+        self._wait_wallet_fully_synced(producer, pre_p2b_tip)
+        producer_backend_pid = self._staged_backend_pid(
+            "zallet-transparent-producer",
+            self._staged_producer_backend(),
+        )
+        target_config = self._write_wallet_config(
+            "transparent-target",
+            clone_from=self.transparent_seed_snapshot,
+        )
+        target = self._start_wallet("transparent-target", target_config)
+        self._wait_wallet_fully_synced(target, pre_p2b_tip)
+        target_backend_pid = self._staged_backend_pid(
+            "zallet-transparent-target")
+        if self._source_unspent_outputs(target):
+            raise RuntimeError(
+                "transparent source address was funded before the P2b send")
+        starting_tip = pre_p2b_tip
+        coinbase_confirmations = (
+            pre_p2b_tip - self.seed_coinbase_tip + 1
+        )
+        if coinbase_confirmations < COINBASE_MATURITY:
+            raise RuntimeError("producer seed coinbase was not mature")
+        shielding = producer.z_shieldcoinbase(
+            self.producer_coinbase_address,
+            self.producer_shielded_address,
+            None,
+            1,
+            None,
+            PrivacyPolicy.ALLOW_REVEALED_SENDERS,
+        )
+        if shielding.get("shieldingUTXOs") != 1:
+            raise RuntimeError(
+                "producer did not select exactly one matured seed coinbase")
+        if (shielding.get("remainingUTXOs") != 0
+                or Decimal(shielding["remainingValue"]) != 0):
+            raise RuntimeError(
+                "producer left part of the dedicated seed coinbase unshielded")
+        shielding_value_zec = Decimal(shielding["shieldingValue"])
+        minimum_funding_zat = (
+            int(TRANSPARENT_FUNDING_ZEC * COIN) + MINIMUM_FEE
+        )
+        if int(shielding_value_zec * COIN) < minimum_funding_zat:
+            raise RuntimeError(
+                "producer did not select enough shielding value for P2b")
+        shielding_txid = wait_and_assert_operationid_status(
+            producer,
+            shielding["opid"],
+        )
+        if shielding_txid is None:
+            raise RuntimeError("producer did not return a shielding transaction")
+        shielding_mined_tip = self._mine_transaction_and_follow(
+            shielding_txid,
+            producer,
+            target,
+        )
+        shielding_tip = self._mine_confirmation_and_follow(producer, target)
+        self._wait_transaction_mined(
+            target,
+            shielding_txid,
+            shielding_mined_tip,
+        )
+        ironwood_spendable_zat = wait_for_account_spendable(
+            producer,
+            self.producer_account_uuid,
+            Pool.IRONWOOD,
+            min_zat=minimum_funding_zat,
+        )
+        target_ironwood_spendable_zat = wait_for_account_spendable(
+            target,
+            self.producer_account_uuid,
+            Pool.IRONWOOD,
+            min_zat=ironwood_spendable_zat,
+        )
+        if target_ironwood_spendable_zat != ironwood_spendable_zat:
+            raise RuntimeError(
+                "Zinder-backed Zallet reported the wrong Ironwood balance")
+        if self._source_unspent_outputs(target):
+            raise RuntimeError(
+                "shielding unexpectedly funded the P2b source address")
+        destination_account = producer.z_getnewaccount(
+            "Zinder P2b external destination",
+            self.producer_seedfp,
+        )["account_uuid"]
+        destination_address = first_transparent_receiver(
+            producer,
+            unified_address_for(
+                producer,
+                destination_account,
+                TRANSPARENT_DESTINATION_DIVERSIFIER,
+            ),
+        )
+        self._wait_wallet_fully_synced(producer, shielding_tip)
+        ironwood_selection_ready = (
+            self._wait_ironwood_note_selection_ready(
+                minimum_funding_zat,
+                shielding_tip,
+            )
+        )
+
+        funding_opid = producer.z_sendmany(
+            self.producer_shielded_address,
+            [{
+                "address": self.transparent_source_address,
+                "amount": TRANSPARENT_FUNDING_ZEC,
+            }],
+            MIN_CONFIRMATIONS,
+            INTERNAL_FEE,
+            PrivacyPolicy.ALLOW_REVEALED_RECIPIENTS,
+        )
+        funding_txid = wait_and_assert_operationid_status(
+            producer,
+            funding_opid,
+        )
+        if funding_txid is None:
+            raise RuntimeError("producer did not return a funding transaction")
+        funding_mined_tip = self._mine_transaction_and_follow(
+            funding_txid,
+            producer,
+            target,
+        )
+        funding_tip = self._mine_confirmation_and_follow(producer, target)
+        self._wait_transaction_mined(
+            target,
+            funding_txid,
+            funding_mined_tip,
+        )
+        producer_funded_state = self._wait_transparent_state(
+            producer,
+            expected_source_utxos=1,
+            expected_txids=(funding_txid,),
+        )
+        funded_state = self._wait_transparent_state(
+            target,
+            expected_source_utxos=1,
+            expected_txids=(funding_txid,),
+            expected_state=producer_funded_state,
+        )
+        funded_utxo = funded_state["source_utxos"][0]
+        if (funded_utxo["txid"] != funding_txid
+                or funded_utxo["valueZat"]
+                != int(TRANSPARENT_FUNDING_ZEC * COIN)):
+            raise RuntimeError(
+                "Zinder-backed Zallet reported the wrong funded source UTXO")
+
+        spend_opid = producer.z_sendmany(
+            self.transparent_source_address,
+            [{
+                "address": destination_address,
+                "amount": TRANSPARENT_SPEND_ZEC,
+            }],
+            MIN_CONFIRMATIONS,
+            INTERNAL_FEE,
+            PrivacyPolicy.ALLOW_FULLY_TRANSPARENT,
+        )
+        spend_txid = wait_and_assert_operationid_status(
+            producer,
+            spend_opid,
+        )
+        if spend_txid is None:
+            raise RuntimeError("producer did not return a spend transaction")
+        spend_mined_tip = self._mine_transaction_and_follow(
+            spend_txid,
+            producer,
+            target,
+        )
+        spend_tip = self._mine_confirmation_and_follow(producer, target)
+        self._wait_transaction_mined(
+            target,
+            spend_txid,
+            spend_mined_tip,
+        )
+        expected_txids = (funding_txid, spend_txid)
+        producer_final_state = self._wait_transparent_state(
+            producer,
+            expected_source_utxos=0,
+            expected_txids=expected_txids,
+        )
+        final_state = self._wait_transparent_state(
+            target,
+            expected_source_utxos=0,
+            expected_txids=expected_txids,
+            expected_state=producer_final_state,
+        )
+
+        self._stop_wallet(target, "zallet-transparent-target")
+        restarted = self._start_wallet(
+            "transparent-target-restarted",
+            target_config,
+        )
+        self._wait_wallet_fully_synced(restarted, spend_tip)
+        restarted_state = self._wait_transparent_state(
+            restarted,
+            expected_source_utxos=0,
+            expected_txids=expected_txids,
+            expected_state=final_state,
+        )
+        self._stop_wallet(
+            restarted,
+            "zallet-transparent-target-restarted",
+        )
+
+        rescan_config = self._write_wallet_config(
+            "transparent-rescan",
+            clone_from=self.transparent_seed_snapshot,
+        )
+        rescanned = self._start_wallet(
+            "transparent-rescan",
+            rescan_config,
+        )
+        self._wait_wallet_fully_synced(rescanned, spend_tip)
+        rescan_state = self._wait_transparent_rescan_recovery(
+            rescanned,
+            expected_txids=expected_txids,
+            expected_state=final_state,
+        )
+        rescan_backend_pid = self._staged_backend_pid(
+            "zallet-transparent-rescan")
+
+        target_stage = self._staged_target_files()
+        producer_stage = self._staged_producer_files()
+        result = {
+            "pre_p2b_tip": pre_p2b_tip,
+            "starting_tip": starting_tip,
+            "mature_coinbase": {
+                "block_count": 1,
+                "block_hash": self.seed_coinbase_block_hash,
+                "mined_tip": self.seed_coinbase_tip,
+                "address": self.producer_coinbase_address,
+                "confirmations_at_shielding": coinbase_confirmations,
+            },
+            "coinbase_shielding": {
+                "transaction_id": shielding_txid,
+                "mined_tip": shielding_mined_tip,
+                "tip": shielding_tip,
+                "destination_address": self.producer_shielded_address,
+                "selected_utxos": shielding["shieldingUTXOs"],
+                "remaining_utxos": shielding["remainingUTXOs"],
+                "remaining_value_zec": str(shielding["remainingValue"]),
+                "selected_value_zec": str(shielding_value_zec),
+                "selection_ready": ironwood_selection_ready,
+                "producer_spendable_value_zat": ironwood_spendable_zat,
+                "target_spendable_value_zat": target_ironwood_spendable_zat,
+                "target_matches_producer": (
+                    target_ironwood_spendable_zat == ironwood_spendable_zat
+                ),
+            },
+            "funding_mined_tip": funding_mined_tip,
+            "funding_confirmed_tip": funding_tip,
+            "spend_mined_tip": spend_mined_tip,
+            "spend_confirmed_tip": spend_tip,
+            "source_address": self.transparent_source_address,
+            "destination_address": destination_address,
+            "funding_transaction_id": funding_txid,
+            "spend_transaction_id": spend_txid,
+            "producer_funded_state": producer_funded_state,
+            "funded_state": funded_state,
+            "funded_state_matches_producer": (
+                funded_state == producer_funded_state
+            ),
+            "producer_final_state": producer_final_state,
+            "final_state": final_state,
+            "final_state_matches_producer": (
+                final_state == producer_final_state
+            ),
+            "restart_state_equal": restarted_state == final_state,
+            "historical_rescan_spendable_state_equal": (
+                rescan_state["transparent_balance"]
+                == final_state["transparent_balance"]
+                and rescan_state["source_utxos"]
+                == final_state["source_utxos"]
+            ),
+            "historical_rescan_mined_history_equal": (
+                self._mined_history(rescan_state)
+                == self._mined_history(final_state)
+            ),
+            "historical_rescan_account_deltas_equal": (
+                rescan_state["history"] == final_state["history"]
+            ),
+            "historical_rescan_sent_output_gap": (
+                "https://github.com/zcash/zallet/issues/698"
+            ),
+            "processes": {
+                "producer_backend_pid": producer_backend_pid,
+                "target_backend_pid": target_backend_pid,
+                "rescan_backend_pid": rescan_backend_pid,
+            },
+            "backend_isolation": {
+                "target_stage_files": target_stage,
+                "producer_stage_files": producer_stage,
+                "target_has_bundled_endpoint_fallback": False,
+                "producer_wallet_writes_shared_with_targets": False,
+            },
+        }
+        self._write_json("transparent-recovery.json", result)
+        return result
+
+    def _mine_transaction_and_follow(
+            self,
+            transaction_id: str,
+            producer,
+            target) -> int:
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            if transaction_id in self.nodes[0].getrawmempool():
+                break
+            time.sleep(POLL_INTERVAL_SECONDS)
+        else:
+            raise RuntimeError(
+                "Zebra did not admit the P2b transaction to its mempool")
+        mined = self.nodes[0].generate(1)
+        if len(mined) != 1:
+            raise RuntimeError("Zebra did not mine one P2b transaction block")
+        if transaction_id not in self.nodes[0].getblock(mined[0])["tx"]:
+            raise RuntimeError(
+                "Zebra did not include the P2b transaction in the mined block")
+        tip = self.nodes[0].getblockcount()
+        self._wait_zinder_tip(tip)
+        self._wait_wallet_fully_synced(producer, tip)
+        self._wait_wallet_fully_synced(target, tip)
+        self._wait_transaction_mined(producer, transaction_id, tip)
+        return tip
+
+    def _mine_confirmation_and_follow(self, producer, target) -> int:
+        mined = self.nodes[0].generate(1)
+        if len(mined) != 1:
+            raise RuntimeError(
+                "Zebra did not mine the P2b confirmation block")
+        tip = self.nodes[0].getblockcount()
+        self._wait_zinder_tip(tip)
+        self._wait_wallet_fully_synced(producer, tip)
+        self._wait_wallet_fully_synced(target, tip)
+        return tip
+
+    def _wait_transaction_mined(
+            self,
+            wallet,
+            transaction_id: str,
+            mined_height: int):
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            try:
+                transactions = wallet.z_listtransactions(
+                    self.producer_account_uuid)
+                matching = [
+                    transaction
+                    for transaction in transactions
+                    if transaction["txid"] == transaction_id
+                ]
+                if (len(matching) == 1
+                        and matching[0].get("mined_height") == mined_height):
+                    return
+            except (OSError, JSONRPCException):
+                pass
+            time.sleep(POLL_INTERVAL_SECONDS)
+        raise RuntimeError(
+            "wallet did not record the P2b transaction at its mined height")
+
+    def _wait_ironwood_note_selection_ready(
+            self,
+            minimum_value_zat: int,
+            anchor_height: int) -> dict:
+        assert self.producer_config is not None
+        wallet_database = self.producer_config.parent / "wallet.db"
+        account_uuid = uuid.UUID(self.producer_account_uuid).bytes
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            try:
+                connection = sqlite3.connect(
+                    "file:{}?mode=ro".format(wallet_database),
+                    uri=True,
+                )
+                try:
+                    row = connection.execute(
+                        """
+                        SELECT
+                            note.id,
+                            transaction_record.block,
+                            note.value,
+                            note.commitment_tree_position,
+                            shard.shard_index,
+                            shard.max_priority
+                        FROM ironwood_received_notes AS note
+                        INNER JOIN transactions AS transaction_record
+                            ON transaction_record.id_tx = note.transaction_id
+                        INNER JOIN accounts AS account
+                            ON account.id = note.account_id
+                        INNER JOIN v_ironwood_shards_scan_state AS shard
+                            ON note.commitment_tree_position
+                                >= shard.start_position
+                            AND note.commitment_tree_position
+                                < shard.end_position_exclusive
+                        WHERE account.uuid = ?
+                            AND account.has_spend_key = 1
+                            AND account.ufvk IS NOT NULL
+                            AND note.value >= ?
+                            AND transaction_record.block IS NOT NULL
+                            AND transaction_record.block <= ?
+                            AND note.nf IS NOT NULL
+                            AND note.commitment_tree_position IS NOT NULL
+                            AND note.recipient_key_scope IS NOT NULL
+                            AND note.lock_owner IS NULL
+                            AND shard.max_priority = ?
+                            AND NOT EXISTS (
+                                SELECT 1
+                                FROM v_ironwood_shard_unscanned_ranges
+                                    AS unscanned
+                                WHERE note.commitment_tree_position
+                                    >= unscanned.start_position
+                                AND note.commitment_tree_position
+                                    < unscanned.end_position_exclusive
+                            )
+                            AND NOT EXISTS (
+                                SELECT 1
+                                FROM ironwood_received_note_spends AS spend
+                                WHERE spend.ironwood_received_note_id = note.id
+                            )
+                        ORDER BY note.value DESC
+                        LIMIT 1
+                        """,
+                        (
+                            account_uuid,
+                            minimum_value_zat,
+                            anchor_height,
+                            ZALLET_SCANNED_PRIORITY,
+                        ),
+                    ).fetchone()
+                finally:
+                    connection.close()
+                if row is not None:
+                    return {
+                        "note_id": row[0],
+                        "mined_height": row[1],
+                        "value_zat": row[2],
+                        "commitment_tree_position": row[3],
+                        "shard_index": row[4],
+                        "scan_priority": row[5],
+                        "unscanned_ranges": 0,
+                    }
+            except sqlite3.Error:
+                pass
+            time.sleep(POLL_INTERVAL_SECONDS)
+        raise RuntimeError(
+            "producer Ironwood note did not become selectable at the "
+            "confirmed anchor")
+
+    def _source_unspent_outputs(self, wallet) -> list[dict]:
+        return [
+            {
+                "txid": output["txid"],
+                "outindex": output["outindex"],
+                "address": output.get("address"),
+                "account_uuid": output["account_uuid"],
+                "valueZat": output["valueZat"],
+            }
+            for output in wallet.z_listunspent(
+                MIN_CONFIRMATIONS,
+                None,
+                None,
+                [self.transparent_source_address],
+            )
+            if output.get("pool") == Pool.TRANSPARENT
+            and output.get("address") == self.transparent_source_address
+        ]
+
+    def _transparent_state(
+            self,
+            wallet,
+            expected_txids: tuple[str, ...]) -> dict:
+        transactions = {
+            transaction["txid"]: transaction
+            for transaction in wallet.z_listtransactions(
+                self.producer_account_uuid)
+        }
+        history = [{
+            "txid": txid,
+            "mined_height": transactions[txid].get("mined_height"),
+            "account_balance_delta": transactions[txid][
+                "account_balance_delta"],
+        } for txid in expected_txids if txid in transactions]
+        balance = wallet.z_getbalanceforaccount(
+            self.producer_account_uuid,
+            MIN_CONFIRMATIONS,
+        )
+        return {
+            "transparent_balance": {
+                "valueZat": balance.get("pools", {})
+                .get("transparent", {})
+                .get("valueZat", 0),
+                "minimum_confirmations": balance["minimum_confirmations"],
+            },
+            "source_utxos": sorted(
+                self._source_unspent_outputs(wallet),
+                key=lambda output: (output["txid"], output["outindex"]),
+            ),
+            "history": history,
+        }
+
+    def _wait_transparent_state(
+            self,
+            wallet,
+            expected_source_utxos: int,
+            expected_txids: tuple[str, ...],
+            expected_state: dict | None = None) -> dict:
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        previous = None
+        while time.monotonic() < deadline:
+            try:
+                state = self._transparent_state(wallet, expected_txids)
+                observed_txids = tuple(
+                    transaction["txid"]
+                    for transaction in state["history"]
+                )
+                shape_matches = (
+                    len(state["source_utxos"]) == expected_source_utxos
+                    and observed_txids == expected_txids
+                )
+                if shape_matches and expected_state is not None:
+                    if state == expected_state:
+                        return state
+                elif shape_matches and state == previous:
+                    return state
+                previous = state
+            except (OSError, JSONRPCException):
+                pass
+            time.sleep(1)
+        raise RuntimeError(
+            "transparent balance, UTXO, and history state did not converge")
+
+    @staticmethod
+    def _mined_history(state: dict) -> list[dict]:
+        return [{
+            "txid": transaction["txid"],
+            "mined_height": transaction["mined_height"],
+        } for transaction in state["history"]]
+
+    def _wait_transparent_rescan_recovery(
+            self,
+            wallet,
+            expected_txids: tuple[str, ...],
+            expected_state: dict) -> dict:
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            try:
+                state = self._transparent_state(wallet, expected_txids)
+                if (
+                    state["transparent_balance"]
+                    == expected_state["transparent_balance"]
+                    and state["source_utxos"]
+                    == expected_state["source_utxos"]
+                    and self._mined_history(state)
+                    == self._mined_history(expected_state)
+                ):
+                    return state
+            except (OSError, JSONRPCException):
+                pass
+            time.sleep(1)
+        raise RuntimeError(
+            "transparent rescan balance, spent status, and mined history "
+            "did not converge")
 
     def _run_expiry_recovery(
             self,
@@ -731,6 +1530,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             steady_rotated_tip,
             "steady-state recovery",
         )
+        self._stop_wallet(steady_wallet, "zallet-expiry-steady")
 
         result = {
             "history": {
@@ -825,6 +1625,12 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             raise RuntimeError("Zebra did not perform the single-block epoch rotation")
         self._wait_zinder_tip(rotated_tip)
         publication_after = self._wait_pair_publication(publication_before)
+        time.sleep(INGEST_CONTROL_ADMISSION_SETTLE_SECONDS)
+        self._wait_ready(
+            "query",
+            self.children.children["zinder-query"],
+            rotated_tip,
+        )
         return rotated_tip, {
             "metric": PAIR_PUBLICATION_METRIC,
             "before": publication_before,
@@ -1118,12 +1924,17 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             raise RuntimeError(
                 "{} did not stop cleanly: {}".format(process_name, exit_code))
 
-    def _staged_backend_pid(self, process_name: str) -> int:
+    def _staged_backend_pid(
+            self,
+            process_name: str,
+            expected: Path | None = None) -> int:
         assert self.children is not None and self.runtime is not None
         child = self.children.children[process_name]
-        expected = (
-            self.runtime.root / "staged-zallet" / "zallet-zinder"
-        ).resolve()
+        if expected is None:
+            expected = (
+                self.runtime.root / "staged-zallet" / "zallet-zinder"
+            )
+        expected = expected.resolve()
         deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             if child.poll() is not None:
@@ -1206,9 +2017,15 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                              "query": "http://127.0.0.1:{}".format(query_ops_port)},
                             "http://127.0.0.1:{}".format(query_port), control_endpoint)
 
-    def _write_wallet_config(self, name: str, recover_batch_size: int | None = None) -> Path:
+    def _write_wallet_config(
+            self,
+            name: str,
+            recover_batch_size: int | None = None,
+            clone_from: Path | None = None) -> Path:
         assert self.runtime is not None and self.evidence is not None
         wallet_root = self.runtime.root / "wallets" / name
+        if clone_from is not None:
+            shutil.copytree(clone_from, wallet_root)
         wallet_port = allocate_port(self.allocated_ports)
         previous_backend = os.environ.get("ZALLET_BACKEND")
         os.environ["ZALLET_BACKEND"] = "zinder"
@@ -1327,19 +2144,21 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             self,
             name: str,
             config: Path,
-            environment_overrides: dict[str, str] | None = None):
+            environment_overrides: dict[str, str] | None = None,
+            launcher: str | None = None):
         assert self.children is not None
         if name == "source-restarted":
             process_name = "zallet-source-restarted"
         else:
             process_name = "zallet-" + name
-        launcher = self._staged_launcher()
+        if launcher is None:
+            launcher = self._staged_launcher()
         environment = dict(os.environ)
         if environment_overrides is not None:
             environment.update(environment_overrides)
         child = self.children.start(
             process_name,
-            [str(launcher), "--datadir={}".format(config.parent),
+            [launcher, "--datadir={}".format(config.parent),
              "--config={}".format(config), "start"],
             environment)
         port = toml.load(config)["rpc"]["bind"][0].rsplit(":", 1)[1]
@@ -1349,7 +2168,11 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             if child.poll() is not None:
                 raise RuntimeError("{} exited before JSON-RPC readiness".format(process_name))
             try:
-                wallet = get_rpc_auth_proxy(endpoint, 100 if name.startswith("source") else 101, timeout=HTTP_TIMEOUT_SECONDS)
+                wallet = get_rpc_auth_proxy(
+                    endpoint,
+                    100 if name.startswith("source") else 101,
+                    timeout=HTTP_TIMEOUT_SECONDS,
+                )
                 wallet.getwalletinfo()
                 return wallet
             except (OSError, JSONRPCException):
@@ -1374,6 +2197,55 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         if not backend.is_file() or not os.access(backend, os.X_OK):
             raise RuntimeError("Zallet launcher sibling is not staged and executable")
         return str(launcher)
+
+    def _staged_producer_launcher(self) -> str:
+        assert self.evidence is not None
+        stage = Path(self.options.tmpdir) / "staged-producer-zallet"
+        stage.mkdir(exist_ok=True)
+        launcher = stage / "zallet"
+        backend = stage / "zallet-zebra"
+        if not launcher.exists():
+            shutil.copy2(self.artifacts["zallet"], launcher)
+            shutil.copy2(self.artifacts["zallet_zebra"], backend)
+            launcher.chmod(0o755)
+            backend.chmod(0o755)
+            self._write_json("staged-producer-zallet.json", {
+                "launcher": sha256_file(launcher),
+                "sibling": sha256_file(backend),
+            })
+        if not backend.is_file() or not os.access(backend, os.X_OK):
+            raise RuntimeError(
+                "Zallet Zebra producer sibling is not staged and executable")
+        return str(launcher)
+
+    def _staged_producer_backend(self) -> Path:
+        return (
+            Path(self._staged_producer_launcher()).parent / "zallet-zebra"
+        )
+
+    def _staged_target_files(self) -> list[str]:
+        assert self.runtime is not None
+        files = sorted(
+            path.name
+            for path in (self.runtime.root / "staged-zallet").iterdir()
+        )
+        if files != ["zallet", "zallet-zinder"]:
+            raise RuntimeError(
+                "Zinder target stage has unexpected siblings: {}".format(
+                    files))
+        return files
+
+    def _staged_producer_files(self) -> list[str]:
+        files = sorted(
+            path.name
+            for path in Path(
+                self._staged_producer_launcher()).parent.iterdir()
+        )
+        if files != ["zallet", "zallet-zebra"]:
+            raise RuntimeError(
+                "Zebra producer stage has unexpected siblings: {}".format(
+                    files))
+        return files
 
     def _health(self, service: str) -> dict:
         assert self.runtime is not None
@@ -1487,10 +2359,15 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
 
     def _write_manifest(self, failure, cleanup_error):
         if self.evidence is not None:
+            scope = (
+                "P2b transparent recovery"
+                if certification_slice() == "p2b"
+                else "P2a expiry recovery plus P2b transparent recovery"
+            )
             self._write_json("manifest.json", {"result": "passed" if failure is None and cleanup_error is None else "failed",
                                                  "failure": None if failure is None else str(failure),
                                                  "cleanup_failure": None if cleanup_error is None else str(cleanup_error),
-                                                 "scope": "runtime smoke plus P2a history and steady-state expiry recovery"})
+                                                 "scope": scope})
 
 
 if __name__ == '__main__':
