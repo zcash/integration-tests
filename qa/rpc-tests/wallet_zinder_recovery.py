@@ -21,6 +21,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -52,7 +53,7 @@ PROCESS_STOP_TIMEOUT_SECONDS = 15
 HTTP_TIMEOUT_SECONDS = 30
 POLL_INTERVAL_SECONDS = 0.2
 ZINDER_REVISION = "515b98b490575a87d8cd629d01551114f42a5735"
-ZALLET_REVISION = "4016e5c2e75117efff52ef7398ba1c888a67f31e"
+ZALLET_REVISION = "f8a0a2ffe3943b566b8d86dd6f1e6be14e0a6223"
 ZEBRA_REVISION = "7121c82ba6795a151523d5b308a19743f4a1ade7"
 EVIDENCE_DIRECTORY_ENVIRONMENT = "ZIT_ZINDER_EVIDENCE_DIR"
 
@@ -349,22 +350,20 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
 
         source_config = self._write_wallet_config("source")
         watcher_config = self._write_wallet_config("watcher")
-        self._initialize_wallet("source", source_config)
-        self._initialize_wallet("watcher", watcher_config)
+        source_seedfp = self._initialize_wallet("source", source_config, generate_mnemonic=True)
+        self._initialize_wallet("watcher", watcher_config, generate_mnemonic=False)
         source = self._start_wallet("source", source_config)
         watcher = self._start_wallet("watcher", watcher_config)
         self._wait_wallet_tip(source, INITIAL_HEIGHT)
         self._wait_wallet_tip(watcher, INITIAL_HEIGHT)
 
-        source_account = source.z_listaccounts()[0]["account_uuid"]
-        source_ua = source.z_getaddressforaccount(source_account, ["sapling"])["address"]
-        source_sapling = source.z_listunifiedreceivers(source_ua)["sapling"]
-        try:
-            viewing_key = source.z_exportviewingkey(source_sapling)
-        except Exception as error:
-            raise RuntimeError(
-                "native Zinder runtime did not complete the source viewing-key "
-                "export needed for non-genesis import: {}".format(error)) from error
+        if source.z_listaccounts(False):
+            raise RuntimeError("source wallet unexpectedly contained an offline-created account")
+        if watcher.z_listaccounts(False):
+            raise RuntimeError("watcher wallet unexpectedly contained an offline-created account")
+        live_accounts = self._create_live_accounts(source, source_seedfp)
+        self._wait_wallet_fully_synced(source, INITIAL_HEIGHT)
+        viewing_key = live_accounts[0]["viewing_key"]
         try:
             imported = watcher.z_importviewingkey(viewing_key, "yes", 1)
         except Exception as error:
@@ -373,7 +372,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                 "import: {}".format(error)) from error
         if imported.get("address_type") != "sapling":
             raise RuntimeError("viewing-key import did not create a Sapling watch-only address")
-        self._wait_wallet_tip(watcher, INITIAL_HEIGHT)
+        self._wait_wallet_fully_synced(watcher, INITIAL_HEIGHT)
 
         known_block_hash = self.nodes[0].getblockhash(1)
         known_transaction = self.nodes[0].getblock(known_block_hash)["tx"][0]
@@ -388,8 +387,8 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             raise RuntimeError("Zebra did not advance one block for quiet mempool follow")
         for service in ("ingest", "projector", "query"):
             self._wait_ready(service, self.children.children["zinder-" + service], advanced_tip)
-        self._wait_wallet_tip(source, advanced_tip)
-        self._wait_wallet_tip(watcher, advanced_tip)
+        self._wait_wallet_fully_synced(source, advanced_tip)
+        self._wait_wallet_fully_synced(watcher, advanced_tip)
         self._wait_for_backend_trace(
             "zallet-source",
             "ending Zinder mempool follow after visible-tip transition")
@@ -397,17 +396,19 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         # mempool-follow termination are the reacquired view at the mined tip.
         source_status = source.getwalletstatus()
         watcher_status = watcher.getwalletstatus()
+        accounts_after_advance = self._assert_live_accounts(source, live_accounts)
         source.stop()
         source_exit = self.children.stop("zallet-source")
         if source_exit != 0:
             raise RuntimeError("source Zallet did not stop cleanly: {}".format(source_exit))
         source = self._start_wallet("source-restarted", source_config)
-        self._wait_wallet_tip(source, advanced_tip)
+        self._wait_wallet_fully_synced(source, advanced_tip)
+        accounts_after_restart = self._assert_live_accounts(source, live_accounts)
 
         rescan = watcher.z_importviewingkey(viewing_key, "yes", 1)
         if rescan.get("address_type") != "sapling":
             raise RuntimeError("existing viewing-key rescan did not return a Sapling address")
-        self._wait_wallet_tip(watcher, advanced_tip)
+        self._wait_wallet_fully_synced(watcher, advanced_tip)
         self._write_json("smoke-result.json", {
             "initial_height": INITIAL_HEIGHT,
             "advanced_height": advanced_tip,
@@ -418,6 +419,23 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                 "watcher_wallet_tip_after_reacquisition": watcher_status.get("wallet_tip"),
             },
             "existing_viewing_key_rescan": "RPC accepted rescan=yes; this smoke does not certify rewind semantics",
+            "live_account_creation": {
+                "creation_height": INITIAL_HEIGHT,
+                "accounts": [
+                    {
+                        "account_uuid": account["account_uuid"],
+                        "name": account["name"],
+                        "seedfp": account["seedfp"],
+                        "zip32_account_index": account["zip32_account_index"],
+                        "sapling_address": account["sapling_address"],
+                        "viewing_key_sha256": hashlib.sha256(
+                            account["viewing_key"].encode("utf8")).hexdigest(),
+                    }
+                    for account in live_accounts
+                ],
+                "accounts_after_advance": accounts_after_advance,
+                "accounts_after_restart": accounts_after_restart,
+            },
             "scope": "runtime smoke only; not P2a certification",
         })
 
@@ -498,19 +516,94 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         (self.evidence / ("zallet-" + name + ".toml")).write_text(toml.dumps(redacted), encoding="utf8")
         return path
 
-    def _initialize_wallet(self, name: str, config: Path):
+    def _initialize_wallet(self, name: str, config: Path, generate_mnemonic: bool):
         # The test-framework default config supplies a disposable encryption
         # identity with the copied datadir, so generating another would rightly
         # fail rather than overwrite it.
-        commands = (("init-wallet-encryption",), ("generate-mnemonic",),
-                    ("regtest", "generate-account-and-miner-address"))
+        commands = [("init-wallet-encryption",)]
+        if generate_mnemonic:
+            commands.append(("generate-mnemonic",))
+        seedfp = None
         for arguments in commands:
             completed = subprocess.run([self._staged_launcher(), "--datadir={}".format(config.parent), "--config={}".format(config), *arguments],
                                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
             if completed.returncode != 0:
                 raise RuntimeError("{} wallet initialization command {} failed: {}".format(name, " ".join(arguments), completed.stderr))
+            if arguments == ("generate-mnemonic",):
+                seedfp = completed.stdout.strip().rsplit(": ", 1)[-1]
+                if not seedfp.startswith("zip32seedfp1"):
+                    raise RuntimeError("{} wallet did not report a seed fingerprint".format(name))
         if not (config.parent / "wallet.db").is_file():
             raise RuntimeError("{} wallet initialization did not create wallet.db".format(name))
+        if generate_mnemonic and seedfp is None:
+            raise RuntimeError("{} wallet did not generate a seed fingerprint".format(name))
+        return seedfp
+
+    def _create_live_accounts(self, wallet, seedfp: str):
+        names = ("Zinder P2a creator 0", "Zinder P2a creator 1")
+        created = [wallet.z_getnewaccount(name, seedfp) for name in names]
+        account_uuids = [result.get("account_uuid") for result in created]
+        if len(set(account_uuids)) != len(names):
+            raise RuntimeError("z_getnewaccount did not return distinct account UUIDs")
+        try:
+            for account_uuid in account_uuids:
+                uuid.UUID(account_uuid)
+        except (AttributeError, TypeError, ValueError) as error:
+            raise RuntimeError("z_getnewaccount returned a non-UUID account identifier") from error
+
+        listed_by_uuid = {
+            account["account_uuid"]: account for account in wallet.z_listaccounts(False)
+        }
+        if set(listed_by_uuid) != set(account_uuids):
+            raise RuntimeError("live account creation did not produce exactly two accounts")
+
+        records = []
+        for index, (name, account_uuid) in enumerate(zip(names, account_uuids)):
+            listed = listed_by_uuid[account_uuid]
+            if (listed.get("name"), listed.get("seedfp"), listed.get("zip32_account_index")) != (
+                    name, seedfp, index):
+                raise RuntimeError("live account metadata does not match its creation request")
+            address = wallet.z_getaddressforaccount(account_uuid, ["sapling"], None)
+            if address.get("account_uuid") != account_uuid or address.get("receiver_types") != ["sapling"]:
+                raise RuntimeError("live account did not derive the requested Sapling-only address")
+            receivers = wallet.z_listunifiedreceivers(address["address"])
+            if set(receivers) != {"sapling"}:
+                raise RuntimeError("derived live-account address was not Sapling-only")
+            viewing_key = wallet.z_exportviewingkey(receivers["sapling"], False)
+            records.append({
+                "account_uuid": account_uuid,
+                "name": name,
+                "seedfp": seedfp,
+                "zip32_account_index": index,
+                "sapling_address": receivers["sapling"],
+                "viewing_key": viewing_key,
+            })
+
+        if len({record["sapling_address"] for record in records}) != len(records):
+            raise RuntimeError("live accounts produced duplicate Sapling addresses")
+        if len({record["viewing_key"] for record in records}) != len(records):
+            raise RuntimeError("live accounts produced duplicate Sapling viewing keys")
+        return records
+
+    def _assert_live_accounts(self, wallet, expected):
+        listed = wallet.z_listaccounts(False)
+        actual = sorted(
+            [{
+                "account_uuid": account["account_uuid"],
+                "name": account.get("name"),
+                "seedfp": account.get("seedfp"),
+                "zip32_account_index": account.get("zip32_account_index"),
+            } for account in listed],
+            key=lambda account: account["zip32_account_index"])
+        expected_accounts = [{
+            "account_uuid": account["account_uuid"],
+            "name": account["name"],
+            "seedfp": account["seedfp"],
+            "zip32_account_index": account["zip32_account_index"],
+        } for account in expected]
+        if actual != expected_accounts:
+            raise RuntimeError("live accounts changed across sync or restart")
+        return actual
 
     def _start_wallet(self, name: str, config: Path):
         assert self.children is not None
@@ -586,6 +679,17 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                 return
             time.sleep(POLL_INTERVAL_SECONDS)
         raise RuntimeError("wallet did not reach height {}".format(height))
+
+    def _wait_wallet_fully_synced(self, wallet, height: int):
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            status = wallet.getwalletstatus()
+            if (status.get("wallet_tip", {}).get("height") == height
+                    and status.get("fully_synced_height") == height
+                    and "sync_work_remaining" not in status):
+                return status
+            time.sleep(POLL_INTERVAL_SECONDS)
+        raise RuntimeError("wallet did not fully sync to height {}".format(height))
 
     def _wait_for_backend_trace(self, process_name: str, expected: str):
         assert self.children is not None
