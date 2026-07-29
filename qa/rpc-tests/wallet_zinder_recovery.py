@@ -3,20 +3,24 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://www.opensource.org/licenses/mit-license.php .
 
-"""Smoke the current Zallet launcher against a fresh native Zinder runtime.
+"""Exercise current Zallet recovery against a fresh native Zinder runtime.
 
-This is deliberately a small real-process smoke, not P2a certification.  It
-does not exercise expiry barriers, transaction submission, transparent-history
-correctness, or an Ironwood transaction producer.
+The runtime smoke includes the two P2a chain-view expiry proofs.  Transaction
+submission, transparent-history correctness, and an Ironwood transaction
+producer remain outside this scenario.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+import re
+import signal
 import shutil
 import socket
+import sqlite3
 import subprocess
 import time
 import urllib.error
@@ -52,8 +56,29 @@ PROCESS_STOP_TIMEOUT_SECONDS = 15
 # database and key operations to complete.
 HTTP_TIMEOUT_SECONDS = 30
 POLL_INTERVAL_SECONDS = 0.2
+FULL_BLOCK_PAGE_SIZE = 1_000
+STEADY_STATE_REGION_BLOCKS = 100
+HISTORY_BLOCK_COUNT = (
+    FULL_BLOCK_PAGE_SIZE + STEADY_STATE_REGION_BLOCKS + 1
+)
+STEADY_BLOCK_COUNT = FULL_BLOCK_PAGE_SIZE + 1
+BLOCK_GENERATION_BATCH_SIZE = 100
+PAIR_PUBLICATION_METRIC = "zinder_wallet_serving_pair_publisher_publications_total"
+RANGE_BARRIER_DIRECTORY_ENVIRONMENT = "ZIT_RANGE_BARRIER_DIR"
+RANGE_REQUEST_PAUSE_START_HEIGHT_ENVIRONMENT = (
+    "ZIT_RANGE_REQUEST_PAUSE_START_HEIGHT"
+)
+RANGE_REQUEST_PAUSED_MARKER = "range-request-paused.json"
+RANGE_REQUEST_CONTINUE_MARKER = "continue-range-request"
+RANGE_MARKER_FIELDS = {
+    "schema_version",
+    "attempt_number",
+    "requested_start_height_inclusive",
+    "requested_end_height_inclusive",
+    "chain_epoch_id",
+}
 ZINDER_REVISION = "515b98b490575a87d8cd629d01551114f42a5735"
-ZALLET_REVISION = "f8a0a2ffe3943b566b8d86dd6f1e6be14e0a6223"
+ZALLET_REVISION = "05fcb9ec374cb4fdc2c230b8d572570fad176a80"
 ZEBRA_REVISION = "7121c82ba6795a151523d5b308a19743f4a1ade7"
 EVIDENCE_DIRECTORY_ENVIRONMENT = "ZIT_ZINDER_EVIDENCE_DIR"
 
@@ -258,6 +283,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         self.zebra_logs: tuple[Path, Path] | None = None
         self.zebra_files: tuple[object, object] | None = None
         self.zebra_health_endpoint = ""
+        self.suspended_backend_pids: set[int] = set()
 
     def setup_chain(self):
         super().setup_chain()
@@ -409,6 +435,12 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         if rescan.get("address_type") != "sapling":
             raise RuntimeError("existing viewing-key rescan did not return a Sapling address")
         self._wait_wallet_fully_synced(watcher, advanced_tip)
+        expiry_recovery = self._run_expiry_recovery(
+            source,
+            watcher,
+            viewing_key,
+            advanced_tip,
+        )
         self._write_json("smoke-result.json", {
             "initial_height": INITIAL_HEIGHT,
             "advanced_height": advanced_tip,
@@ -418,7 +450,9 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                 "source_wallet_tip_after_reacquisition": source_status.get("wallet_tip"),
                 "watcher_wallet_tip_after_reacquisition": watcher_status.get("wallet_tip"),
             },
-            "existing_viewing_key_rescan": "RPC accepted rescan=yes; this smoke does not certify rewind semantics",
+            "existing_viewing_key_rescan": (
+                "RPC accepted rescan=yes for the existing account and the "
+                "wallet returned to fully synced"),
             "live_account_creation": {
                 "creation_height": INITIAL_HEIGHT,
                 "accounts": [
@@ -436,8 +470,690 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                 "accounts_after_advance": accounts_after_advance,
                 "accounts_after_restart": accounts_after_restart,
             },
-            "scope": "runtime smoke only; not P2a certification",
+            "expiry_recovery": expiry_recovery,
+            "scope": "runtime smoke plus P2a history and steady-state expiry recovery",
         })
+
+    def _run_expiry_recovery(
+            self,
+            source,
+            watcher,
+            viewing_key: str,
+            starting_tip: int) -> dict:
+        assert self.runtime is not None and self.children is not None
+        assert self.evidence is not None
+        self._stop_wallet(source, "zallet-source-restarted")
+        self._stop_wallet(watcher, "zallet-watcher")
+        source_hashes = {
+            height: self.nodes[0].getblockhash(height)
+            for height in range(1, starting_tip + 1)
+        }
+
+        mined_history = self._mine_blocks(HISTORY_BLOCK_COUNT)
+        history_tip = starting_tip + HISTORY_BLOCK_COUNT
+        history_recovery_end_height = (
+            history_tip - STEADY_STATE_REGION_BLOCKS - 1
+        )
+        if len(mined_history) != HISTORY_BLOCK_COUNT:
+            raise RuntimeError("Zebra did not mine the requested history range")
+        source_hashes.update({
+            starting_tip + offset: block_hash
+            for offset, block_hash in enumerate(mined_history, start=1)
+        })
+        self._wait_zinder_tip(history_tip)
+
+        config = self._write_wallet_config(
+            "expiry-recovery",
+            recover_batch_size=10_000,
+        )
+        self._initialize_wallet(
+            "expiry-recovery",
+            config,
+            generate_mnemonic=False,
+        )
+        prepared_wallet = self._start_wallet(
+            "expiry-history-prepared",
+            config,
+        )
+        self._wait_wallet_tip(prepared_wallet, history_tip)
+        self._wait_for_backend_trace(
+            "zallet-expiry-history-prepared",
+            "following Zinder mempool after captured snapshot",
+        )
+        self._stop_wallet(
+            prepared_wallet,
+            "zallet-expiry-history-prepared",
+        )
+        history_blocks_before_import = self._scanned_blocks(config.parent)
+
+        history_root = self.evidence / "expiry-recovery" / "history"
+        history_barrier = history_root / "barrier"
+        history_barrier.mkdir(parents=True)
+        history_wallet = self._start_wallet(
+            "expiry-history",
+            config,
+            self._range_barrier_environment(
+                history_barrier,
+                FULL_BLOCK_PAGE_SIZE + 1,
+            ),
+        )
+        imported = history_wallet.z_importviewingkey(viewing_key, "yes", 1)
+        if imported.get("address_type") != "sapling":
+            raise RuntimeError("history-expiry import did not return a Sapling address")
+        history_blocks_after_import = self._scanned_blocks(config.parent)
+        self._require_range_absent(
+            history_blocks_after_import,
+            1,
+            history_recovery_end_height,
+            "history finalized range after import",
+        )
+
+        paused_marker = history_barrier / RANGE_REQUEST_PAUSED_MARKER
+        self._wait_for_file(
+            paused_marker,
+            "zallet-expiry-history",
+            "history range-request pause",
+        )
+        history_attempt_2 = self._read_range_marker(paused_marker)
+        self._require_range_marker(
+            history_attempt_2,
+            FULL_BLOCK_PAGE_SIZE + 1,
+            history_recovery_end_height,
+            "history paused page",
+        )
+        history_attempt_2_path = (
+            history_barrier
+            / "range-request-attempt-{}.json".format(
+                history_attempt_2["attempt_number"])
+        )
+        if self._read_range_marker(history_attempt_2_path) != history_attempt_2:
+            raise RuntimeError(
+                "history pause marker differs from its range-attempt marker")
+        history_attempt_1 = self._find_range_marker(
+            history_barrier,
+            1,
+            FULL_BLOCK_PAGE_SIZE,
+            same_epoch=history_attempt_2["chain_epoch_id"],
+            maximum_attempt=history_attempt_2["attempt_number"] - 1,
+        )
+        if history_attempt_1 is None:
+            raise RuntimeError(
+                "history page 1 was not observed in the paused page epoch")
+        self._require_same_epoch(
+            history_attempt_1,
+            history_attempt_2,
+            "history page pair",
+        )
+        history_blocks_paused = self._scanned_blocks(config.parent)
+        self._require_range_absent(
+            history_blocks_paused,
+            1,
+            history_recovery_end_height,
+            "history finalized range while page 2 is paused",
+        )
+
+        history_rotated_tip, history_publications = self._rotate_pair(
+            history_tip,
+        )
+        source_hashes[history_rotated_tip] = history_publications[
+            "rotated_block_hash"
+        ]
+        self._release_range_request(
+            history_barrier,
+            history_tip,
+            history_rotated_tip,
+        )
+        history_attempt_3 = self._wait_for_range_marker(
+            history_barrier,
+            1,
+            FULL_BLOCK_PAGE_SIZE,
+            "zallet-expiry-history",
+            "history retry from page 1",
+            different_epoch=history_attempt_2["chain_epoch_id"],
+            minimum_attempt=history_attempt_2["attempt_number"] + 1,
+        )
+        self._wait_for_backend_trace(
+            "zallet-expiry-history",
+            "Chain view expired during history recovery; "
+            "reacquiring it before retrying the entire range")
+        self._wait_wallet_fully_synced(history_wallet, history_rotated_tip)
+        history_blocks_final = self._scanned_blocks(config.parent)
+        self._require_scanned_chain(
+            history_blocks_final,
+            source_hashes,
+            history_rotated_tip,
+            "history recovery",
+        )
+        self._stop_wallet(history_wallet, "zallet-expiry-history")
+
+        steady_root = self.evidence / "expiry-recovery" / "steady"
+        steady_barrier = steady_root / "barrier"
+        steady_barrier.mkdir(parents=True)
+        steady_wallet = self._start_wallet(
+            "expiry-steady",
+            config,
+            self._range_barrier_environment(
+                steady_barrier,
+                history_rotated_tip + FULL_BLOCK_PAGE_SIZE + 1,
+            ),
+        )
+        self._wait_wallet_fully_synced(steady_wallet, history_rotated_tip)
+        self._wait_for_backend_trace(
+            "zallet-expiry-steady",
+            "following Zinder mempool after captured snapshot")
+        steady_backend_pid = self._staged_backend_pid("zallet-expiry-steady")
+        self._suspend_backend(steady_backend_pid)
+        mined_steady = self._mine_blocks(STEADY_BLOCK_COUNT)
+        steady_tip = history_rotated_tip + STEADY_BLOCK_COUNT
+        if len(mined_steady) != STEADY_BLOCK_COUNT:
+            raise RuntimeError("Zebra did not mine the requested steady-state range")
+        source_hashes.update({
+            history_rotated_tip + offset: block_hash
+            for offset, block_hash in enumerate(mined_steady, start=1)
+        })
+        self._wait_zinder_tip(steady_tip)
+        self._resume_backend(steady_backend_pid)
+
+        steady_paused_marker = steady_barrier / RANGE_REQUEST_PAUSED_MARKER
+        self._wait_for_file(
+            steady_paused_marker,
+            "zallet-expiry-steady",
+            "steady-state range-request pause",
+        )
+        steady_attempt_2 = self._read_range_marker(steady_paused_marker)
+        self._require_range_marker(
+            steady_attempt_2,
+            history_rotated_tip + FULL_BLOCK_PAGE_SIZE + 1,
+            steady_tip,
+            "steady-state paused page",
+        )
+        steady_attempt_2_path = (
+            steady_barrier
+            / "range-request-attempt-{}.json".format(
+                steady_attempt_2["attempt_number"])
+        )
+        if self._read_range_marker(steady_attempt_2_path) != steady_attempt_2:
+            raise RuntimeError(
+                "steady-state pause marker differs from its range-attempt marker")
+        steady_attempt_1 = self._find_range_marker(
+            steady_barrier,
+            history_rotated_tip + 1,
+            history_rotated_tip + FULL_BLOCK_PAGE_SIZE,
+            same_epoch=steady_attempt_2["chain_epoch_id"],
+            maximum_attempt=steady_attempt_2["attempt_number"] - 1,
+        )
+        if steady_attempt_1 is None:
+            raise RuntimeError(
+                "steady-state page 1 was not observed in the paused page epoch")
+        self._require_same_epoch(
+            steady_attempt_1,
+            steady_attempt_2,
+            "steady-state page pair",
+        )
+        steady_blocks_paused = self._scanned_blocks(config.parent)
+        committed_prefix_tip = history_rotated_tip + FULL_BLOCK_PAGE_SIZE
+        self._require_scanned_chain(
+            steady_blocks_paused,
+            source_hashes,
+            committed_prefix_tip,
+            "steady-state committed prefix",
+        )
+        if any(height == committed_prefix_tip + 1 for height, _ in steady_blocks_paused):
+            raise RuntimeError(
+                "steady-state sync committed the page-2 successor before expiry")
+
+        steady_rotated_tip, steady_publications = self._rotate_pair(steady_tip)
+        source_hashes[steady_rotated_tip] = steady_publications[
+            "rotated_block_hash"
+        ]
+        self._release_range_request(
+            steady_barrier,
+            steady_tip,
+            steady_rotated_tip,
+        )
+        steady_attempt_3 = self._wait_for_range_marker(
+            steady_barrier,
+            committed_prefix_tip + 1,
+            steady_rotated_tip,
+            "zallet-expiry-steady",
+            "steady-state successor retry",
+            different_epoch=steady_attempt_2["chain_epoch_id"],
+            minimum_attempt=steady_attempt_2["attempt_number"] + 1,
+        )
+        self._wait_for_backend_trace(
+            "zallet-expiry-steady",
+            "Chain view expired, reacquiring the current view")
+        self._wait_wallet_fully_synced(steady_wallet, steady_rotated_tip)
+        steady_blocks_final = self._scanned_blocks(config.parent)
+        self._require_scanned_chain(
+            steady_blocks_final,
+            source_hashes,
+            steady_rotated_tip,
+            "steady-state recovery",
+        )
+
+        result = {
+            "history": {
+                "initial_tip": history_tip,
+                "finalized_recovery_end_height": (
+                    history_recovery_end_height
+                ),
+                "rotated_tip": history_rotated_tip,
+                "blocks_before_import": self._scanned_block_summary(
+                    history_blocks_before_import),
+                "blocks_after_import": self._scanned_block_summary(
+                    history_blocks_after_import),
+                "blocks_while_page_2_paused": self._scanned_block_summary(
+                    history_blocks_paused),
+                "blocks_after_recovery": self._scanned_block_summary(
+                    history_blocks_final),
+                "partial_block_writes_before_expiry": False,
+                "final_chain_contiguous_and_zebra_hash_matching": True,
+                "range_attempts": [
+                    history_attempt_1,
+                    history_attempt_2,
+                    history_attempt_3,
+                ],
+                "typed_expiry_trace": (
+                    "Chain view expired during history recovery; "
+                    "reacquiring it before retrying the entire range"),
+                "pair_publications": history_publications,
+            },
+            "steady_state": {
+                "initial_tip": history_rotated_tip,
+                "surge_tip": steady_tip,
+                "committed_prefix_tip": committed_prefix_tip,
+                "rotated_tip": steady_rotated_tip,
+                "staged_backend_pid": steady_backend_pid,
+                "blocks_while_page_2_paused": self._scanned_block_summary(
+                    steady_blocks_paused),
+                "blocks_after_recovery": self._scanned_block_summary(
+                    steady_blocks_final),
+                "committed_prefix_contiguous_and_zebra_hash_matching": True,
+                "page_2_successor_committed_before_expiry": False,
+                "final_chain_contiguous_and_zebra_hash_matching": True,
+                "range_attempts": [
+                    steady_attempt_1,
+                    steady_attempt_2,
+                    steady_attempt_3,
+                ],
+                "typed_expiry_trace": (
+                    "Chain view expired, reacquiring the current view"),
+                "pair_publications": steady_publications,
+            },
+        }
+        self._write_json("expiry-recovery.json", result)
+        return result
+
+    def _range_barrier_environment(
+            self,
+            barrier: Path,
+            pause_start_height: int) -> dict[str, str]:
+        return {
+            RANGE_BARRIER_DIRECTORY_ENVIRONMENT: str(barrier),
+            RANGE_REQUEST_PAUSE_START_HEIGHT_ENVIRONMENT: str(
+                pause_start_height),
+        }
+
+    def _wait_zinder_tip(self, height: int):
+        assert self.children is not None
+        for service in ("ingest", "projector", "query"):
+            self._wait_ready(
+                service,
+                self.children.children["zinder-" + service],
+                height,
+            )
+
+    def _mine_blocks(self, count: int) -> list[str]:
+        mined = []
+        while len(mined) < count:
+            batch_size = min(BLOCK_GENERATION_BATCH_SIZE, count - len(mined))
+            batch = self.nodes[0].generate(batch_size)
+            if len(batch) != batch_size:
+                raise RuntimeError(
+                    "Zebra mined {} blocks for a requested batch of {}".format(
+                        len(batch), batch_size))
+            mined.extend(batch)
+        return mined
+
+    def _rotate_pair(self, previous_tip: int) -> tuple[int, dict]:
+        assert self.runtime is not None and self.children is not None
+        publication_before = self._pair_publication_count()
+        mined = self.nodes[0].generate(1)
+        rotated_tip = previous_tip + 1
+        if len(mined) != 1 or self.nodes[0].getblockcount() != rotated_tip:
+            raise RuntimeError("Zebra did not perform the single-block epoch rotation")
+        self._wait_zinder_tip(rotated_tip)
+        publication_after = self._wait_pair_publication(publication_before)
+        return rotated_tip, {
+            "metric": PAIR_PUBLICATION_METRIC,
+            "before": publication_before,
+            "after": publication_after,
+            "rotated_block_hash": mined[0],
+        }
+
+    def _pair_publication_count(self) -> float:
+        assert self.runtime is not None
+        status, metrics = http_text(self.runtime.ops["query"] + "/metrics")
+        if status != 200:
+            raise RuntimeError("zinder-query metrics endpoint was not available")
+        series = [
+            line for line in metrics.splitlines()
+            if re.match(
+                r"^{}(?:\{{|\s|$)".format(re.escape(PAIR_PUBLICATION_METRIC)),
+                line)
+        ]
+        if len(series) != 1:
+            raise RuntimeError(
+                "expected one {} measurement, got {}".format(
+                    PAIR_PUBLICATION_METRIC, series))
+        measurement = re.fullmatch(
+            r"{}(?:\{{[^}}]*\}})?\s+([0-9eE+.-]+)".format(
+                re.escape(PAIR_PUBLICATION_METRIC)),
+            series[0])
+        if measurement is None:
+            raise RuntimeError(
+                "malformed {} measurement".format(PAIR_PUBLICATION_METRIC))
+        value = float(measurement.group(1))
+        if not math.isfinite(value):
+            raise RuntimeError(
+                "{} measurement is not finite".format(PAIR_PUBLICATION_METRIC))
+        return value
+
+    def _wait_pair_publication(self, previous: float) -> float:
+        assert self.children is not None
+        expected = previous + 1
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        latest = previous
+        while time.monotonic() < deadline:
+            child = self.children.children["zinder-query"]
+            if child.poll() is not None:
+                raise RuntimeError("zinder-query exited before pair publication")
+            try:
+                latest = self._pair_publication_count()
+                if latest == expected:
+                    return latest
+                if latest != previous:
+                    raise RuntimeError(
+                        "{} changed from {} to {}, expected {}".format(
+                            PAIR_PUBLICATION_METRIC, previous, latest, expected))
+            except (OSError, urllib.error.URLError):
+                pass
+            time.sleep(POLL_INTERVAL_SECONDS)
+        raise RuntimeError(
+            "{} did not advance from {} to {}; last value was {}".format(
+                PAIR_PUBLICATION_METRIC, previous, expected, latest))
+
+    def _release_range_request(
+            self,
+            barrier: Path,
+            expired_tip: int,
+            rotated_tip: int):
+        (barrier / RANGE_REQUEST_CONTINUE_MARKER).write_text(
+            json.dumps({
+                "schema_version": 1,
+                "expired_tip": expired_tip,
+                "rotated_tip": rotated_tip,
+            }, sort_keys=True) + "\n",
+            encoding="utf8")
+
+    def _read_range_marker(self, path: Path) -> dict:
+        marker = self._read_json(path)
+        if set(marker) != RANGE_MARKER_FIELDS:
+            raise RuntimeError(
+                "{} has unexpected range-marker fields".format(path))
+        for field in (
+                "schema_version",
+                "attempt_number",
+                "requested_start_height_inclusive",
+                "requested_end_height_inclusive",
+                "chain_epoch_id"):
+            value = marker[field]
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise RuntimeError(
+                    "{} field {} is not an integer".format(path, field))
+        if marker["schema_version"] != 1:
+            raise RuntimeError("{} has unsupported schema version".format(path))
+        if marker["attempt_number"] < 1:
+            raise RuntimeError("{} has an invalid attempt number".format(path))
+        if (marker["requested_start_height_inclusive"] < 0
+                or marker["requested_end_height_inclusive"]
+                < marker["requested_start_height_inclusive"]):
+            raise RuntimeError(
+                "{} has an invalid requested range".format(path))
+        attempt_filename = re.fullmatch(
+            r"range-request-attempt-([0-9]+)\.json",
+            path.name,
+        )
+        if (attempt_filename is not None
+                and int(attempt_filename.group(1))
+                != marker["attempt_number"]):
+            raise RuntimeError(
+                "{} attempt number differs from its filename".format(path))
+        return marker
+
+    def _require_range_marker(
+            self,
+            marker: dict,
+            start_height: int,
+            end_height: int,
+            description: str):
+        observed = (
+            marker["requested_start_height_inclusive"],
+            marker["requested_end_height_inclusive"],
+        )
+        expected = (start_height, end_height)
+        if observed != expected:
+            raise RuntimeError(
+                "{} range is {}, expected {}".format(
+                    description, observed, expected))
+
+    def _find_range_marker(
+            self,
+            barrier: Path,
+            start_height: int,
+            end_height: int,
+            *,
+            same_epoch: int | None = None,
+            different_epoch: int | None = None,
+            minimum_attempt: int = 1,
+            maximum_attempt: int | None = None) -> dict | None:
+        matches = []
+        for path in sorted(barrier.glob("range-request-attempt-*.json")):
+            marker = self._read_range_marker(path)
+            attempt = marker["attempt_number"]
+            if attempt < minimum_attempt:
+                continue
+            if maximum_attempt is not None and attempt > maximum_attempt:
+                continue
+            if marker["requested_start_height_inclusive"] != start_height:
+                continue
+            if marker["requested_end_height_inclusive"] != end_height:
+                continue
+            epoch = marker["chain_epoch_id"]
+            if same_epoch is not None and epoch != same_epoch:
+                continue
+            if different_epoch is not None and epoch == different_epoch:
+                continue
+            matches.append(marker)
+        if not matches:
+            return None
+        return min(matches, key=lambda marker: marker["attempt_number"])
+
+    def _wait_for_range_marker(
+            self,
+            barrier: Path,
+            start_height: int,
+            end_height: int,
+            process_name: str,
+            description: str,
+            *,
+            same_epoch: int | None = None,
+            different_epoch: int | None = None,
+            minimum_attempt: int = 1,
+            maximum_attempt: int | None = None) -> dict:
+        assert self.children is not None
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        child = self.children.children[process_name]
+        while time.monotonic() < deadline:
+            marker = self._find_range_marker(
+                barrier,
+                start_height,
+                end_height,
+                same_epoch=same_epoch,
+                different_epoch=different_epoch,
+                minimum_attempt=minimum_attempt,
+                maximum_attempt=maximum_attempt,
+            )
+            if marker is not None:
+                return marker
+            if child.poll() is not None:
+                raise RuntimeError(
+                    "{} exited before {}".format(process_name, description))
+            time.sleep(POLL_INTERVAL_SECONDS)
+        raise RuntimeError(
+            "timed out waiting for {} in {}".format(description, barrier))
+
+    def _read_json(self, path: Path) -> dict:
+        with path.open("r", encoding="utf8") as source:
+            document = json.load(source)
+        if not isinstance(document, dict):
+            raise RuntimeError("{} did not contain a JSON object".format(path))
+        return document
+
+    def _wait_for_file(self, path: Path, process_name: str, description: str):
+        assert self.children is not None
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        child = self.children.children[process_name]
+        while time.monotonic() < deadline:
+            if path.is_file():
+                return
+            if child.poll() is not None:
+                raise RuntimeError(
+                    "{} exited before {}".format(process_name, description))
+            time.sleep(POLL_INTERVAL_SECONDS)
+        raise RuntimeError("timed out waiting for {}: {}".format(description, path))
+
+    def _scanned_blocks(self, wallet_directory: Path) -> list[tuple[int, str]]:
+        wallet_database = wallet_directory / "wallet.db"
+        connection = sqlite3.connect(
+            "file:{}?mode=ro".format(wallet_database),
+            uri=True,
+        )
+        try:
+            return [
+                (row[0], bytes(row[1])[::-1].hex())
+                for row in connection.execute(
+                    "SELECT height, hash FROM blocks ORDER BY height")
+            ]
+        finally:
+            connection.close()
+
+    def _scanned_block_summary(self, blocks: list[tuple[int, str]]) -> dict:
+        return {
+            "count": len(blocks),
+            "minimum_height": None if not blocks else blocks[0][0],
+            "maximum_height": None if not blocks else blocks[-1][0],
+            "maximum_height_hash": None if not blocks else blocks[-1][1],
+        }
+
+    def _require_range_absent(
+            self,
+            blocks: list[tuple[int, str]],
+            start_height: int,
+            end_height: int,
+            description: str):
+        observed = [
+            height
+            for height, _ in blocks
+            if start_height <= height <= end_height
+        ]
+        if observed:
+            raise RuntimeError(
+                "{} unexpectedly contains {} rows from {} through {}".format(
+                    description,
+                    len(observed),
+                    observed[0],
+                    observed[-1],
+                ))
+
+    def _require_scanned_chain(
+            self,
+            blocks: list[tuple[int, str]],
+            source_hashes: dict[int, str],
+            expected_tip: int,
+            description: str):
+        expected_heights = list(range(1, expected_tip + 1))
+        actual_heights = [height for height, _ in blocks]
+        if actual_heights != expected_heights:
+            raise RuntimeError(
+                "{} block heights are not contiguous from 1 through {}; "
+                "observed {} through {} across {} rows".format(
+                    description,
+                    expected_tip,
+                    None if not blocks else blocks[0][0],
+                    None if not blocks else blocks[-1][0],
+                    len(blocks)))
+        for height, block_hash in blocks:
+            if block_hash != source_hashes[height]:
+                raise RuntimeError(
+                    "{} block hash at height {} differs from Zebra".format(
+                        description, height))
+
+    def _require_same_epoch(
+            self,
+            first: dict,
+            second: dict,
+            description: str):
+        if first["chain_epoch_id"] != second["chain_epoch_id"]:
+            raise RuntimeError(
+                "{} did not retain one chain epoch across both pages".format(
+                    description))
+
+    def _stop_wallet(self, wallet, process_name: str):
+        assert self.children is not None
+        wallet.stop()
+        exit_code = self.children.stop(process_name)
+        if exit_code != 0:
+            raise RuntimeError(
+                "{} did not stop cleanly: {}".format(process_name, exit_code))
+
+    def _staged_backend_pid(self, process_name: str) -> int:
+        assert self.children is not None and self.runtime is not None
+        child = self.children.children[process_name]
+        expected = (
+            self.runtime.root / "staged-zallet" / "zallet-zinder"
+        ).resolve()
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            if child.poll() is not None:
+                raise RuntimeError(
+                    "{} exited before staged backend verification".format(
+                        process_name))
+            try:
+                actual = Path(os.readlink("/proc/{}/exe".format(child.pid))).resolve()
+                if actual == expected:
+                    return child.pid
+            except FileNotFoundError:
+                pass
+            time.sleep(POLL_INTERVAL_SECONDS)
+        raise RuntimeError(
+            "{} did not exec the staged backend {}".format(process_name, expected))
+
+    def _suspend_backend(self, pid: int):
+        os.kill(pid, signal.SIGSTOP)
+        self.suspended_backend_pids.add(pid)
+
+    def _resume_backend(self, pid: int):
+        try:
+            os.kill(pid, signal.SIGCONT)
+        except ProcessLookupError:
+            pass
+        self.suspended_backend_pids.discard(pid)
+
+    def _resume_suspended_backends(self):
+        for pid in tuple(self.suspended_backend_pids):
+            self._resume_backend(pid)
 
     def _render_runtime(self, root: Path) -> RuntimePaths:
         assert self.evidence is not None
@@ -490,7 +1206,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                              "query": "http://127.0.0.1:{}".format(query_ops_port)},
                             "http://127.0.0.1:{}".format(query_port), control_endpoint)
 
-    def _write_wallet_config(self, name: str) -> Path:
+    def _write_wallet_config(self, name: str, recover_batch_size: int | None = None) -> Path:
         assert self.runtime is not None and self.evidence is not None
         wallet_root = self.runtime.root / "wallets" / name
         wallet_port = allocate_port(self.allocated_ports)
@@ -509,6 +1225,8 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         config = toml.load(config_path)
         config.setdefault("keystore", {})["encryption_identity"] = str(wallet_root / "encryption-identity.txt")
         config["rpc"]["bind"] = ["127.0.0.1:{}".format(wallet_port)]
+        if recover_batch_size is not None:
+            config.setdefault("sync", {})["recover_batch_size"] = recover_batch_size
         path = Path(config_path)
         path.write_text(toml.dumps(config), encoding="utf8")
         redacted = dict(config)
@@ -605,14 +1323,25 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             raise RuntimeError("live accounts changed across sync or restart")
         return actual
 
-    def _start_wallet(self, name: str, config: Path):
+    def _start_wallet(
+            self,
+            name: str,
+            config: Path,
+            environment_overrides: dict[str, str] | None = None):
         assert self.children is not None
         if name == "source-restarted":
             process_name = "zallet-source-restarted"
         else:
             process_name = "zallet-" + name
         launcher = self._staged_launcher()
-        child = self.children.start(process_name, [str(launcher), "--datadir={}".format(config.parent), "--config={}".format(config), "start"], dict(os.environ))
+        environment = dict(os.environ)
+        if environment_overrides is not None:
+            environment.update(environment_overrides)
+        child = self.children.start(
+            process_name,
+            [str(launcher), "--datadir={}".format(config.parent),
+             "--config={}".format(config), "start"],
+            environment)
         port = toml.load(config)["rpc"]["bind"][0].rsplit(":", 1)[1]
         endpoint = "http://zebra:zebra@127.0.0.1:{}".format(port)
         deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
@@ -718,6 +1447,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
 
     def _cleanup(self):
         errors = []
+        self._resume_suspended_backends()
         if self.children is not None:
             try:
                 exits = self.children.stop_all()
@@ -760,7 +1490,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             self._write_json("manifest.json", {"result": "passed" if failure is None and cleanup_error is None else "failed",
                                                  "failure": None if failure is None else str(failure),
                                                  "cleanup_failure": None if cleanup_error is None else str(cleanup_error),
-                                                 "scope": "runtime smoke only; P2a certification remains open"})
+                                                 "scope": "runtime smoke plus P2a history and steady-state expiry recovery"})
 
 
 if __name__ == '__main__':

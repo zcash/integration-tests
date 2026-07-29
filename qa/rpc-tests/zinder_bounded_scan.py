@@ -2098,7 +2098,7 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
         certification_result_path: Path,
         retry_end_height_exclusive: int | None = None,
         barrier_directory: Path | None = None,
-        range_request_pause_attempt: int | None = None,
+        range_request_pause_start_height: int | None = None,
         wait: bool = True,
     ) -> CertificationChild | None:
         assert self.runtime_root is not None
@@ -2131,9 +2131,9 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
             )
         if barrier_directory is not None:
             environment["ZIT_RANGE_BARRIER_DIR"] = str(barrier_directory)
-        if range_request_pause_attempt is not None:
-            environment["ZIT_RANGE_REQUEST_PAUSE_ATTEMPT"] = str(
-                range_request_pause_attempt
+        if range_request_pause_start_height is not None:
+            environment["ZIT_RANGE_REQUEST_PAUSE_START_HEIGHT"] = str(
+                range_request_pause_start_height
             )
 
         temporary_log_root = self.runtime_root / "certification-logs"
@@ -2334,7 +2334,7 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
             result_path,
             retry_end_height_exclusive=ROTATED_END_HEIGHT_EXCLUSIVE,
             barrier_directory=barrier_directory,
-            range_request_pause_attempt=1,
+            range_request_pause_start_height=REQUESTED_START_HEIGHT,
             wait=False,
         )
         assert rotation_child is not None
