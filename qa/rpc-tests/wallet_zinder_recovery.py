@@ -102,12 +102,12 @@ RANGE_MARKER_FIELDS = {
     "chain_epoch_id",
 }
 ZINDER_REVISION = "df770c5ccb21bb8af4485a44d0815628388459e4"
-ZALLET_REVISION = "edb239a0562fd5fd3dede88e90b05d7fddb7f09b"
+ZALLET_REVISION = "143732c9ed5c04fb5a20440c4a162a2adc8bf899"
 ZEBRA_REVISION = "7121c82ba6795a151523d5b308a19743f4a1ade7"
 EVIDENCE_DIRECTORY_ENVIRONMENT = "ZIT_ZINDER_EVIDENCE_DIR"
 CERTIFICATION_SLICE_ENVIRONMENT = "ZIT_ZALLET_CERTIFICATION_SLICE"
 
-# This is the current Zallet P2b requirement constant.  The endpoint can
+# This is the current Zallet P2 requirement constant.  The endpoint can
 # advertise additive capabilities, but the launcher must admit this complete,
 # ordered set before opening either wallet database for a live process.
 ZALLET_REQUIRED_CAPABILITIES = (
@@ -121,6 +121,7 @@ ZALLET_REQUIRED_CAPABILITIES = (
     "wallet.read.full_block_at_v1",
     "wallet.read.full_block_range_v1",
     "wallet.read.transaction_by_id_v2",
+    "wallet.broadcast.transaction_v1",
     "wallet.address.transparent_unspent_outputs_v1",
     "wallet.address.transparent_history_v1",
     "wallet.events.chain_v1",
@@ -201,9 +202,9 @@ def certification_slice() -> str:
         CERTIFICATION_SLICE_ENVIRONMENT,
         "complete",
     )
-    if selected not in {"complete", "p2b"}:
+    if selected not in {"complete", "p2b", "p2c"}:
         raise RuntimeError(
-            "{} must be complete or p2b".format(
+            "{} must be complete, p2b, or p2c".format(
                 CERTIFICATION_SLICE_ENVIRONMENT))
     return selected
 
@@ -476,6 +477,18 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                 "scope": "P2b transparent recovery",
             })
             return
+        if selected_slice == "p2c":
+            transparent_recovery = self._run_transparent_recovery(
+                submit_through_zinder=True,
+            )
+            self._write_json("smoke-result.json", {
+                "initial_height": INITIAL_HEIGHT,
+                "p2c_starting_height": p2a_starting_tip,
+                "transparent_recovery": transparent_recovery,
+                "certification_slice": selected_slice,
+                "scope": "P2b fixture plus P2c submit lifecycle",
+            })
+            return
 
         source_config = self._write_wallet_config("source")
         watcher_config = self._write_wallet_config("watcher")
@@ -544,7 +557,9 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             viewing_key,
             advanced_tip,
         )
-        transparent_recovery = self._run_transparent_recovery()
+        transparent_recovery = self._run_transparent_recovery(
+            submit_through_zinder=True,
+        )
         self._write_json("smoke-result.json", {
             "initial_height": INITIAL_HEIGHT,
             "p2a_starting_height": p2a_starting_tip,
@@ -648,7 +663,9 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             self.runtime.root / "transparent-seed-snapshot"
         )
 
-    def _run_transparent_recovery(self) -> dict:
+    def _run_transparent_recovery(
+            self,
+            submit_through_zinder: bool = False) -> dict:
         assert self.runtime is not None and self.children is not None
         assert self.producer_config is not None
         assert self.transparent_seed_snapshot is not None
@@ -723,6 +740,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             clone_from=self.transparent_seed_snapshot,
         )
         target = self._start_wallet("transparent-target", target_config)
+        target_process_name = "zallet-transparent-target"
         self._wait_wallet_fully_synced(target, pre_p2b_tip)
         target_backend_pid = self._staged_backend_pid(
             "zallet-transparent-target")
@@ -857,7 +875,8 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             raise RuntimeError(
                 "Zinder-backed Zallet reported the wrong funded source UTXO")
 
-        spend_opid = producer.z_sendmany(
+        spending_wallet = target if submit_through_zinder else producer
+        spend_opid = spending_wallet.z_sendmany(
             self.transparent_source_address,
             [{
                 "address": destination_address,
@@ -868,11 +887,57 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             PrivacyPolicy.ALLOW_FULLY_TRANSPARENT,
         )
         spend_txid = wait_and_assert_operationid_status(
-            producer,
+            spending_wallet,
             spend_opid,
         )
         if spend_txid is None:
-            raise RuntimeError("producer did not return a spend transaction")
+            raise RuntimeError("spending wallet did not return a transaction")
+        submit_lifecycle = None
+        if submit_through_zinder:
+            self._wait_node_mempool(spend_txid)
+            unmined_before_restart = self._wait_transaction_entry(
+                target,
+                spend_txid,
+                mined_height=None,
+            )
+            self._wait_for_backend_trace(
+                target_process_name,
+                "Scanning mempool tx {}".format(spend_txid),
+            )
+            self._stop_wallet(target, target_process_name)
+            target_process_name = (
+                "zallet-transparent-target-mempool-restarted"
+            )
+            target = self._start_wallet(
+                "transparent-target-mempool-restarted",
+                target_config,
+            )
+            self._wait_wallet_fully_synced(target, funding_tip)
+            target_backend_pid_after_mempool_restart = (
+                self._staged_backend_pid(
+                    target_process_name,
+                )
+            )
+            self._wait_for_backend_trace(
+                target_process_name,
+                "Scanning mempool tx {}".format(spend_txid),
+            )
+            unmined_after_restart = self._wait_transaction_entry(
+                target,
+                spend_txid,
+                mined_height=None,
+            )
+            submit_lifecycle = {
+                "transaction_id": spend_txid,
+                "submitted_backend": "zallet-zinder",
+                "node_mempool_observed": True,
+                "unmined_before_restart": unmined_before_restart,
+                "unmined_after_restart": unmined_after_restart,
+                "backend_pid_before_restart": target_backend_pid,
+                "backend_pid_after_restart": (
+                    target_backend_pid_after_mempool_restart
+                ),
+            }
         spend_mined_tip = self._mine_transaction_and_follow(
             spend_txid,
             producer,
@@ -884,6 +949,22 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             spend_txid,
             spend_mined_tip,
         )
+        if submit_lifecycle is not None:
+            submit_lifecycle["mined"] = self._wait_transaction_entry(
+                target,
+                spend_txid,
+                mined_height=spend_mined_tip,
+            )
+            submit_lifecycle["shallow_reorg"] = (
+                self._exercise_shallow_reorg(
+                    spend_txid,
+                    self.nodes[0].getblockhash(spend_mined_tip),
+                    spend_mined_tip,
+                    producer,
+                    target,
+                    target_config,
+                )
+            )
         expected_txids = (funding_txid, spend_txid)
         producer_final_state = self._wait_transparent_state(
             producer,
@@ -897,7 +978,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             expected_state=producer_final_state,
         )
 
-        self._stop_wallet(target, "zallet-transparent-target")
+        self._stop_wallet(target, target_process_name)
         restarted = self._start_wallet(
             "transparent-target-restarted",
             target_config,
@@ -967,6 +1048,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             "destination_address": destination_address,
             "funding_transaction_id": funding_txid,
             "spend_transaction_id": spend_txid,
+            "submit_lifecycle": submit_lifecycle,
             "producer_funded_state": producer_funded_state,
             "funded_state": funded_state,
             "funded_state_matches_producer": (
@@ -1014,14 +1096,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             transaction_id: str,
             producer,
             target) -> int:
-        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
-        while time.monotonic() < deadline:
-            if transaction_id in self.nodes[0].getrawmempool():
-                break
-            time.sleep(POLL_INTERVAL_SECONDS)
-        else:
-            raise RuntimeError(
-                "Zebra did not admit the P2b transaction to its mempool")
+        self._wait_node_mempool(transaction_id)
         mined = self.nodes[0].generate(1)
         if len(mined) != 1:
             raise RuntimeError("Zebra did not mine one P2b transaction block")
@@ -1034,6 +1109,141 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         self._wait_wallet_fully_synced(target, tip)
         self._wait_transaction_mined(producer, transaction_id, tip)
         return tip
+
+    def _wait_node_mempool(self, transaction_id: str):
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            if transaction_id in self.nodes[0].getrawmempool():
+                return
+            time.sleep(POLL_INTERVAL_SECONDS)
+        raise RuntimeError(
+            "Zebra did not admit the wallet transaction to its mempool")
+
+    def _wait_transaction_entry(
+            self,
+            wallet,
+            transaction_id: str,
+            mined_height: int | None) -> dict:
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            try:
+                matches = [
+                    transaction
+                    for transaction in wallet.z_listtransactions(
+                        self.producer_account_uuid,
+                    )
+                    if transaction["txid"] == transaction_id
+                    and transaction.get("mined_height") == mined_height
+                ]
+                if len(matches) == 1:
+                    transaction = matches[0]
+                    balance_delta = transaction.get(
+                        "account_balance_delta")
+                    if not isinstance(balance_delta, int):
+                        raise RuntimeError(
+                            "wallet transaction omitted its account delta")
+                    if balance_delta >= 0:
+                        raise RuntimeError(
+                            "wallet transaction was not classified as outgoing")
+                    return {
+                        "txid": transaction_id,
+                        "mined_height": mined_height,
+                        "account_balance_delta": balance_delta,
+                    }
+            except (OSError, JSONRPCException):
+                pass
+            time.sleep(POLL_INTERVAL_SECONDS)
+        raise RuntimeError(
+            "wallet transaction did not reach mined height {}".format(
+                mined_height))
+
+    def _exercise_shallow_reorg(
+            self,
+            transaction_id: str,
+            original_block_hash: str,
+            original_mined_height: int,
+            producer,
+            target,
+            target_config: Path) -> dict:
+        self.nodes[0].invalidateblock(original_block_hash)
+        self._wait_node_mempool(transaction_id)
+        replacement_blocks = self.nodes[0].generate(2)
+        if len(replacement_blocks) != 2:
+            raise RuntimeError(
+                "Zebra did not mine the two-block replacement branch")
+        replacement_block_hash = self.nodes[0].getblockhash(
+            original_mined_height)
+        if replacement_block_hash == original_block_hash:
+            raise RuntimeError(
+                "Zebra replacement retained the invalidated block")
+        if transaction_id not in self.nodes[0].getblock(
+                replacement_block_hash)["tx"]:
+            raise RuntimeError(
+                "replacement block did not remine the wallet transaction")
+        replacement_tip = original_mined_height + 1
+        if self.nodes[0].getblockcount() != replacement_tip:
+            raise RuntimeError("Zebra replacement branch has the wrong tip")
+        self._wait_zinder_tip(replacement_tip)
+        self._wait_wallet_fully_synced(producer, replacement_tip)
+        self._wait_wallet_fully_synced(target, replacement_tip)
+        self._wait_transaction_mined(
+            producer,
+            transaction_id,
+            original_mined_height,
+        )
+        target_scanned_blocks = self._wait_scanned_replacement(
+            target_config,
+            original_mined_height,
+            replacement_blocks,
+            original_block_hash,
+        )
+        replacement_entry = self._wait_transaction_entry(
+            target,
+            transaction_id,
+            mined_height=original_mined_height,
+        )
+        transaction = target.getrawtransaction(
+            transaction_id,
+            1,
+            replacement_block_hash,
+        )
+        if transaction.get("blockhash") != replacement_block_hash:
+            raise RuntimeError(
+                "Zallet retained stale block identity after the reorg")
+        return {
+            "original_block_hash": original_block_hash,
+            "replacement_block_hash": replacement_block_hash,
+            "replacement_tip": replacement_tip,
+            "replacement_transaction": replacement_entry,
+            "target_scanned_blocks": target_scanned_blocks,
+            "stale_block_identity_absent": True,
+        }
+
+    def _wait_scanned_replacement(
+            self,
+            wallet_config: Path,
+            replacement_start_height: int,
+            replacement_blocks: list[str],
+            invalidated_block_hash: str) -> list[dict]:
+        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+        expected = {
+            replacement_start_height + offset: block_hash
+            for offset, block_hash in enumerate(replacement_blocks)
+        }
+        while time.monotonic() < deadline:
+            scanned = dict(self._scanned_blocks(wallet_config.parent))
+            if (
+                all(scanned.get(height) == block_hash
+                    for height, block_hash in expected.items())
+                and invalidated_block_hash not in scanned.values()
+            ):
+                return [
+                    {"height": height, "hash": block_hash}
+                    for height, block_hash in expected.items()
+                ]
+            time.sleep(POLL_INTERVAL_SECONDS)
+        raise RuntimeError(
+            "wallet database did not replace the invalidated branch")
 
     def _mine_confirmation_and_follow(self, producer, target) -> int:
         mined = self.nodes[0].generate(1)
@@ -2359,11 +2569,15 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
 
     def _write_manifest(self, failure, cleanup_error):
         if self.evidence is not None:
-            scope = (
-                "P2b transparent recovery"
-                if certification_slice() == "p2b"
-                else "P2a expiry recovery plus P2b transparent recovery"
-            )
+            selected_slice = certification_slice()
+            scope = {
+                "p2b": "P2b transparent recovery",
+                "p2c": "P2b fixture plus P2c submit lifecycle",
+                "complete": (
+                    "P2a expiry recovery plus P2b transparent recovery "
+                    "plus P2c submit lifecycle"
+                ),
+            }[selected_slice]
             self._write_json("manifest.json", {"result": "passed" if failure is None and cleanup_error is None else "failed",
                                                  "failure": None if failure is None else str(failure),
                                                  "cleanup_failure": None if cleanup_error is None else str(cleanup_error),
