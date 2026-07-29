@@ -22,7 +22,6 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-
 import toml
 
 from test_framework.config import ZebraArgs
@@ -2099,7 +2098,7 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
         certification_result_path: Path,
         retry_end_height_exclusive: int | None = None,
         barrier_directory: Path | None = None,
-        block_first_range_request: bool | None = None,
+        range_request_pause_attempt: int | None = None,
         wait: bool = True,
     ) -> CertificationChild | None:
         assert self.runtime_root is not None
@@ -2132,9 +2131,9 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
             )
         if barrier_directory is not None:
             environment["ZIT_RANGE_BARRIER_DIR"] = str(barrier_directory)
-        if block_first_range_request is not None:
-            environment["ZIT_BLOCK_FIRST_RANGE_REQUEST"] = (
-                "true" if block_first_range_request else "false"
+        if range_request_pause_attempt is not None:
+            environment["ZIT_RANGE_REQUEST_PAUSE_ATTEMPT"] = str(
+                range_request_pause_attempt
             )
 
         temporary_log_root = self.runtime_root / "certification-logs"
@@ -2335,18 +2334,18 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
             result_path,
             retry_end_height_exclusive=ROTATED_END_HEIGHT_EXCLUSIVE,
             barrier_directory=barrier_directory,
-            block_first_range_request=True,
+            range_request_pause_attempt=1,
             wait=False,
         )
         assert rotation_child is not None
         rotation_deadline = (
             time.monotonic() + ROTATION_BARRIER_TIMEOUT_SECONDS
         )
-        predecessor_path = barrier_directory / "predecessor-loaded.json"
+        paused_path = barrier_directory / "range-request-paused.json"
         wait_for_file(
-            predecessor_path,
+            paused_path,
             rotation_child.child,
-            "predecessor-loaded marker",
+            "range-request-paused marker",
             rotation_deadline,
         )
         require_rotation_barrier_budget(
@@ -2455,10 +2454,10 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
                 end_height_inclusive=ROTATED_SOURCE_HEIGHT,
             ),
         ]
-        predecessor_marker = read_json_object(predecessor_path)
-        if predecessor_marker != attempt_markers[0]:
+        paused_marker = read_json_object(paused_path)
+        if paused_marker != attempt_markers[0]:
             raise RuntimeError(
-                "predecessor-loaded marker differs from range attempt 1"
+                "range-request-paused marker differs from range attempt 1"
             )
         if (
             attempt_markers[0]["chain_epoch_id"]
@@ -2545,7 +2544,6 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
             ROTATED_END_HEIGHT_EXCLUSIVE,
             birthday_scan_result_path,
             barrier_directory=birthday_scan_barrier,
-            block_first_range_request=False,
         )
         birthday_scan_evidence = read_json_object(
             birthday_scan_result_path
@@ -2601,7 +2599,6 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
             ROTATED_END_HEIGHT_EXCLUSIVE,
             restart_result_path,
             barrier_directory=restart_barrier,
-            block_first_range_request=False,
         )
         restart_evidence = read_json_object(restart_result_path)
         self._validate_birthday_through_tip_scan_evidence(
@@ -3471,7 +3468,7 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
                 rotation_root / "metrics-before.txt",
                 rotation_root / "metrics-after.txt",
                 rotation_root / "publisher-publications.json",
-                rotation_root / "barrier/predecessor-loaded.json",
+                rotation_root / "barrier/range-request-paused.json",
                 rotation_root / "barrier/continue-range-request",
                 rotation_root / "barrier/range-request-attempt-1.json",
                 rotation_root / "barrier/range-request-attempt-2.json",
