@@ -114,7 +114,7 @@ def run_migration(zallet_binary, datadir, wallet_dat_path):
             "--path", wallet_dat_path,
             "--no-scan",
             "--allow-warnings",
-            "--this-is-alpha-code-and-you-will-need-to-redo-the-migration-later",
+            "--this-is-beta-code-and-you-will-need-to-redo-the-migration-later",
         ], capture_output=True, text=True, timeout=_MIGRATION_TIMEOUT_SECS)
     except subprocess.TimeoutExpired:
         raise AssertionError(
