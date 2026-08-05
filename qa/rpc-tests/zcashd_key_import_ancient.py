@@ -13,18 +13,18 @@
 # pre-Sapling zcashd binary v1.1.1 that has NO `hdseed` and NO mnemonic -
 # only transparent keys generated from system randomness, plus imported
 # foreign keys. See the wallet builder's "ancient wallet" mode (`make
-# ancient`) [2].
+# ancient`) [1][2].
 #
-# The pre-Sapling binary only supports a subset of the import RPCs, so the
-# fixture's per-phase `imported_keys` carry just `transparent_privkey`
+# The fixture's per-phase `imported_keys` carry `transparent_privkey`
 # (`importprivkey`, spendable) and `transparent_watchonly` (`importaddress
-# <addr>`, watch-only-by-hash). `importpubkey` and P2SH `importaddress`
-# did not exist until Blossom-era zcashd (v2.1.0-1), which also introduced
-# the HD seed - so a genuinely seedless wallet structurally cannot carry
-# `transparent_pubkey` or `transparent_p2sh` imports. The per-phase loop
-# below still tolerates them (in case a future ancient build uses a
-# different pre-Sapling binary), but they are absent from this fixture;
-# the pubkey/P2SH import paths are exercised by `zcashd_key_import.py`.
+# <addr>`, watch-only-by-hash), plus Sprout spending/viewing keys (not
+# asserted; zallet does not support Sprout). There is no
+# `transparent_pubkey` (`importpubkey`) or `transparent_p2sh` (P2SH
+# `importaddress`) entry: zcashd v1.1.1 has no `importpubkey` RPC and its
+# `importaddress` takes no P2SH form (see test-ancient-wallet/README.md).
+# The per-phase loop below still tolerates them (in case a regenerated
+# fixture carries them); the pubkey/P2SH import paths are exercised by
+# `zcashd_key_import.py`.
 #
 # This exercises zallet's seedless import path [3]: with no seed in the
 # source wallet, the migration mints a fresh recovery seed and creates a
@@ -43,15 +43,13 @@
 #     <addr>`) are recorded as SKIPPED - zallet has no plans to support
 #     importing watch-only addresses by script-hash alone.
 #
-# NOTE: this test is disabled in qa/pull-tester/rpc-tests.py. The fixture
-# parses as a genuinely seedless pre-Sapling wallet, but the migration
-# stack cannot yet consume it: `zewif-zcashd` unconditionally requires the
-# `networkinfo` and `orchard_note_commitment_tree` records (both added in
-# a later wallet.dat version and absent from pre-Sapling wallets), and
-# zallet's seedless legacy-account logic (wallet#384) is not yet merged.
+# NOTE: this test is expected to fail until the seedless migration stack
+# lands: `zewif-zcashd` support for pre-Sapling wallet.dat parsing
+# (zewif-zcashd#14) and zallet's seedless legacy-account logic (wallet#384,
+# tracked at zallet#739), plus the zallet dependency bump wiring them up.
 # See test-ancient-wallet/README.md.
 #
-# [1] https://github.com/zcash/zcash/tree/master/qa/zcash/wallet-builder
+# [1] https://github.com/zcash/zcash/tree/master/qa/zcash/wallet-builder (archived)
 # [2] https://github.com/zcash/zcash/issues/7196
 # [3] https://github.com/zcash/wallet/issues/384
 #
