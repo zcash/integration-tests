@@ -17,7 +17,6 @@ import traceback
 from .config import ZebraArgs, ZalletArgs
 from .proxy import JSONRPCException
 from .util import (
-    zebrad_binary,
     initialize_chain,
     prepare_wallets_for_mining,
     start_nodes,
@@ -253,36 +252,3 @@ class BitcoinTestFramework(object):
         else:
             print("Failed")
             sys.exit(1)
-
-
-# Test framework for doing p2p comparison testing, which sets up some bitcoind
-# binaries:
-# 1 binary: test binary
-# 2 binaries: 1 test binary, 1 ref binary
-# n>2 binaries: 1 test binary, n-1 ref binaries
-
-class ComparisonTestFramework(BitcoinTestFramework):
-
-    def __init__(self):
-        super().__init__()
-        self.num_nodes = 1
-        self.cache_behavior = 'clean'
-        self.additional_args = []
-
-    def add_options(self, parser):
-        parser.add_option("--testbinary", dest="testbinary",
-                          default=zebrad_binary(),
-                          help="zebrad binary to test")
-        parser.add_option("--refbinary", dest="refbinary",
-                          default=zebrad_binary(),
-                          help="zebrad binary to use for reference nodes (if any)")
-
-    def setup_network(self):
-        self.nodes = start_nodes(
-            self.num_nodes, self.options.tmpdir,
-            extra_args=[['-debug', '-whitelist=127.0.0.1'] + self.additional_args] * self.num_nodes,
-            binary=[self.options.testbinary] +
-            [self.options.refbinary]*(self.num_nodes-1))
-
-    def get_tests(self):
-        raise NotImplementedError
