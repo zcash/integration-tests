@@ -5,7 +5,8 @@
 ### Binaries
 
 All tests require the `zebrad` binary; most tests require the `zallet` binary;
-some tests require the `zainod` binary.
+some tests require the `zainod` binary. The gRPC parity tests additionally
+require the `lightwalletd` binary.
 
 By default, binaries must exist in the `./src/` folder under the repository
 root. Alternatively, you can set the binary paths with environment variables:
@@ -14,66 +15,65 @@ root. Alternatively, you can set the binary paths with environment variables:
 export ZEBRAD=/path/to/zebrad
 export ZAINOD=/path/to/zainod
 export ZALLET=/path/to/zallet
+export LIGHTWALLETD=/path/to/lightwalletd
 ```
 
 ### Python dependencies
 
-The `zmq`, `toml`, and `base58` Python libraries are required.
-
-#### With uv (recommended)
+The `zmq`, `toml`, `base58`, `grpcio`, and `protobuf` Python libraries are required.
 
 ```bash
 uv sync
 ```
 
-#### Without uv
-
-On Ubuntu or Debian-based distributions:
-
-```bash
-sudo apt-get install python3-zmq python3-base58 python3-toml
-```
-
-On macOS or other platforms:
-
-```bash
-python3 -m venv venv
-. venv/bin/activate
-pip3 install pyzmq base58 toml
-```
+See the [`uv` installation instructions](https://docs.astral.sh/uv/getting-started/installation/)
+if it is not already installed.
 
 ## Running the full test suite
-
-With uv:
 
 ```bash
 uv run ./qa/zcash/full_test_suite.py
 ```
 
-Without uv:
+## Running the gRPC parity tests
+
+The gRPC parity tests run [`zainod`] and [`lightwalletd`] side-by-side against
+the same [`zebrad`] node and compare their [lightwallet-protocol] gRPC responses.
+They require the `lightwalletd` binary (see [Binaries](#binaries) above).
 
 ```bash
-./qa/zcash/full_test_suite.py
+uv run ./qa/zcash/grpc_comparison_tests.py
 ```
+
+Pass any [test runner options](#test-runner-options) after the script name:
+
+```bash
+uv run ./qa/zcash/grpc_comparison_tests.py --nocleanup
+```
+
+[`zebrad`]: https://github.com/ZcashFoundation/zebra
+[`zainod`]: https://github.com/zingolabs/zaino
+[`lightwalletd`]: https://github.com/zcash/lightwalletd
+[lightwallet-protocol]: https://github.com/zcash/lightwallet-protocol
 
 ## Running individual tests
 
 Run a single test:
 
 ```bash
-./qa/pull-tester/rpc-tests.py <testname>
+uv run ./qa/pull-tester/rpc-tests.py <testname>
 ```
 
 Run multiple specific tests:
 
 ```bash
-./qa/pull-tester/rpc-tests.py <testname1> <testname2> <testname3>
+uv run ./qa/pull-tester/rpc-tests.py <testname1> <testname2> <testname3>
 ```
 
 Run all regression tests:
 
 ```bash
-./qa/pull-tester/rpc-tests.py
+uv run ./qa/pull-tester/rpc-tests.py
 ```
 
 ## Parallel execution
@@ -81,7 +81,7 @@ Run all regression tests:
 By default, tests run in parallel with 4 jobs. To change the number of jobs:
 
 ```bash
-./qa/pull-tester/rpc-tests.py --jobs=n
+uv run ./qa/pull-tester/rpc-tests.py --jobs=n
 ```
 
 ## Test runner options
@@ -102,13 +102,13 @@ By default, tests run in parallel with 4 jobs. To change the number of jobs:
 Set `PYTHON_DEBUG=1` for debug output:
 
 ```bash
-PYTHON_DEBUG=1 qa/pull-tester/rpc-tests.py wallet
+PYTHON_DEBUG=1 uv run ./qa/pull-tester/rpc-tests.py wallet
 ```
 
-For real-time output, run a test directly with `python3`:
+For real-time output, run a test directly with `uv run python3`:
 
 ```bash
-python3 qa/rpc-tests/wallet.py
+uv run python3 qa/rpc-tests/wallet.py
 ```
 
 ## Cache management
@@ -127,4 +127,5 @@ rm -rf cache
 killall zebrad
 killall zainod
 killall zallet
+killall lightwalletd
 ```
