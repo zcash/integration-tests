@@ -334,10 +334,7 @@ EXTENDED_SCRIPTS = [
     'hardforkdetection.py',
     'invalidateblock.py',
     'receivedby.py',
-    'maxblocksinflight.py',
 #    'forknotify.py',
-    'p2p-acceptblock.py',
-    'maxuploadtarget.py',
     'wallet_db_flush.py',
 ]
 
