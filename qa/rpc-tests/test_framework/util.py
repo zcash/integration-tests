@@ -305,7 +305,7 @@ def sync_mempools(nodes, wallets=None, wait=0.5, timeout=60):
     print('Wallet view of tips:', wallet_status)
     raise AssertionError("Mempool sync failed")
 
-bitcoind_processes = {}
+zebrad_processes = {}
 
 def initialize_datadir(dirname, n, clock_offset=0):
     datadir = node_dir(dirname, n)
@@ -373,8 +373,8 @@ PROC_START_TIMEOUT = int(os.getenv("PROC_START_TIMEOUT", "120"))
 
 def wait_for_zebrad_start(process, url, i):
     '''
-    Wait for bitcoind to start. This means that RPC is accessible and fully initialized.
-    Raise an exception if bitcoind exits during initialization, or fails to become
+    Wait for zebrad to start. This means that RPC is accessible and fully initialized.
+    Raise an exception if zebrad exits during initialization, or fails to become
     ready within PROC_START_TIMEOUT seconds.
     '''
     deadline = time.time() + PROC_START_TIMEOUT
@@ -450,7 +450,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
 
             miner_addresses[i] = miner_address
 
-        # Create cache directories, run bitcoinds:
+        # Create cache directories, run zebrads:
         block_time = int(time.time()) - (200 * PRE_BLOSSOM_BLOCK_TARGET_SPACING)
         for i in range(MAX_NODES):
             datadir = initialize_datadir(cachedir, i)
@@ -460,10 +460,10 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
             ))
             args = [ zebrad_binary(), "-c="+config, "start" ]
 
-            bitcoind_processes[i] = subprocess.Popen(args)
+            zebrad_processes[i] = subprocess.Popen(args)
             if os.getenv("PYTHON_DEBUG", ""):
                 print("initialize_chain: %s started, waiting for RPC to come up" % (zebrad_binary(),))
-            wait_for_zebrad_start(bitcoind_processes[i], rpc_url(i), i)
+            wait_for_zebrad_start(zebrad_processes[i], rpc_url(i), i)
             if os.getenv("PYTHON_DEBUG", ""):
                 print("initialize_chain: RPC successfully started")
 
@@ -511,14 +511,14 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                 # - https://github.com/ZcashFoundation/zebra/issues/10329
                 # - https://github.com/ZcashFoundation/zebra/issues/10332
                 stop_nodes(rpcs)
-                wait_bitcoinds()
+                wait_zebrads()
                 for i in range(MAX_NODES):
                     config = zebrad_config(node_dir(cachedir, i))
                     args = [ zebrad_binary(), "-c="+config, "start" ]
-                    bitcoind_processes[i] = subprocess.Popen(args)
+                    zebrad_processes[i] = subprocess.Popen(args)
                     if os.getenv("PYTHON_DEBUG", ""):
                         print("initialize_chain: %s started, waiting for RPC to come up" % (zebrad_binary(),))
-                    wait_for_zebrad_start(bitcoind_processes[i], rpc_url(i), i)
+                    wait_for_zebrad_start(zebrad_processes[i], rpc_url(i), i)
                     if os.getenv("PYTHON_DEBUG", ""):
                         print("initialize_chain: RPC successfully started")
                 # Rebuild, not append: `rpcs` must stay exactly MAX_NODES
@@ -629,7 +629,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         stop_wallets(wallets)
         wait_zallets()
         stop_nodes(rpcs)
-        wait_bitcoinds()
+        wait_zebrads()
         for i in range(MAX_NODES):
             # record the system time at which the cache was regenerated
             with open(node_file(cachedir, i, 'cache_config.json'), "w", encoding="utf8") as cache_conf_file:
@@ -705,7 +705,7 @@ def _rpchost_to_args(rpchost):
 
 def start_node(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=None, stderr=None):
     """
-    Start a bitcoind and return RPC connection to it
+    Start a zebrad and return RPC connection to it
     """
     datadir = node_dir(dirname, i)
     if binary is None:
@@ -713,13 +713,13 @@ def start_node(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=
     config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i), extra_args)
     args = [ binary, "-c="+config, "start" ]
 
-    bitcoind_processes[i] = subprocess.Popen(args, stderr=stderr)
+    zebrad_processes[i] = subprocess.Popen(args, stderr=stderr)
     if os.getenv("PYTHON_DEBUG", ""):
-        print("start_node: bitcoind started, waiting for RPC to come up")
+        print("start_node: zebrad started, waiting for RPC to come up")
     url = rpc_url(i, rpchost)
-    wait_for_zebrad_start(bitcoind_processes[i], url, i)
+    wait_for_zebrad_start(zebrad_processes[i], url, i)
     if os.getenv("PYTHON_DEBUG", ""):
-        print("start_node: RPC successfully started for node {} with pid {}".format(i, bitcoind_processes[i].pid))
+        print("start_node: RPC successfully started for node {} with pid {}".format(i, zebrad_processes[i].pid))
     proxy = get_rpc_proxy(url, i, timeout=timewait)
 
     if COVERAGE_DIR:
@@ -748,7 +748,7 @@ def assert_start_raises_init_error(i, dirname, extra_args=None, expected_msg=Non
 
 def start_nodes(num_nodes, dirname, extra_args=None, rpchost=None, binary=None):
     """
-    Start multiple bitcoinds, return RPC connections to them
+    Start multiple zebrads, return RPC connections to them
     """
     if extra_args is None: extra_args = [ None for _ in range(num_nodes) ]
     if binary is None: binary = [ None for _ in range(num_nodes) ]
@@ -771,16 +771,16 @@ def wallet_dir(dirname, n_wallet):
     return os.path.join(dirname, "wallet"+str(n_wallet))
 
 def check_node(i):
-    bitcoind_processes[i].poll()
-    return bitcoind_processes[i].returncode
+    zebrad_processes[i].poll()
+    return zebrad_processes[i].returncode
 
 def stop_node(node, i):
     try:
         node.stop()
     except http.client.CannotSendRequest as e:
         print("WARN: Unable to stop node: " + repr(e))
-    bitcoind_processes[i].wait()
-    del bitcoind_processes[i]
+    zebrad_processes[i].wait()
+    del zebrad_processes[i]
 
 def stop_nodes(nodes):
     for node in nodes:
@@ -811,11 +811,11 @@ def wait_or_kill(proc):
         proc.kill()
         proc.wait()
 
-def wait_bitcoinds():
-    # Wait for all bitcoinds to cleanly exit
-    for bitcoind in list(bitcoind_processes.values()):
-        wait_or_kill(bitcoind)
-    bitcoind_processes.clear()
+def wait_zebrads():
+    # Wait for all zebrads to cleanly exit
+    for zebrad in list(zebrad_processes.values()):
+        wait_or_kill(zebrad)
+    zebrad_processes.clear()
 
 def connect_nodes(from_connection, node_num):
     ip_port = "127.0.0.1:"+str(p2p_port(node_num))
@@ -1372,7 +1372,7 @@ def stop_all_processes():
     Forcibly terminate every zebrad, zainod and zallet process we spawned,
     regardless of whether a test data structure still references it.
     '''
-    for processes in (bitcoind_processes, zallet_processes, zainod_processes):
+    for processes in (zebrad_processes, zallet_processes, zainod_processes):
         for p in list(processes.values()):
             try:
                 p.terminate() # send SIGHIGH

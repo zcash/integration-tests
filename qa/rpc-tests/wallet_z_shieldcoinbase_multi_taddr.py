@@ -60,7 +60,7 @@ from test_framework.util import (
     stop_node,
     stop_wallets,
     wait_and_assert_operationid_status,
-    wait_bitcoinds,
+    wait_zebrads,
     wait_for_total_balance,
     wait_for_tx_scanned,
     wait_zallets,
@@ -167,7 +167,7 @@ class WalletZShieldCoinbaseMultiTaddrTest(BitcoinTestFramework):
         stop_wallets(self.wallets)
         wait_zallets()
         stop_node(self.nodes[0], 0)
-        wait_bitcoinds()
+        wait_zebrads()
 
         print("Restarting zebrad with miner=B...")
         self.nodes[0] = start_node(

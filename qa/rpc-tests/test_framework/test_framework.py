@@ -29,7 +29,7 @@ from .util import (
     stop_nodes,
     stop_wallets,
     stop_zainos,
-    wait_bitcoinds,
+    wait_zebrads,
     wait_zainods,
     wait_zallets,
     enable_coverage,
@@ -134,7 +134,7 @@ class BitcoinTestFramework(object):
         stop_zainos(self.zainos)
         wait_zainods()
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_zebrads()
         self.setup_network(True)
 
     def sync_all(self, do_mempool_sync = True):
@@ -159,18 +159,18 @@ class BitcoinTestFramework(object):
         stop_zainos(self.zainos)
         wait_zainods()
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_zebrads()
         self.setup_network(False, False)
 
     def main(self):
 
         parser = optparse.OptionParser(usage="%prog [options]")
         parser.add_option("--nocleanup", dest="nocleanup", default=False, action="store_true",
-                          help="Leave bitcoinds and test.* datadir on exit or error")
+                          help="Leave the nodes and wallets running, and the test.* datadir in place, on exit or error")
         parser.add_option("--noshutdown", dest="noshutdown", default=False, action="store_true",
-                          help="Don't stop bitcoinds after the test execution")
+                          help="Don't stop the nodes and wallets after the test execution")
         parser.add_option("--srcdir", dest="srcdir", default="../../src",
-                          help="Source directory containing bitcoind/bitcoin-cli (default: %default)")
+                          help="Source directory containing the zebrad, zainod and zallet binaries (default: %default)")
         parser.add_option("--cachedir", dest="cachedir", default=os.path.normpath(os.path.dirname(os.path.realpath(__file__))+"/../../cache"),
                           help="Directory for caching pregenerated datadirs")
         parser.add_option("--tmpdir", dest="tmpdir", default=tempfile.mkdtemp(prefix="test"),
@@ -234,7 +234,7 @@ class BitcoinTestFramework(object):
             print("Stopping nodes")
             if self.nodes is not None:
                 stop_nodes(self.nodes)
-                wait_bitcoinds()
+                wait_zebrads()
 
             # self.nodes, self.wallets and self.zainos migth not contain all
             # running processes, `util` keeps global dicts or running processes

@@ -10,7 +10,9 @@ Zcash ecosystem. The following tests are provided:
 
 The functional tests and CI workflows were originally part of the [`zcashd`]
 codebase, with the Python test framework (and some of the tests) inherited from
-[Bitcoin Core].
+[Bitcoin Core]. `zcashd` has since reached end of life and been archived, and
+nothing here builds or runs it; what remains of it is the migration path off it,
+covered by the tests that exercise `zallet migrate-zcashd-wallet`.
 
 [`zebrad`]: https://github.com/ZcashFoundation/zebra
 [`zainod`]: https://github.com/zingolabs/zaino
@@ -43,13 +45,13 @@ codebase, with the Python test framework (and some of the tests) inherited from
 #### Without uv
 
 On Ubuntu or Debian-based distributions:
-- `sudo apt-get install python3-zmq python3-base58 python3-toml`
+- `sudo apt-get install python3-toml python3-embit`
 - `./qa/zcash/full_test_suite.py`
 
 On macOS or other platforms:
 - `python3 -m venv venv`
 - `. venv/bin/activate`
-- `pip3 install pyzmq base58 toml`
+- `pip3 install toml embit`
 - `./qa/zcash/full_test_suite.py`
 
 See [the README for the functional tests][qa/README.md] for additional usage
@@ -60,8 +62,8 @@ information.
 - For new tests:
   - Add a new file `NEW_TEST.py` to the `qa/rpc-tests` folder.
   - Update `qa/pull-tester/rpc-tests.py`, adding a new entry `'NEW_TEST.py',` to
-    the `BASE_SCRIPTS` array (either at the end of the array, or in the
-    appropriate position based on how long the test takes to run).
+    the `BASE_SCRIPTS` array, in the position matching how long the test takes
+    to run (the list is ordered longest-first to keep CI's shards balanced).
 - Write your test (either new from scratch, or making changes to an existing
   test as appropriate).
 - Open a pull request with your changes.

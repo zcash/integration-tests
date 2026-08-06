@@ -9,17 +9,11 @@ Before running the tests, the following must be installed.
 Unix
 ----
 
-The `zmq`, `toml` and `base58` Python libraries are required. On Ubuntu or Debian-based
-distributions they can be installed via:
+The `toml` and `embit` Python libraries are required. The supported way to
+install them is with [`uv`](https://docs.astral.sh/uv/), from the repository
+root:
 ```
-sudo apt-get install python3-zmq python3-base58
-```
-
-OS X
-------
-
-```
-pip3 install pyzmq base58 toml embit
+uv sync
 ```
 
 Setup
@@ -66,10 +60,12 @@ Possible options, which apply to each individual test run:
 
 ```
   -h, --help            show this help message and exit
-  --nocleanup           Leave zcashds and test.* datadir on exit or error
-  --noshutdown          Don't stop zcashds after the test execution
-  --srcdir=SRCDIR       Source directory containing zcashd/zcash-cli
-                        (default: ../../src)
+  --nocleanup           Leave the nodes and wallets running, and the test.*
+                        datadir in place, on exit or error
+  --noshutdown          Don't stop the nodes and wallets after the test
+                        execution
+  --srcdir=SRCDIR       Source directory containing the zebrad, zainod and
+                        zallet binaries (default: ../../src)
   --tmpdir=TMPDIR       Root directory for datadirs
   --tracerpc            Print out all RPC calls as they are made
   --coveragedir=COVERAGEDIR

@@ -18,7 +18,7 @@ export ZALLET=/path/to/zallet
 
 ### Python dependencies
 
-The `zmq`, `toml`, and `base58` Python libraries are required.
+The `toml` and `embit` Python libraries are required.
 
 #### With uv (recommended)
 
@@ -31,7 +31,7 @@ uv sync
 On Ubuntu or Debian-based distributions:
 
 ```bash
-sudo apt-get install python3-zmq python3-base58 python3-toml
+sudo apt-get install python3-toml python3-embit
 ```
 
 On macOS or other platforms:
@@ -39,7 +39,7 @@ On macOS or other platforms:
 ```bash
 python3 -m venv venv
 . venv/bin/activate
-pip3 install pyzmq base58 toml
+pip3 install toml embit
 ```
 
 ## Running the full test suite
