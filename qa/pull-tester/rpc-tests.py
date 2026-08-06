@@ -28,250 +28,37 @@ import re
 
 SERIAL_SCRIPTS = [
     # These tests involve enough shielded spends (consuming all CPU
-    # cores) that we can't run them in parallel.
-    'mergetoaddress_sapling.py',
-    'mergetoaddress_ua_nu5.py',
-    'mergetoaddress_ua_sapling.py',
-    'wallet_shieldingcoinbase.py',
+    # cores) that we can't run them in parallel. The runner starts them
+    # on their own, and CI gives each one its own shard.
 ]
 
 FLAKY_SCRIPTS = [
     # These tests have intermittent failures that we haven't diagnosed yet.
-    'mempool_nu_activation.py', # this *may* be fixed
-    'mempool_packages.py',
+    # CI runs each on its own shard so it need not be a required check.
 ]
 
-# Disabled until migrated to the Z3 stack. Note = why it fails / suggested
-# migration. Most "deprecated" RPCs are deprecated in zcashd and map to zallet's
-# account/UA API.
+# Tests that target the Z3 stack but are blocked on a specific upstream bug.
+# Note = what they are waiting on. This is deliberately short: tests that were
+# merely never ported from zcashd were removed when zcashd reached end of life,
+# and what they covered is recorded in doc/book/src/dev/migration-backlog.md.
 DISABLED_SCRIPTS = [
-    'addressindex.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'bip65-cltv-p2p.py',  # P2P/mininode framework
-    'bipdersig-p2p.py',  # P2P/mininode framework
-    'blockchain.py',  # zebra missing gettxoutsetinfo
-    'coinbase_funding_streams.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'errors.py',  # zebra missing gettxoutsetinfo
-    'feature_logging.py',  # no zcashd regtest/debug.log
-    'feature_walletfile.py',  # zcashd wallet.dat/-wallet
-    'feature_zip221.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
-    'feature_zip239.py',  # P2P/mininode framework
-    'feature_zip244_blockcommitments.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
-    'finalorchardroot.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'finalsaplingroot.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'framework.py',  # no zcashd regtest/debug.log
-    'fundrawtransaction.py',  # no zallet equiv yet: importpubkey
-    'getblocktemplate.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
-    'getchaintips.py',  # zebra missing getchaintips
-    'getrawtransaction_insight.py',  # deprecated; getnewaddress->z_getaddressforaccount, sendtoaddress->z_sendmany
-    'httpbasics.py',  # RPC basic auth (zebra uses cookie auth)
-    'invalidblockrequest.py',  # P2P/mininode framework
-    'invalidtxrequest.py',  # P2P/mininode framework
-    'key_import_export.py',  # no zallet equiv yet: dumpprivkey, importprivkey
-    'keypool.py',  # deprecated; getnewaddress->z_getaddressforaccount, encryptwallet->walletpassphrase/walletlock
-    'listtransactions.py',  # deprecated; getnewaddress->z_getaddressforaccount, sendtoaddress->z_sendmany
-    'mempool_limit.py',  # deprecated; z_getnewaddress->z_getaddressforaccount
-    'mempool_nu_activation.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'mempool_packages.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
-    'mempool_reorg.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
-    'mempool_resurrect_test.py',  # deprecated; getnewaddress->z_getaddressforaccount, gettransaction->z_viewtransaction
-    'mempool_spendcoinbase.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
-    'mempool_tx_expiry.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'mergetoaddress_mixednotes.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'mergetoaddress_sapling.py',  # deprecated; z_getnewaddress->z_getaddressforaccount
-    'mergetoaddress_ua_nu5.py',  # -anchorconfirmations unsupported
-    'mergetoaddress_ua_sapling.py',  # -anchorconfirmations unsupported
-    'merkle_blocks.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'mining_shielded_coinbase.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'multi_rpc.py',  # RPC basic auth (zebra uses cookie auth)
-    'nodehandling.py',  # zebra missing setban, listbanned, clearbanned
-    'orchard_reorg.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
-    'p2p-fullblocktest.py',  # P2P/mininode framework
-    'p2p_node_bloom.py',  # P2P/mininode framework
-    'p2p_nu_peer_management.py',  # P2P/mininode framework
-    'p2p_txexpiringsoon.py',  # P2P/mininode framework
-    'p2p_txexpiry_dos.py',  # P2P/mininode framework
-    'post_heartwood_rollback.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
-    'prioritisetransaction.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'proxy_test.py',  # -proxy/tor unsupported
-    'rawtransactions.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'remove_sprout_shielding.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'reorg_limit.py',  # investigate
-    'rest.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'rewind_index.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
-    'sapling_rewind_check.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
-    'shorter_block_times.py',  # deprecated; z_getnewaddress->z_getaddressforaccount
-    'show_help.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'signrawtransaction_offline.py',  # no zallet equiv yet: dumpprivkey
-    'signrawtransactions.py',  # deprecated; signrawtransaction->PCZT (wallet#99)
-    'spentindex.py',  # deprecated; getnewaddress->z_getaddressforaccount, sendtoaddress->z_sendmany
-    'sprout_sapling_migration.py',  # no zallet equiv yet: z_importkey
-    'threeofthreerestore.py',  # no zallet equiv yet: dumpprivkey, importprivkey
-    'timestampindex.py',  # -insightexplorer index, -txindex unsupported
-    'turnstile.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
-    'txn_doublespend.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'upgrade_golden.py',  # pre-NU5 nuparams: migrate to ZebraArgs activation_heights
-    'wallet_1941.py',  # no zallet equiv yet: z_exportkey, z_importkey
-    'wallet_accounts.py',  # no zallet equiv yet: z_exportviewingkey
-    'wallet_addresses.py',  # no zallet equiv yet: z_exportkey, z_importkey
-    'wallet_anchorfork.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'wallet_broadcast.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'wallet_changeindicator.py',  # no zallet equiv yet: z_exportviewingkey
-    'wallet_deprecation.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'wallet_doublespend.py',  # deprecated; z_getbalanceforaccount->z_getbalances, gettransaction->z_viewtransaction
-    'wallet_golden_5_6_0.py',  # deprecated; z_getbalanceforaccount->z_getbalances
-    'wallet_import_export.py',  # no zallet equiv yet: z_exportkey, z_importkey
-    'wallet_isfromme.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'wallet_listnotes.py',  # no zallet equiv yet: z_exportviewingkey
-    'wallet_listreceived.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'wallet_listunspent.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'wallet_nullifiers.py',  # no zallet equiv yet: z_exportkey, z_importkey, z_exportviewingkey
-    'wallet_orchard.py',  # no zallet equiv yet: resendwallettransactions
-    'wallet_orchard_change.py',  # deprecated; z_getbalanceforaccount->z_getbalances
-    'wallet_orchard_init.py',  # no zallet equiv yet: resendwallettransactions
-    'wallet_orchard_persistence.py',  # deprecated; z_getbalanceforaccount->z_getbalances
-    'wallet_orchard_reindex.py',  # deprecated; z_getbalanceforaccount->z_getbalances
-    'wallet_ironwood_reorg.py',  # zebra-backend: wait_for_wallet_sync never converges after invalidateblock (still hangs as of zallet@d168efe, past zallet#560/#563/#576)
-    'wallet_ironwood_birthday.py',  # zebra-backend: recovered account's wait_for_wallet_sync(timeout=300) still times out (still hangs as of zallet@d168efe, past zallet#560/#563/#576)
-    'wallet_overwintertx.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'wallet_parsing_amounts.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'wallet_persistence.py',  # no zallet equiv yet: z_exportkey, z_importkey, z_exportviewingkey
-    'wallet_sapling.py',  # no zallet equiv yet: z_exportkey, z_importkey, z_exportviewingkey
-    'wallet_sendmany_any_taddr.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'wallet_shieldcoinbase_sapling.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
-    'wallet_shieldcoinbase_ua_nu5.py',  # deprecated; z_getbalance->z_getbalances, z_getbalanceforaccount->z_getbalances
-    'wallet_shieldcoinbase_ua_sapling.py',  # deprecated; z_getbalance->z_getbalances, z_getbalanceforaccount->z_getbalances
-    'wallet_shieldingcoinbase.py',  # no zallet equiv yet: z_exportviewingkey
-    'wallet_tarnished_5_6_0.py',  # needs ZebraArgs migration (list args)
-    'wallet_treestate.py',  # deprecated; z_getnewaddress->z_getaddressforaccount, z_getbalance->z_getbalances
-    'wallet_unified_change.py',  # needs z_shieldcoinbase funding step: zallet z_sendmany cannot spend mined coinbase (have 0)
-    'wallet_z_sendmany.py',  # no zallet equiv yet: z_exportviewingkey
-    'wallet_zero_value.py',  # deprecated; getnewaddress->z_getaddressforaccount, signrawtransaction->PCZT (wallet#99)
     'addnode.py',  # zebra regtest peering stalls in multi-peer topologies (zebra #10329, #10332)
-    'wallet_zip317_default.py',  # deprecated; getnewaddress->z_getaddressforaccount, z_getnewaddress->z_getaddressforaccount
-    'walletbackup.py',  # no zallet equiv yet: backupwallet
-    'zapwallettxes.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
-    'zkey_import_export.py',  # no zallet equiv yet: z_exportkey, z_importkey
-    'zmq_test.py',  # deprecated; getnewaddress->z_getaddressforaccount, sendtoaddress->z_sendmany
+    # zebra-backend: wait_for_wallet_sync never converges after invalidateblock,
+    # and a recovered account's wait_for_wallet_sync(timeout=300) times out
+    # (still hangs as of zallet@d168efe, past zallet#560/#563/#576).
+    'wallet_ironwood_reorg.py',
+    'wallet_ironwood_birthday.py',
     # migrate-zcashd-wallet aborts on a librustzcash regression: a legacy standalone
     # transparent key whose address is already an account-derived receiver re-inserts
     # that address, violating the UNIQUE index on
     # addresses.cached_transparent_receiver_address (added in librustzcash ef6214bc5e).
     # Re-enable once the standalone-import path resolves the collision (the
-    # import-direction counterpart of librustzcash 3b6a45575c). See the commit message.
+    # import-direction counterpart of librustzcash 3b6a45575c).
     'zcashd_key_import.py',
     'zcashd_key_import_db.py',
 ]
 
-BASE_SCRIPTS= [
-    # Longest test should go first, to favor running tests in parallel
-    # vv Tests less than 5m vv
-    'sprout_sapling_migration.py',
-    'remove_sprout_shielding.py',
-    # vv Tests less than 2m vv
-    'mergetoaddress_mixednotes.py',
-    'wallet_shieldcoinbase_sapling.py',
-    'wallet_shieldcoinbase_ua_sapling.py',
-    'wallet_shieldcoinbase_ua_nu5.py',
-    'turnstile.py',
-    'walletbackup.py',
-    'zkey_import_export.py',
-    'prioritisetransaction.py',
-    'wallet_listreceived.py',
-    'mempool_tx_expiry.py',
-    'finalsaplingroot.py',
-    'finalorchardroot.py',
-    'wallet_orchard.py',
-    'wallet_overwintertx.py',
-    'wallet_persistence.py',
-    'wallet_listnotes.py',
-    'wallet_listunspent.py',
-    'wallet_golden_5_6_0.py',
-    'wallet_tarnished_5_6_0.py',
-    # vv Tests less than 60s vv
-    'orchard_reorg.py',
-    'fundrawtransaction.py',
-    'reorg_limit.py',
-    'mempool_limit.py',
-    'p2p-fullblocktest.py',
-    # vv Tests less than 30s vv
-    'wallet_1941.py',
-    'wallet_accounts.py',
-    'wallet_addresses.py',
-    'wallet_anchorfork.py',
-    'wallet_changeindicator.py',
-    'wallet_deprecation.py',
-    'wallet_doublespend.py',
-    'wallet_import_export.py',
-    'wallet_isfromme.py',
-    'wallet_orchard_change.py',
-    'wallet_orchard_init.py',
-    'wallet_orchard_persistence.py',
-    'wallet_orchard_reindex.py',
-    'wallet_nullifiers.py',
-    'wallet_sapling.py',
-    'wallet_sendmany_any_taddr.py',
-    'wallet_treestate.py',
-    'wallet_unified_change.py',
-    'wallet_zip317_default.py',
-    'listtransactions.py',
-    'mempool_resurrect_test.py',
-    'txn_doublespend.py',
-    'txn_doublespend.py --mineblock',
-    'getchaintips.py',
-    'rawtransactions.py',
-    'getrawtransaction_insight.py',
-    'rest.py',
-    'mempool_spendcoinbase.py',
-    'mempool_reorg.py',
-    'httpbasics.py',
-    'multi_rpc.py',
-    'zapwallettxes.py',
-    'proxy_test.py',
-    'merkle_blocks.py',
-    'signrawtransactions.py',
-    'signrawtransaction_offline.py',
-    'key_import_export.py',
-    'nodehandling.py',
-    'addressindex.py',
-    'spentindex.py',
-    'timestampindex.py',
-    'blockchain.py',
-    'keypool.py',
-    'getblocktemplate.py',
-    'bip65-cltv-p2p.py',
-    'bipdersig-p2p.py',
-    'invalidblockrequest.py',
-    'invalidtxrequest.py',
-    'p2p_nu_peer_management.py',
-    'rewind_index.py',
-    'p2p_txexpiry_dos.py',
-    'p2p_txexpiringsoon.py',
-    'p2p_node_bloom.py',
-    'shorter_block_times.py',
-    'mining_shielded_coinbase.py',
-    'coinbase_funding_streams.py',
-    'framework.py',
-    'sapling_rewind_check.py',
-    'feature_zip221.py',
-    'feature_zip239.py',
-    'feature_zip244_blockcommitments.py',
-    'upgrade_golden.py',
-    'post_heartwood_rollback.py',
-    'feature_logging.py',
-    'feature_walletfile.py',
-    'wallet_parsing_amounts.py',
-    'wallet_broadcast.py',
-    'wallet_z_sendmany.py',
-    'wallet_zero_value.py',
-    'threeofthreerestore.py',
-    'show_help.py',
-    'errors.py',
-    'converttex.py',
-]
-
-# Add new scripts to this list instead of BASE_SCRIPTS, so they are grouped separately
-# in CI. This will eventually be merged into BASE_SCRIPTS once everything is working.
-NEW_SCRIPTS= [
+BASE_SCRIPTS = [
     # Longest test should go first, to favor running tests in parallel
     # vv Tests less than 10m vv
     # These Ironwood tests span the NU6.3 activation boundary or chain many
@@ -291,6 +78,8 @@ NEW_SCRIPTS= [
     'wallet_ironwood_negatives.py',
     # vv Tests less than 2m vv
     'wallet_ironwood.py',
+    'wallet_ironwood_reorg.py',
+    'wallet_ironwood_birthday.py',
     'wallet_changeaddresses.py',
     'wallet_legacy_pool_spend.py',
     # vv Tests less than 60s vv
@@ -310,48 +99,24 @@ NEW_SCRIPTS= [
     'feature_nu6_1.py',
     'nuparams.py',
     'getmininginfo.py',
+    'converttex.py',
     'zcashd_key_import.py',
     'zcashd_key_import_db.py',
 ]
 
-ZMQ_SCRIPTS = [
-    # ZMQ test can only be run if bitcoin was built with zmq-enabled.
-    # call rpc_tests.py with --nozmq to explicitly exclude these tests.
-    "zmq_test.py"]
+# ALL_SCRIPTS is left complete so a disabled test can still be run explicitly
+# by name; the lists that actually get run have DISABLED_SCRIPTS removed.
+# Matching is on the script filename so entries with extra args (e.g.
+# 'foo.py --bar') are covered too.
+ALL_SCRIPTS = SERIAL_SCRIPTS + FLAKY_SCRIPTS + BASE_SCRIPTS
 
-EXTENDED_SCRIPTS = [
-    # These tests are not run by the travis build process.
-    # Longest test should go first, to favor running tests in parallel
-    'pruning.py',
-    # vv Tests less than 5m vv
-    # vv Tests less than 2m vv
-    'getblocktemplate_longpoll.py',
-    # vv Tests less than 60s vv
-    'rpcbind_test.py',
-    # vv Tests less than 30s vv
-    'getblocktemplate_proposals.py',
-    'forknotify.py',
-    'hardforkdetection.py',
-    'invalidateblock.py',
-    'receivedby.py',
-#    'forknotify.py',
-    'wallet_db_flush.py',
-]
-
-# Exclude DISABLED_SCRIPTS from the lists that actually get run, matching on
-# the script filename so entries with extra args (e.g. 'foo.py --bar') are
-# covered too. ALL_SCRIPTS above is left complete so a disabled test can
-# still be run explicitly by name.
 _DISABLED_FILES = {s.split()[0] for s in DISABLED_SCRIPTS}
 def _without_disabled(scripts):
     return [s for s in scripts if s.split()[0] not in _DISABLED_FILES]
 SERIAL_SCRIPTS = _without_disabled(SERIAL_SCRIPTS)
 FLAKY_SCRIPTS = _without_disabled(FLAKY_SCRIPTS)
 BASE_SCRIPTS = _without_disabled(BASE_SCRIPTS)
-NEW_SCRIPTS = _without_disabled(NEW_SCRIPTS)
-ZMQ_SCRIPTS = _without_disabled(ZMQ_SCRIPTS)
 
-ALL_SCRIPTS = SERIAL_SCRIPTS + FLAKY_SCRIPTS + BASE_SCRIPTS + NEW_SCRIPTS + ZMQ_SCRIPTS + EXTENDED_SCRIPTS
 
 def main():
     # Parse arguments and pass through unrecognised args
@@ -364,14 +129,11 @@ def main():
     parser.add_argument('--coverage', action='store_true', help='generate a basic coverage report for the RPC interface')
     parser.add_argument('--deterministic', '-d', action='store_true', help='make the output a bit closer to deterministic in order to compare runs.')
     parser.add_argument('--exclude', '-x', help='specify a comma-separated-list of scripts to exclude. Do not include the .py extension in the name.')
-    parser.add_argument('--extended', action='store_true', help='run the extended test suite in addition to the basic tests')
-    parser.add_argument('--new-only', action='store_true', help='run only the NEW_SCRIPTS tests')
     parser.add_argument('--force', '-f', action='store_true', help='run tests even on platforms where they are disabled by default (e.g. windows).')
     parser.add_argument('--help', '-h', '-?', action='store_true', help='print help text and exit')
     parser.add_argument('--jobs', '-j', type=int, default=4, help='how many test scripts to run in parallel. Default=4.')
     parser.add_argument('--machines', '-m', type=int, default=-1, help='how many machines to shard the tests over. must also provide individual shard index. Default=-1 (no sharding).')
     parser.add_argument('--rpcgroup', '-r', type=int, default=-1, help='individual shard index. must also provide how many machines to shard the tests over. Default=-1 (no sharding).')
-    parser.add_argument('--nozmq', action='store_true', help='do not run the zmq tests')
     args, unknown_args = parser.parse_known_args()
 
     # Create a set to store arguments and create the passon string
@@ -385,7 +147,6 @@ def main():
     enable_wallet = config["components"].getboolean("ENABLE_WALLET")
     enable_utils = config["components"].getboolean("ENABLE_UTILS")
     enable_bitcoind = config["components"].getboolean("ENABLE_BITCOIND")
-    enable_zmq = config["components"].getboolean("ENABLE_ZMQ") and not args.nozmq
 
     if config["environment"]["EXEEXT"] == ".exe" and not args.force:
         # https://github.com/bitcoin/bitcoin/commit/d52802551752140cf41f0d9a225a43e84404d3e9
@@ -398,16 +159,6 @@ def main():
         print("Rerun `configure` with -enable-wallet, -with-utils and -with-daemon and rerun make")
         sys.exit(0)
 
-    # python3-zmq may not be installed. Handle this gracefully and with some helpful info
-    if enable_zmq:
-        try:
-            import zmq
-            zmq # Silences pyflakes
-        except ImportError:
-            print("ERROR: \"import zmq\" failed. Use --nozmq to run without the ZMQ tests."
-                  "To run zmq tests, see dependency info in /qa/README.md.")
-            raise
-
     # Build list of tests
     if tests:
         # Individual tests have been specified. Run specified tests that exist
@@ -418,19 +169,9 @@ def main():
         print("Running individually selected tests: ")
         for t in test_list:
             print("\t" + t)
-    elif args.new_only:
-        test_list = NEW_SCRIPTS
     else:
-        # No individual tests have been specified. Run base tests, and
-        # optionally ZMQ tests and extended tests.
-        test_list = SERIAL_SCRIPTS + FLAKY_SCRIPTS + BASE_SCRIPTS + NEW_SCRIPTS
-        if enable_zmq:
-            test_list += ZMQ_SCRIPTS
-        if args.extended:
-            test_list += EXTENDED_SCRIPTS
-            # TODO: BASE_SCRIPTS and EXTENDED_SCRIPTS are sorted by runtime
-            # (for parallel running efficiency). This combined list will is no
-            # longer sorted.
+        # No individual tests have been specified; run everything enabled.
+        test_list = SERIAL_SCRIPTS + FLAKY_SCRIPTS + BASE_SCRIPTS
 
     # Remove the test cases that the user has explicitly asked to exclude.
     if args.exclude:
