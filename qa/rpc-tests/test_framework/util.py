@@ -72,30 +72,36 @@ PORT_MIN = 11000
 # The number of ports to "reserve" for p2p, rpc and wallet rpc each
 PORT_RANGE = 5000
 
+# The repository root, derived from this file's location
+# (qa/rpc-tests/test_framework/), so that the default binary and config-template
+# paths do not depend on the working directory the tests were started from.
+REPOROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))
+
 def zebrad_binary():
-    return os.getenv("ZEBRAD", os.path.join("src", "zebrad"))
+    return os.getenv("ZEBRAD", os.path.join(REPOROOT, "src", "zebrad"))
 
 def zaino_binary():
-    return os.getenv("ZAINOD", os.path.join("src", "zainod"))
+    return os.getenv("ZAINOD", os.path.join(REPOROOT, "src", "zainod"))
 
 def zallet_binary():
-    return os.getenv("ZALLET", os.path.join("src", "zallet"))
+    return os.getenv("ZALLET", os.path.join(REPOROOT, "src", "zallet"))
 
 def zebrad_config(datadir):
-    base_location = os.path.join('qa', 'defaults', 'zebrad', 'config.toml')
+    base_location = os.path.join(REPOROOT, 'qa', 'defaults', 'zebrad', 'config.toml')
     new_location = os.path.join(datadir, "config.toml")
     if not os.path.exists(new_location):
         shutil.copyfile(base_location, new_location)
     return new_location
 
 def zallet_config(datadir):
-    base_location = os.path.join('qa', 'defaults', 'zallet')
+    base_location = os.path.join(REPOROOT, 'qa', 'defaults', 'zallet')
     if not os.path.exists(datadir):
         shutil.copytree(base_location, datadir)
     return os.path.join(datadir, "zallet.toml")
 
 def zainod_config(datadir):
-    base_location = os.path.join('qa', 'defaults', 'zainod', 'zaino_config.toml')
+    base_location = os.path.join(REPOROOT, 'qa', 'defaults', 'zainod', 'zaino_config.toml')
     new_location = os.path.join(datadir, "zaino_config.toml")
     os.makedirs(datadir, exist_ok=True)
     if not os.path.exists(new_location):
