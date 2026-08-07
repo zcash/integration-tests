@@ -152,14 +152,6 @@ DISABLED_SCRIPTS = [
     'zapwallettxes.py',  # deprecated; getnewaddress->z_getaddressforaccount, getbalance->z_getbalances
     'zkey_import_export.py',  # no zallet equiv yet: z_exportkey, z_importkey
     'zmq_test.py',  # deprecated; getnewaddress->z_getaddressforaccount, sendtoaddress->z_sendmany
-    # migrate-zcashd-wallet aborts on a librustzcash regression: a legacy standalone
-    # transparent key whose address is already an account-derived receiver re-inserts
-    # that address, violating the UNIQUE index on
-    # addresses.cached_transparent_receiver_address (added in librustzcash ef6214bc5e).
-    # Re-enable once the standalone-import path resolves the collision (the
-    # import-direction counterpart of librustzcash 3b6a45575c). See the commit message.
-    'zcashd_key_import.py',
-    'zcashd_key_import_db.py',
 ]
 
 BASE_SCRIPTS= [
