@@ -59,6 +59,8 @@ import os
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_true,
+    indexer_rpc_port,
+    node_dir,
     start_wallet,
     update_zallet_conf,
     wallet_dir,
@@ -104,7 +106,11 @@ class ZcashdKeyImportAncientTest(BitcoinTestFramework):
         # Set up zallet datadir with config.
         zallet = zallet_binary()
         datadir = wallet_dir(self.options.tmpdir, 0)
-        update_zallet_conf(datadir, rpc_port(0), wallet_rpc_port(0))
+        # The zebra backend needs the co-located zebrad's indexer port and
+        # state directory; the zaino backend ignores both.
+        update_zallet_conf(datadir, rpc_port(0), wallet_rpc_port(0),
+                           indexer_port=indexer_rpc_port(0),
+                           zebra_state_dir=node_dir(self.options.tmpdir, 0))
 
         # `run_migration` asserts a zero exit status for both
         # `init-wallet-encryption` and `migrate-zcashd-wallet`, so reaching
