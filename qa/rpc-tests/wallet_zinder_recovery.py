@@ -6,8 +6,9 @@
 """Exercise current Zallet recovery against a fresh native Zinder runtime.
 
 The runtime smoke includes the P2a chain-view expiry proofs and the P2b
-transparent receive, spend, restart, and historical-rescan proof. Transaction
-submission through Zinder remains outside this scenario.
+transparent receive, spend, restart, and historical-rescan proof. Its P2c
+extension submits the wallet transaction through Zinder and follows it across
+the mempool, mining, restart, and shallow-reorg lifecycle.
 """
 
 from __future__ import annotations
@@ -67,6 +68,7 @@ from test_framework.zip317 import MINIMUM_FEE
 NETWORK_NAME = "zcash-regtest"
 INITIAL_HEIGHT = 3
 READINESS_TIMEOUT_SECONDS = 240
+HISTORICAL_SYNC_TIMEOUT_SECONDS = 600
 PROCESS_STOP_TIMEOUT_SECONDS = 15
 # Keep individual transport failures bounded while allowing normal wallet
 # database and key operations to complete.
@@ -101,8 +103,8 @@ RANGE_MARKER_FIELDS = {
     "requested_end_height_inclusive",
     "chain_epoch_id",
 }
-ZINDER_REVISION = "b2d4edd3f6c813ec19662147cf3c330ffa9337cd"
-ZALLET_REVISION = "3c7242b77cf5259ea8fdb76e1547c910fc5a3987"
+ZINDER_REVISION = "9b9e7040453f66e847302f186f95d95b297e6705"
+ZALLET_REVISION = "0f54455721e819378ab34f5c5fab29016c723377"
 ZEBRA_REVISION = "7121c82ba6795a151523d5b308a19743f4a1ade7"
 EVIDENCE_DIRECTORY_ENVIRONMENT = "ZIT_ZINDER_EVIDENCE_DIR"
 CERTIFICATION_SLICE_ENVIRONMENT = "ZIT_ZALLET_CERTIFICATION_SLICE"
@@ -1165,7 +1167,25 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             producer,
             target,
             target_config: Path) -> dict:
+        raw_transaction = self.nodes[0].getrawtransaction(
+            transaction_id,
+            0,
+            original_block_hash,
+        )
         self.nodes[0].invalidateblock(original_block_hash)
+        # Zebra resets its mempool after a chain fork, but does not guarantee
+        # that transactions from disconnected blocks are restored to it.
+        disconnected_transaction_rebroadcast = (
+            transaction_id not in self.nodes[0].getrawmempool()
+        )
+        if disconnected_transaction_rebroadcast:
+            rebroadcast_transaction_id = self.nodes[0].sendrawtransaction(
+                raw_transaction,
+            )
+            if rebroadcast_transaction_id != transaction_id:
+                raise RuntimeError(
+                    "Zebra returned the wrong transaction ID after "
+                    "rebroadcast")
         self._wait_node_mempool(transaction_id)
         replacement_blocks = self.nodes[0].generate(2)
         if len(replacement_blocks) != 2:
@@ -1216,6 +1236,9 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             "replacement_tip": replacement_tip,
             "replacement_transaction": replacement_entry,
             "target_scanned_blocks": target_scanned_blocks,
+            "disconnected_transaction_rebroadcast": (
+                disconnected_transaction_rebroadcast
+            ),
             "stale_block_identity_absent": True,
         }
 
@@ -1623,9 +1646,13 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         )
         self._wait_for_backend_trace(
             "zallet-expiry-history",
-            "Chain view expired during history recovery; "
-            "reacquiring it before retrying the entire range")
-        self._wait_wallet_fully_synced(history_wallet, history_rotated_tip)
+            "History recovery chain view became unavailable; "
+            "re-pinning before retrying")
+        self._wait_wallet_fully_synced(
+            history_wallet,
+            history_rotated_tip,
+            timeout_seconds=HISTORICAL_SYNC_TIMEOUT_SECONDS,
+        )
         history_blocks_final = self._scanned_blocks(config.parent)
         self._require_scanned_chain(
             history_blocks_final,
@@ -1731,8 +1758,12 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
         )
         self._wait_for_backend_trace(
             "zallet-expiry-steady",
-            "Chain view expired, reacquiring the current view")
-        self._wait_wallet_fully_synced(steady_wallet, steady_rotated_tip)
+            "Chain view became stale, re-pinning to the current tip")
+        self._wait_wallet_fully_synced(
+            steady_wallet,
+            steady_rotated_tip,
+            timeout_seconds=HISTORICAL_SYNC_TIMEOUT_SECONDS,
+        )
         steady_blocks_final = self._scanned_blocks(config.parent)
         self._require_scanned_chain(
             steady_blocks_final,
@@ -1765,8 +1796,8 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                     history_attempt_3,
                 ],
                 "typed_expiry_trace": (
-                    "Chain view expired during history recovery; "
-                    "reacquiring it before retrying the entire range"),
+                    "History recovery chain view became unavailable; "
+                    "re-pinning before retrying"),
                 "pair_publications": history_publications,
             },
             "steady_state": {
@@ -1788,7 +1819,7 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
                     steady_attempt_3,
                 ],
                 "typed_expiry_trace": (
-                    "Chain view expired, reacquiring the current view"),
+                    "Chain view became stale, re-pinning to the current tip"),
                 "pair_publications": steady_publications,
             },
         }
@@ -2491,16 +2522,25 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             time.sleep(POLL_INTERVAL_SECONDS)
         raise RuntimeError("wallet did not reach height {}".format(height))
 
-    def _wait_wallet_fully_synced(self, wallet, height: int):
-        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+    def _wait_wallet_fully_synced(
+            self,
+            wallet,
+            height: int,
+            *,
+            timeout_seconds: int = READINESS_TIMEOUT_SECONDS):
+        deadline = time.monotonic() + timeout_seconds
+        last_status = None
         while time.monotonic() < deadline:
             status = wallet.getwalletstatus()
+            last_status = status
             if (status.get("wallet_tip", {}).get("height") == height
                     and status.get("fully_synced_height") == height
                     and "sync_work_remaining" not in status):
                 return status
             time.sleep(POLL_INTERVAL_SECONDS)
-        raise RuntimeError("wallet did not fully sync to height {}".format(height))
+        raise RuntimeError(
+            "wallet did not fully sync to height {}: last status {}".format(
+                height, last_status))
 
     def _wait_for_backend_trace(self, process_name: str, expected: str):
         assert self.children is not None
