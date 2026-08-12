@@ -7,15 +7,19 @@
 # Ironwood (NU6.3, ZIP 2005) cross-pool spends, against the Z3 stack
 # (zebrad + zaino + zallet).
 #
-# A z_sendmany `fromaddress` resolves to an account, and the default spend
-# policy permits drawing from every shielded pool the account holds. This test
-# exercises Ironwood interacting with Sapling across the turnstile:
+# A z_sendmany `fromaddress` resolves to an account, and the spend policy
+# derives from the value pools the address's receivers name (zcash/zallet#756):
+# a Sapling receiver permits the Sapling pool, and an Orchard receiver permits
+# the Orchard and Ironwood pools (payments to Orchard receivers land in the
+# Ironwood bundle once NU6.3 is active). This test exercises Ironwood
+# interacting with Sapling across the turnstile:
 #   1. Turnstile crossing Ironwood -> Sapling: with only Ironwood funds, paying
-#      a Sapling receiver moves value across pools; the recipient note is
-#      Sapling and becomes spendable there.
+#      a Sapling receiver from an Orchard-only address moves value across
+#      pools; the recipient note is Sapling and becomes spendable there.
 #   2. Sapling + Ironwood combined inputs: a payment larger than either pool's
-#      total forces the wallet to draw from both a Sapling note and an Ironwood
-#      note in one transaction.
+#      total, sent from an address whose receivers name both pools, forces the
+#      wallet to draw from both a Sapling note and an Ironwood note in one
+#      transaction.
 #
 # Cross-pool sends reveal amounts across the turnstile, so they are issued with
 # the `AllowRevealedAmounts` privacy policy. All sends stay within one account
@@ -122,7 +126,13 @@ class WalletIronwoodCrossPoolTest(IronwoodTestFramework):
                     "combined balance must cover the payment")
         combine_zec = (Decimal(combine_zat) / COIN).quantize(Decimal('0.0001'))
 
-        view = self.cross_pool_send(node, w, orchard_ua, orchard_ua, combine_zec)
+        # The source must carry both Sapling and Orchard receivers: the spend
+        # policy permits only the pools the fromaddress's receivers name, so an
+        # Orchard-only source could draw on Ironwood but never on the Sapling
+        # note this test needs combined (zcash/zallet#756).
+        combined_ua = w.z_getaddressforaccount(
+            acct, ['sapling', 'orchard'])['address']
+        view = self.cross_pool_send(node, w, combined_ua, orchard_ua, combine_zec)
         assert_true(len(spends_in_pool(view, Pool.SAPLING)) >= 1,
                     "combined payment should spend a Sapling note; got {}"
                     .format(view['spends']))
