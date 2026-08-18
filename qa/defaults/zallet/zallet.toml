@@ -21,6 +21,7 @@ regtest_nuparams = [
     "c8e71055:1", # NU6
     "4dec4df0:1", # NU6_1
     "5437f330:1", # NU6_2
+    "37a5165b:1", # NU6_3 (Ironwood)
 ]
 
 [database]
