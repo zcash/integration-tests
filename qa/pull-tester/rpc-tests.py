@@ -283,6 +283,9 @@ NEW_SCRIPTS= [
     'wallet_ironwood_crosspool.py',
     'wallet_ironwood_spending.py',
     'wallet_ironwood_invariants.py',
+    # Mints an Orchard note before NU6.3 and an Ironwood note after, so it mines
+    # a maturity window plus the deferred activation height.
+    'wallet_z_sendmany_privacy_ironwood.py',
     # vv Tests less than 5m vv
     'wallet.py',
     'wallet_ironwood_persistence.py',

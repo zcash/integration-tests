@@ -114,11 +114,12 @@ class WalletZSendmanyPrivacyTest(BitcoinTestFramework):
         """The account's spendable Sapling balance, and what can pay an Orchard
         receiver, both in zatoshis.
 
-        Ironwood notes are Orchard-shaped and are received AT an Orchard
-        receiver, with no receiver type of their own, so they are part of what
-        can pay one. Summing both keeps this test agnostic about whether NU6.3
-        is active on the chain beneath it, and mirrors what zallet itself sums
-        when deciding whether a crossing is needed.
+        This test runs with NU6.3 inactive (see `setup_nodes`), so an Orchard
+        receiver is paid out of the Orchard pool and the Orchard balance is what
+        covers it. Ironwood is deliberately NOT added in: the two are distinct
+        value pools, and once NU6.3 activates it is Ironwood rather than Orchard
+        that pays an Orchard receiver, with a crossing between them revealing
+        its amount. `wallet_z_sendmany_privacy_ironwood.py` covers that era.
         """
         pools = wallet.z_getbalanceforaccount(
             account_uuid, MIN_CONFIRMATIONS)['pools']
@@ -127,10 +128,11 @@ class WalletZSendmanyPrivacyTest(BitcoinTestFramework):
             # A pool holding nothing is omitted from the response entirely.
             return pools[pool]['valueZat'] if pool in pools else 0
 
-        return (
-            spendable(Pool.SAPLING),
-            spendable(Pool.ORCHARD) + spendable(Pool.IRONWOOD),
-        )
+        assert_equal(
+            spendable(Pool.IRONWOOD), 0,
+            "NU6.3 is inactive here, so no funds should reach the Ironwood pool")
+
+        return spendable(Pool.SAPLING), spendable(Pool.ORCHARD)
 
     def wait_for_shielded_balances(self, wallet, account_uuid, timeout=240):
         """Poll until both shielded sides hold spendable funds, then return them.
@@ -139,10 +141,9 @@ class WalletZSendmanyPrivacyTest(BitcoinTestFramework):
         which lands after the confirming transaction itself is scanned, so the
         funded balance has to be polled rather than read once.
 
-        The Orchard-payable side is polled by hand rather than through
-        `wait_for_account_spendable`, which names a single `Pool`: these funds
-        may sit in Orchard or in Ironwood depending on whether NU6.3 is active,
-        and this test deliberately does not care which.
+        Both sides are read through `shielded_balances`, which also asserts that
+        the Ironwood pool stays empty, so a chain that unexpectedly activated
+        NU6.3 fails here rather than silently changing what the test covers.
         """
         deadline = time.time() + timeout
         while True:
