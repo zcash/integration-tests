@@ -61,12 +61,14 @@ from test_framework.util import (
     assert_true,
     indexer_rpc_port,
     node_dir,
+    nu_activation_all_at_1_with_ironwood,
     start_wallet,
     update_zallet_conf,
     wallet_dir,
     wallet_rpc_port,
     rpc_port,
     zallet_binary,
+    ZalletArgs,
 )
 from test_framework.zcashd_migration import (
     CheckReporter,
@@ -86,6 +88,10 @@ class ZcashdKeyImportAncientTest(BitcoinTestFramework):
         self.num_wallets = 0   # We set up the wallet manually via migration
         self.num_indexers = 0
         self.cache_behavior = 'clean'
+        # The ancient wallet fixture predates NU6.3 but the wallet DB's
+        # configured params must be consistent with zebrad's. Activate NU6.3
+        # so the migration's regtest activation schedule includes it.
+        self.activation_heights = nu_activation_all_at_1_with_ironwood()
 
     def prepare_chain(self):
         self.nodes[0].generate(1)
@@ -110,7 +116,8 @@ class ZcashdKeyImportAncientTest(BitcoinTestFramework):
         # state directory; the zaino backend ignores both.
         update_zallet_conf(datadir, rpc_port(0), wallet_rpc_port(0),
                            indexer_port=indexer_rpc_port(0),
-                           zebra_state_dir=node_dir(self.options.tmpdir, 0))
+                           zebra_state_dir=node_dir(self.options.tmpdir, 0),
+                           extra_args=ZalletArgs(activation_heights=self.activation_heights))
 
         # `run_migration` asserts a zero exit status for both
         # `init-wallet-encryption` and `migrate-zcashd-wallet`, so reaching
@@ -118,7 +125,8 @@ class ZcashdKeyImportAncientTest(BitcoinTestFramework):
         run_migration(zallet, datadir, wallet_dat_path)
 
         print("Starting wallet...")
-        wallet = start_wallet(0, self.options.tmpdir)
+        wallet = start_wallet(0, self.options.tmpdir,
+                              zallet_args=ZalletArgs(activation_heights=self.activation_heights))
         self.wallets = [wallet]
 
         reporter = CheckReporter()

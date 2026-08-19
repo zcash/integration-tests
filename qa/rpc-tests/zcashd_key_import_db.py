@@ -52,9 +52,12 @@ from test_framework.ufvk_decode import (
 )
 from test_framework.util import (
     assert_true,
+    nu_activation_all_at_1_with_ironwood,
+    render_regtest_nuparams,
     wallet_dir,
     zallet_binary,
     zallet_config,
+    ZalletArgs,
 )
 from test_framework.zcashd_migration import (
     CheckReporter,
@@ -175,7 +178,19 @@ class ZcashdKeyImportDbTest(BitcoinTestFramework):
         # directory (zallet.toml + encryption-identity.txt) into place.
         zallet = zallet_binary()
         datadir = wallet_dir(self.options.tmpdir, 0)
-        zallet_config(datadir)
+        config_path = zallet_config(datadir)
+
+        # The modern test-wallet fixture spans all 9 network upgrades including
+        # NU6.3 (Ironwood), so its transactions carry NU6.3 branch IDs. The
+        # default config only activates through NU6.2; add NU6.3 so the
+        # migration's derive_regtest_activations includes it.
+        import toml
+        with open(config_path, "r", encoding="utf8") as f:
+            config = toml.load(f)
+        config.setdefault('consensus', {})['regtest_nuparams'] = \
+            render_regtest_nuparams(nu_activation_all_at_1_with_ironwood())
+        with open(config_path, "w", encoding="utf8") as f:
+            toml.dump(config, f)
 
         run_migration(zallet, datadir, wallet_dat_path)
 
