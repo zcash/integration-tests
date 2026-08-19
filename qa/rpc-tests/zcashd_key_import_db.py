@@ -57,7 +57,6 @@ from test_framework.util import (
     wallet_dir,
     zallet_binary,
     zallet_config,
-    ZalletArgs,
 )
 from test_framework.zcashd_migration import (
     CheckReporter,
