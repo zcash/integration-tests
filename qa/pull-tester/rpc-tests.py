@@ -301,6 +301,7 @@ NEW_SCRIPTS= [
     'wallet_z_importviewingkey.py',
     'regtest_signrawtransaction.py',
     # vv Tests less than 30s vv
+    'zallet_block_conflict.py',
     'feature_nu6.py',
     'feature_backup_non_finalized_state.py',
     'getrawtransaction_sidechain.py',
