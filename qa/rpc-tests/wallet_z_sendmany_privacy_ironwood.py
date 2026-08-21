@@ -43,11 +43,15 @@
 # Orchard notes minted before activation and Ironwood notes minted after.
 #
 # Both shielded notes are minted at an exact size by paying the sender's own
-# Orchard receiver out of Sapling, rather than by shielding coinbase into it
-# directly: the amounts have to be known relative to each other (Orchard must
-# cover a payment Ironwood cannot), and a many-UTXO coinbase shield straight into
-# an Orchard receiver leaves the note unspendable anyway -- see the same
-# construction in `wallet_ironwood_orchard_turnstile.py`.
+# Orchard receiver, rather than by shielding coinbase into it directly: the
+# amounts have to be known relative to each other (Orchard must cover a payment
+# Ironwood cannot), and a many-UTXO coinbase shield straight into an Orchard
+# receiver leaves the note unspendable anyway -- see the same construction in
+# `wallet_ironwood_orchard_turnstile.py`.
+#
+# The Orchard note is minted out of shielded coinbase in Sapling; the Ironwood
+# note is then minted out of Orchard, because a Sapling-to-Orchard crossing
+# returns its change to the destination pool, leaving Sapling empty.
 #
 
 import time
@@ -230,7 +234,12 @@ class WalletZSendmanyPrivacyIronwoodTest(IronwoodTestFramework):
         node.generate(1)
         wait_for_tx_scanned(wallet, txid)
 
-        sapling_zat = wait_for_account_spendable(wallet, sender, Pool.SAPLING, min_zat=1)
+        # Wait for enough to mint both notes, rather than for any balance at all:
+        # a `min_zat=1` wait can return while the shield is only partly scanned,
+        # and the assertion below would then fire on a transient reading.
+        sapling_zat = wait_for_account_spendable(
+            wallet, sender, Pool.SAPLING,
+            min_zat=zat(ORCHARD_FUNDING + IRONWOOD_FUNDING + MARGIN))
         assert_true(
             sapling_zat > zat(ORCHARD_FUNDING + IRONWOOD_FUNDING),
             "the Sapling shield must cover both notes; got {} zat".format(sapling_zat))
@@ -257,12 +266,28 @@ class WalletZSendmanyPrivacyIronwoodTest(IronwoodTestFramework):
         # with the pre-NU6.3 consensus branch id and the node rejects it.
         wait_for_wallet_sync(node, wallet)
         wait_account_settled(wallet, sender)
+        # ...and the funds the next mint will draw on must be spendable again.
+        # Neither wait above establishes that: a balance of zero is both "settled"
+        # and consistent with a reported tip while the wallet is still scanning the
+        # blocks just mined, so without this the mint below fails with
+        # "Insufficient balance (have 0, ...)".
+        #
+        # Those funds are in ORCHARD, not Sapling. The mint above spent the whole
+        # Sapling note, and a Sapling-to-Orchard crossing returns its change to the
+        # destination pool, so the account's shielded value is now concentrated in
+        # Orchard and Sapling is empty.
+        wait_for_account_spendable(wallet, sender, Pool.ORCHARD,
+                                   min_zat=zat(IRONWOOD_FUNDING + MARGIN))
         assert_true(node.getblockcount() >= IRONWOOD_HEIGHT, "NU6.3 must be active")
         print("  NU6.3 active at height {}".format(node.getblockcount()))
 
         print("Ironwood era: minting a {} ZEC Ironwood note at the SAME Orchard "
               "receiver...".format(IRONWOOD_FUNDING))
-        self.send(node, wallet, sender_sapling_ua, sender_orchard_ua,
+        # Drawn from Orchard, which is where the previous mint left the account's
+        # shielded value. Past NU6.3 that makes this an Orchard-to-Ironwood
+        # crossing, which is why it needs `AllowRevealedAmounts` -- the very thing
+        # phase 4 below asserts a caller can opt into.
+        self.send(node, wallet, sender_orchard_ua, sender_orchard_ua,
                   IRONWOOD_FUNDING, PrivacyPolicy.ALLOW_REVEALED_AMOUNTS)
         wait_for_account_spendable(wallet, sender, Pool.IRONWOOD,
                                    min_zat=zat(IRONWOOD_FUNDING))
