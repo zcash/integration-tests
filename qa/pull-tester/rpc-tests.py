@@ -291,12 +291,14 @@ NEW_SCRIPTS= [
     'wallet_ironwood_negatives.py',
     # vv Tests less than 2m vv
     'wallet_ironwood.py',
+    'grpc_comparison.py',
     'wallet_changeaddresses.py',
     'wallet_legacy_pool_spend.py',
     # vv Tests less than 60s vv
     'addnode.py',
     'wallet_z_shieldcoinbase.py',
     'wallet_z_shieldcoinbase_multi_taddr.py',
+    'wallet_transparent_coinbase_balance.py',
     'wallet_transparent_spend.py',
     'wallet_z_importviewingkey.py',
     'regtest_signrawtransaction.py',
