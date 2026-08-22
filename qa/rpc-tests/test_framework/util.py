@@ -22,7 +22,6 @@ import http.client
 import random
 import shutil
 import subprocess
-import tarfile
 import tempfile
 import time
 import toml
@@ -73,30 +72,36 @@ PORT_MIN = 11000
 # The number of ports to "reserve" for p2p, rpc and wallet rpc each
 PORT_RANGE = 5000
 
+# The repository root, derived from this file's location
+# (qa/rpc-tests/test_framework/), so that the default binary and config-template
+# paths do not depend on the working directory the tests were started from.
+REPOROOT = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))
+
 def zebrad_binary():
-    return os.getenv("ZEBRAD", os.path.join("src", "zebrad"))
+    return os.getenv("ZEBRAD", os.path.join(REPOROOT, "src", "zebrad"))
 
 def zaino_binary():
-    return os.getenv("ZAINOD", os.path.join("src", "zainod"))
+    return os.getenv("ZAINOD", os.path.join(REPOROOT, "src", "zainod"))
 
 def zallet_binary():
-    return os.getenv("ZALLET", os.path.join("src", "zallet"))
+    return os.getenv("ZALLET", os.path.join(REPOROOT, "src", "zallet"))
 
 def zebrad_config(datadir):
-    base_location = os.path.join('qa', 'defaults', 'zebrad', 'config.toml')
+    base_location = os.path.join(REPOROOT, 'qa', 'defaults', 'zebrad', 'config.toml')
     new_location = os.path.join(datadir, "config.toml")
     if not os.path.exists(new_location):
         shutil.copyfile(base_location, new_location)
     return new_location
 
 def zallet_config(datadir):
-    base_location = os.path.join('qa', 'defaults', 'zallet')
+    base_location = os.path.join(REPOROOT, 'qa', 'defaults', 'zallet')
     if not os.path.exists(datadir):
         shutil.copytree(base_location, datadir)
     return os.path.join(datadir, "zallet.toml")
 
 def zainod_config(datadir):
-    base_location = os.path.join('qa', 'defaults', 'zainod', 'zaino_config.toml')
+    base_location = os.path.join(REPOROOT, 'qa', 'defaults', 'zainod', 'zaino_config.toml')
     new_location = os.path.join(datadir, "zaino_config.toml")
     os.makedirs(datadir, exist_ok=True)
     if not os.path.exists(new_location):
@@ -306,7 +311,7 @@ def sync_mempools(nodes, wallets=None, wait=0.5, timeout=60):
     print('Wallet view of tips:', wallet_status)
     raise AssertionError("Mempool sync failed")
 
-bitcoind_processes = {}
+zebrad_processes = {}
 
 def initialize_datadir(dirname, n, clock_offset=0):
     datadir = node_dir(dirname, n)
@@ -374,8 +379,8 @@ PROC_START_TIMEOUT = int(os.getenv("PROC_START_TIMEOUT", "120"))
 
 def wait_for_zebrad_start(process, url, i):
     '''
-    Wait for bitcoind to start. This means that RPC is accessible and fully initialized.
-    Raise an exception if bitcoind exits during initialization, or fails to become
+    Wait for zebrad to start. This means that RPC is accessible and fully initialized.
+    Raise an exception if zebrad exits during initialization, or fails to become
     ready within PROC_START_TIMEOUT seconds.
     '''
     deadline = time.time() + PROC_START_TIMEOUT
@@ -410,12 +415,6 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
     * 'current': create a 200-block-long chain (with wallet) for MAX_NODES
       in `cachedir` if necessary. Afterward, create num_nodes copies in
       `test_dir` from the cache. The resulting nodes will be configured to
-      use the -clockoffset config argument when starting to ensure that
-      the cached chain is not treated as being excessively out-of-date.
-    * 'sprout': use persisted chain data containing known amounts of Sprout
-      funds from the files in `qa/rpc-tests/cache/sprout`. This allows
-      testing of Sprout spends even though Sprout outputs can no longer
-      be created by zcashd software. The resulting nodes will be configured to
       use the -clockoffset config argument when starting to ensure that
       the cached chain is not treated as being excessively out-of-date.
     * 'fresh': force re-creation of the cache, and then start as for `current`.
@@ -457,7 +456,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
 
             miner_addresses[i] = miner_address
 
-        # Create cache directories, run bitcoinds:
+        # Create cache directories, run zebrads:
         block_time = int(time.time()) - (200 * PRE_BLOSSOM_BLOCK_TARGET_SPACING)
         for i in range(MAX_NODES):
             datadir = initialize_datadir(cachedir, i)
@@ -467,10 +466,10 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
             ))
             args = [ zebrad_binary(), "-c="+config, "start" ]
 
-            bitcoind_processes[i] = subprocess.Popen(args)
+            zebrad_processes[i] = subprocess.Popen(args)
             if os.getenv("PYTHON_DEBUG", ""):
                 print("initialize_chain: %s started, waiting for RPC to come up" % (zebrad_binary(),))
-            wait_for_zebrad_start(bitcoind_processes[i], rpc_url(i), i)
+            wait_for_zebrad_start(zebrad_processes[i], rpc_url(i), i)
             if os.getenv("PYTHON_DEBUG", ""):
                 print("initialize_chain: RPC successfully started")
 
@@ -518,14 +517,14 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
                 # - https://github.com/ZcashFoundation/zebra/issues/10329
                 # - https://github.com/ZcashFoundation/zebra/issues/10332
                 stop_nodes(rpcs)
-                wait_bitcoinds()
+                wait_zebrads()
                 for i in range(MAX_NODES):
                     config = zebrad_config(node_dir(cachedir, i))
                     args = [ zebrad_binary(), "-c="+config, "start" ]
-                    bitcoind_processes[i] = subprocess.Popen(args)
+                    zebrad_processes[i] = subprocess.Popen(args)
                     if os.getenv("PYTHON_DEBUG", ""):
                         print("initialize_chain: %s started, waiting for RPC to come up" % (zebrad_binary(),))
-                    wait_for_zebrad_start(bitcoind_processes[i], rpc_url(i), i)
+                    wait_for_zebrad_start(zebrad_processes[i], rpc_url(i), i)
                     if os.getenv("PYTHON_DEBUG", ""):
                         print("initialize_chain: RPC successfully started")
                 # Rebuild, not append: `rpcs` must stay exactly MAX_NODES
@@ -636,7 +635,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         stop_wallets(wallets)
         wait_zallets()
         stop_nodes(rpcs)
-        wait_bitcoinds()
+        wait_zebrads()
         for i in range(MAX_NODES):
             # record the system time at which the cache was regenerated
             with open(node_file(cachedir, i, 'cache_config.json'), "w", encoding="utf8") as cache_conf_file:
@@ -655,43 +654,6 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
             shutil.copytree(from_wallet_dir, to_wallet_dir)
 
             with open(node_file(test_dir, i, 'cache_config.json'), "r", encoding="utf8") as cache_conf_file:
-                cache_conf = json.load(cache_conf_file)
-                # obtain the clock offset as a negative number of seconds
-                offset = round(cache_conf['cache_time']) - round(time.time())
-                # overwrite port/rpcport and clock offset in zcash.conf
-                initialize_datadir(test_dir, i, clock_offset=offset)
-
-    def init_persistent(cache_behavior):
-        assert num_nodes <= 4 # only 4 nodes with Sprout funds are supported
-        cache_path = persistent_cache_path(cache_behavior)
-        if not os.path.isdir(cache_path):
-            raise Exception('No cache available for cache behavior %s' % cache_behavior)
-
-        chain_cache_filename = os.path.join(cache_path, "chain_cache.tar.gz")
-        if not os.path.exists(chain_cache_filename):
-            raise Exception('Chain cache missing for cache behavior %s' % cache_behavior)
-
-        for i in range(num_nodes):
-            to_dir = os.path.join(test_dir, "node"+str(i), "regtest")
-            os.makedirs(to_dir)
-
-            # Copy the same chain data to all nodes
-            with tarfile.open(chain_cache_filename, "r:gz") as chain_cache_file:
-                tarfile_extractall(chain_cache_file, to_dir)
-
-            # Copy in per-node wallet data
-            wallet_tgz_filename = os.path.join(cache_path, "node"+str(i)+"_wallet.tar.gz")
-            if not os.path.exists(wallet_tgz_filename):
-                raise Exception('Wallet cache missing for cache behavior %s, node %d' % (cache_behavior, i))
-            with tarfile.open(wallet_tgz_filename, "r:gz") as wallet_tgz_file:
-                tarfile_extractall(wallet_tgz_file, os.path.join(to_dir, "wallet.dat"))
-
-            # Copy in per-node wallet config and update zcash.conf to set the
-            # clock offsets correctly.
-            cache_conf_filename = os.path.join(to_dir, 'cache_config.json')
-            if not os.path.exists(cache_conf_filename):
-                raise Exception('Cache config missing for cache behavior %s, node %d' % (cache_behavior, i))
-            with open(cache_conf_filename, "r", encoding="utf8") as cache_conf_file:
                 cache_conf = json.load(cache_conf_file)
                 # obtain the clock offset as a negative number of seconds
                 offset = round(cache_conf['cache_time']) - round(time.time())
@@ -717,7 +679,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
     elif cache_behavior == 'clean':
         initialize_chain_clean(test_dir, num_nodes)
     else:
-        init_persistent(cache_behavior)
+        raise Exception('Unknown cache behavior %s' % cache_behavior)
 
 def initialize_chain_clean(test_dir, num_nodes):
     """
@@ -726,67 +688,6 @@ def initialize_chain_clean(test_dir, num_nodes):
     """
     for i in range(num_nodes):
         initialize_datadir(test_dir, i)
-
-def persistent_cache_path(cache_behavior):
-    return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
-        'cache',
-        cache_behavior
-    )
-
-def persistent_cache_exists(cache_behavior):
-    cache_path = persistent_cache_path(cache_behavior)
-    return os.path.isdir(cache_path)
-
-# Clean up, zip, and persist the generated datadirs. Record the generation
-# time so that we can correctly set the system clock offset in tests that
-# restore their node states using the resulting files.
-def persist_node_caches(tmpdir, cache_behavior, num_nodes):
-    cache_path = persistent_cache_path(cache_behavior)
-    if os.path.exists(cache_path):
-        raise Exception('Cache already exists for cache behavior %s' % cache_behavior)
-    os.mkdir(cache_path)
-
-    for i in range(num_nodes):
-        node_path = os.path.join(tmpdir, 'node' + str(i), 'regtest')
-
-        # Clean up the files that we don't want to persist
-        os.remove(os.path.join(node_path, 'debug.log'))
-        os.remove(os.path.join(node_path, 'db.log'))
-        os.remove(os.path.join(node_path, 'peers.dat'))
-
-        # Persist the wallet file for the node to the cache
-        wallet_tgz_filename = os.path.join(cache_path, 'node' + str(i) + '_wallet.tar.gz')
-        with tarfile.open(wallet_tgz_filename, "w:gz") as wallet_tgz_file:
-            wallet_tgz_file.add(os.path.join(node_path, 'wallet.dat'), arcname="")
-
-        # Persist the chain data and cache config just once; it will be reused
-        # for all of the nodes when loading from the cache.
-        if i == 0:
-            # Move the wallet.dat file out of the way so that it doesn't
-            # pollute the chain cache tarfile
-            shutil.move(
-                    os.path.join(node_path, 'wallet.dat'),
-                    os.path.join(tmpdir, 'wallet.dat.0'))
-
-            # Store the current time so that we can correctly set the clock
-            # offset when restoring from the cache.
-            cache_config = { "cache_time": time.time() }
-            cache_conf_filename = os.path.join(cache_path, 'cache_config.json')
-            with open(cache_conf_filename, "w", encoding="utf8") as cache_conf_file:
-                cache_conf_json = json.dumps(cache_config, indent=4)
-                cache_conf_file.write(cache_conf_json)
-
-            # Persist the chain data.
-            chain_cache_filename = os.path.join(cache_path, 'chain_cache.tar.gz')
-            with tarfile.open(chain_cache_filename, "w:gz") as chain_cache_file:
-                chain_cache_file.add(node_path, arcname="")
-
-            # Move the wallet file back into place
-            shutil.move(
-                    os.path.join(tmpdir, 'wallet.dat.0'),
-                    os.path.join(node_path, 'wallet.dat'))
-
 
 def _rpchost_to_args(rpchost):
     '''Convert optional IP:port spec to rpcconnect/rpcport args'''
@@ -810,7 +711,7 @@ def _rpchost_to_args(rpchost):
 
 def start_node(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=None, stderr=None):
     """
-    Start a bitcoind and return RPC connection to it
+    Start a zebrad and return RPC connection to it
     """
     datadir = node_dir(dirname, i)
     if binary is None:
@@ -818,13 +719,13 @@ def start_node(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=
     config = update_zebrad_conf(datadir, rpc_port(i), p2p_port(i), indexer_rpc_port(i), extra_args)
     args = [ binary, "-c="+config, "start" ]
 
-    bitcoind_processes[i] = subprocess.Popen(args, stderr=stderr)
+    zebrad_processes[i] = subprocess.Popen(args, stderr=stderr)
     if os.getenv("PYTHON_DEBUG", ""):
-        print("start_node: bitcoind started, waiting for RPC to come up")
+        print("start_node: zebrad started, waiting for RPC to come up")
     url = rpc_url(i, rpchost)
-    wait_for_zebrad_start(bitcoind_processes[i], url, i)
+    wait_for_zebrad_start(zebrad_processes[i], url, i)
     if os.getenv("PYTHON_DEBUG", ""):
-        print("start_node: RPC successfully started for node {} with pid {}".format(i, bitcoind_processes[i].pid))
+        print("start_node: RPC successfully started for node {} with pid {}".format(i, zebrad_processes[i].pid))
     proxy = get_rpc_proxy(url, i, timeout=timewait)
 
     if COVERAGE_DIR:
@@ -853,7 +754,7 @@ def assert_start_raises_init_error(i, dirname, extra_args=None, expected_msg=Non
 
 def start_nodes(num_nodes, dirname, extra_args=None, rpchost=None, binary=None):
     """
-    Start multiple bitcoinds, return RPC connections to them
+    Start multiple zebrads, return RPC connections to them
     """
     if extra_args is None: extra_args = [ None for _ in range(num_nodes) ]
     if binary is None: binary = [ None for _ in range(num_nodes) ]
@@ -876,16 +777,16 @@ def wallet_dir(dirname, n_wallet):
     return os.path.join(dirname, "wallet"+str(n_wallet))
 
 def check_node(i):
-    bitcoind_processes[i].poll()
-    return bitcoind_processes[i].returncode
+    zebrad_processes[i].poll()
+    return zebrad_processes[i].returncode
 
 def stop_node(node, i):
     try:
         node.stop()
     except http.client.CannotSendRequest as e:
         print("WARN: Unable to stop node: " + repr(e))
-    bitcoind_processes[i].wait()
-    del bitcoind_processes[i]
+    zebrad_processes[i].wait()
+    del zebrad_processes[i]
 
 def stop_nodes(nodes):
     for node in nodes:
@@ -916,11 +817,11 @@ def wait_or_kill(proc):
         proc.kill()
         proc.wait()
 
-def wait_bitcoinds():
-    # Wait for all bitcoinds to cleanly exit
-    for bitcoind in list(bitcoind_processes.values()):
-        wait_or_kill(bitcoind)
-    bitcoind_processes.clear()
+def wait_zebrads():
+    # Wait for all zebrads to cleanly exit
+    for zebrad in list(zebrad_processes.values()):
+        wait_or_kill(zebrad)
+    zebrad_processes.clear()
 
 def connect_nodes(from_connection, node_num):
     ip_port = "127.0.0.1:"+str(p2p_port(node_num))
@@ -1110,30 +1011,11 @@ def get_coinbase_address(node, expected_utxos=None):
     assert(len(addrs) > 0)
     return addrs[0]
 
-def check_node_log(self, node_number, line_to_check, stop_node = True):
-    print("Checking node " + str(node_number) + " logs")
-    if stop_node:
-        self.nodes[node_number].stop()
-        bitcoind_processes[node_number].wait()
-    logpath = self.options.tmpdir + "/node" + str(node_number) + "/regtest/debug.log"
-    with open(logpath, "r", encoding="utf8") as myfile:
-        logdata = myfile.readlines()
-    for (n, logline) in enumerate(logdata):
-        if line_to_check in logline:
-            return n
-    raise AssertionError(repr(line_to_check) + " not found")
-
 def nustr(branch_id):
     return '%08x' % branch_id
 
 def nuparams(branch_id, height):
     return '-nuparams=%s:%d' % (nustr(branch_id), height)
-
-def tarfile_extractall(tarfile, path):
-    if sys.version_info >= (3, 11, 4):
-        tarfile.extractall(path=path, filter='data')
-    else:
-        tarfile.extractall(path=path)
 
 
 # Wallet utilities
@@ -1496,7 +1378,7 @@ def stop_all_processes():
     Forcibly terminate every zebrad, zainod and zallet process we spawned,
     regardless of whether a test data structure still references it.
     '''
-    for processes in (bitcoind_processes, zallet_processes, zainod_processes):
+    for processes in (zebrad_processes, zallet_processes, zainod_processes):
         for p in list(processes.values()):
             try:
                 p.terminate() # send SIGHIGH

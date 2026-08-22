@@ -257,27 +257,13 @@ jobs:
           is_interop_request = os.environ["IS_INTEROP_REQUEST"] == "true"
           SHARDS = 10
 
-          # While we are getting the existing tests to pass, skip tests that are
-          # not expected to pass; this makes it easier to distinguish expected
-          # failures from unexpected ones.
-          if is_interop_request:
-              old_shards = 0
-          else:
-              num_old_tests = len(rpc_tests.BASE_SCRIPTS + rpc_tests.ZMQ_SCRIPTS)
-              num_new_tests = len(rpc_tests.NEW_SCRIPTS)
-              old_shards = (num_old_tests * SHARDS) // (num_old_tests + num_new_tests)
-
-          new_shards = SHARDS - old_shards
-
           # These tests are ordered longest-test-first, to favor running tests in
           # parallel with the regular test runner. For chunking purposes, assign
-          # tests to shards in round-robin order.
+          # tests to shards in round-robin order. Fewer tests than SHARDS simply
+          # yields fewer shards; every test lands in exactly one.
           test_shards = {}
-          if old_shards > 0:
-              for i, test in enumerate(rpc_tests.BASE_SCRIPTS + rpc_tests.ZMQ_SCRIPTS):
-                  test_shards.setdefault(i % old_shards, []).append(test)
-          for i, test in enumerate(rpc_tests.NEW_SCRIPTS):
-              test_shards.setdefault(old_shards + (i % new_shards), []).append(test)
+          for i, test in enumerate(rpc_tests.BASE_SCRIPTS):
+              test_shards.setdefault(i % SHARDS, []).append(test)
 
           test_list = []
           for i, tests in test_shards.items():
@@ -573,7 +559,7 @@ jobs:
         run: |
           python3 -m venv ./venv
           . ./venv/bin/activate
-          pip install zmq asyncio base58 toml embit
+          pip install toml embit
 
   test-rpc:
     name: RPC tests ${{ matrix.platform }} ${{ matrix.backend }} ${{ matrix.shard }}${{ matrix.required_suffix }}
@@ -649,7 +635,7 @@ jobs:
         run: |
           python3 -m venv ./venv
           . ./venv/bin/activate
-          pip install zmq asyncio base58 toml embit
+          pip install toml embit
 
       - name: Download zebrad artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0

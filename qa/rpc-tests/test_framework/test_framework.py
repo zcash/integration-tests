@@ -17,7 +17,6 @@ import traceback
 from .config import ZebraArgs, ZalletArgs
 from .proxy import JSONRPCException
 from .util import (
-    zebrad_binary,
     initialize_chain,
     prepare_wallets_for_mining,
     start_nodes,
@@ -30,7 +29,7 @@ from .util import (
     stop_nodes,
     stop_wallets,
     stop_zainos,
-    wait_bitcoinds,
+    wait_zebrads,
     wait_zainods,
     wait_zallets,
     enable_coverage,
@@ -135,7 +134,7 @@ class BitcoinTestFramework(object):
         stop_zainos(self.zainos)
         wait_zainods()
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_zebrads()
         self.setup_network(True)
 
     def sync_all(self, do_mempool_sync = True):
@@ -160,18 +159,18 @@ class BitcoinTestFramework(object):
         stop_zainos(self.zainos)
         wait_zainods()
         stop_nodes(self.nodes)
-        wait_bitcoinds()
+        wait_zebrads()
         self.setup_network(False, False)
 
     def main(self):
 
         parser = optparse.OptionParser(usage="%prog [options]")
         parser.add_option("--nocleanup", dest="nocleanup", default=False, action="store_true",
-                          help="Leave bitcoinds and test.* datadir on exit or error")
+                          help="Leave the nodes and wallets running, and the test.* datadir in place, on exit or error")
         parser.add_option("--noshutdown", dest="noshutdown", default=False, action="store_true",
-                          help="Don't stop bitcoinds after the test execution")
+                          help="Don't stop the nodes and wallets after the test execution")
         parser.add_option("--srcdir", dest="srcdir", default="../../src",
-                          help="Source directory containing bitcoind/bitcoin-cli (default: %default)")
+                          help="Source directory containing the zebrad, zainod and zallet binaries (default: %default)")
         parser.add_option("--cachedir", dest="cachedir", default=os.path.normpath(os.path.dirname(os.path.realpath(__file__))+"/../../cache"),
                           help="Directory for caching pregenerated datadirs")
         parser.add_option("--tmpdir", dest="tmpdir", default=tempfile.mkdtemp(prefix="test"),
@@ -235,7 +234,7 @@ class BitcoinTestFramework(object):
             print("Stopping nodes")
             if self.nodes is not None:
                 stop_nodes(self.nodes)
-                wait_bitcoinds()
+                wait_zebrads()
 
             # self.nodes, self.wallets and self.zainos migth not contain all
             # running processes, `util` keeps global dicts or running processes
@@ -253,36 +252,3 @@ class BitcoinTestFramework(object):
         else:
             print("Failed")
             sys.exit(1)
-
-
-# Test framework for doing p2p comparison testing, which sets up some bitcoind
-# binaries:
-# 1 binary: test binary
-# 2 binaries: 1 test binary, 1 ref binary
-# n>2 binaries: 1 test binary, n-1 ref binaries
-
-class ComparisonTestFramework(BitcoinTestFramework):
-
-    def __init__(self):
-        super().__init__()
-        self.num_nodes = 1
-        self.cache_behavior = 'clean'
-        self.additional_args = []
-
-    def add_options(self, parser):
-        parser.add_option("--testbinary", dest="testbinary",
-                          default=zebrad_binary(),
-                          help="zebrad binary to test")
-        parser.add_option("--refbinary", dest="refbinary",
-                          default=zebrad_binary(),
-                          help="zebrad binary to use for reference nodes (if any)")
-
-    def setup_network(self):
-        self.nodes = start_nodes(
-            self.num_nodes, self.options.tmpdir,
-            extra_args=[['-debug', '-whitelist=127.0.0.1'] + self.additional_args] * self.num_nodes,
-            binary=[self.options.testbinary] +
-            [self.options.refbinary]*(self.num_nodes-1))
-
-    def get_tests(self):
-        raise NotImplementedError

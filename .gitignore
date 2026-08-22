@@ -6,8 +6,6 @@
 *.pyc
 .vscode
 
-qa/pull-tester/tests_config.py
-qa/pull-tester/tests_config.ini
 qa/cache/*
 src/*
 

@@ -303,7 +303,7 @@ def ser_char_vector(l):
         r += struct.pack("B", i)
     return r
 
-# Objects that map to bitcoind objects, which can be serialized/deserialized
+# Objects that map to node objects, which can be serialized/deserialized
 
 class CAddress(object):
     def __init__(self):
