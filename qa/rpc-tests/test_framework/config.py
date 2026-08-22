@@ -99,6 +99,12 @@ class ZalletArgs:
     # restarts it with this set.
     legacy_pool_seed_fingerprint: str | None = None
 
+    # The number of blocks a spend proposal's input locks last (zallet's
+    # `builder.note_lock_blocks`). None keeps zallet's default (40); 0 disables
+    # input locking. Tests set a tiny window (e.g. 1) to exercise lock expiry
+    # without mining the full default window.
+    note_lock_blocks: int | None = None
+
     def __add__(self, other):
         if other is None:
             return self
@@ -108,6 +114,8 @@ class ZalletArgs:
             self.activation_heights = other.activation_heights
         if other.legacy_pool_seed_fingerprint != defaults.legacy_pool_seed_fingerprint:
             self.legacy_pool_seed_fingerprint = other.legacy_pool_seed_fingerprint
+        if other.note_lock_blocks != defaults.note_lock_blocks:
+            self.note_lock_blocks = other.note_lock_blocks
         return self
 
 

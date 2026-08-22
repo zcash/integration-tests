@@ -1313,7 +1313,8 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
     # Params that update_zallet_conf knows how to apply. Any param set on
     # `extra_args` that is not authorized here is rejected rather than silently
     # ignored.
-    AUTHORIZED_PARAMS = {"activation_heights", "legacy_pool_seed_fingerprint"}
+    AUTHORIZED_PARAMS = {"activation_heights", "legacy_pool_seed_fingerprint",
+                         "note_lock_blocks"}
     defaults = vars(ZalletArgs())
     provided = {k for k, v in vars(extra_args).items() if v != defaults.get(k)}
     assert provided <= AUTHORIZED_PARAMS, \
@@ -1329,6 +1330,10 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
     if extra_args.legacy_pool_seed_fingerprint:
         config_file.setdefault('features', {})['legacy_pool_seed_fingerprint'] = \
             extra_args.legacy_pool_seed_fingerprint
+
+    if extra_args.note_lock_blocks is not None:
+        config_file.setdefault('builder', {})['note_lock_blocks'] = \
+            extra_args.note_lock_blocks
 
     with open(config_path, "w", encoding="utf8") as f:
         toml.dump(config_file, f)
@@ -2026,6 +2031,37 @@ def account_spendable_zat(wallet: RpcProxy, account_uuid: str, pool: Pool | str,
     """
     return sum(b['spendable']['valueZat']
                for b in _account_pool(wallet, account_uuid, pool, minconf))
+
+
+def account_locked_zat(wallet: RpcProxy, account_uuid: str, pool: Pool | str,
+                       minconf: int = 1) -> int:
+    """
+    The value, in zatoshis, of `account_uuid`'s `pool` funds currently LOCKED
+    by an in-flight spend operation, per `z_getbalances` (the `locked`
+    component). Locked value is excluded from the spendable balance while the
+    operation that locked it is in flight, and returns to spendable when the
+    operation completes, fails, or its lock expires. Returns 0 if nothing is
+    locked.
+    """
+    total = 0
+    for b in _account_pool(wallet, account_uuid, pool, minconf):
+        component = b.get('locked')
+        if component is not None:
+            total += component['valueZat']
+    return total
+
+
+def kill_wallets(wallets) -> None:
+    """SIGKILL every running zallet WITHOUT a graceful RPC stop, simulating a
+    crash while spend operations are in flight: no unlock or cleanup code runs,
+    so any note locks the crashed operations held stay recorded in the wallet
+    database. Use `start_wallets` (or the test's `setup_wallets`) to bring the
+    wallet back afterwards. The graceful counterpart is `stop_wallets`."""
+    for i, process in list(zallet_processes.items()):
+        process.kill()
+        process.wait()
+        del zallet_processes[i]
+    del wallets[:]  # Emptying the array closes connections as a side effect.
 
 
 def wait_for_wallet_sync(node, wallet, timeout: int = 60) -> None:
