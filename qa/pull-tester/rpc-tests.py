@@ -299,6 +299,7 @@ NEW_SCRIPTS= [
     'wallet_z_shieldcoinbase_multi_taddr.py',
     'wallet_transparent_spend.py',
     'wallet_z_importviewingkey.py',
+    'wallet_z_listreceivedbyaddress.py',
     'regtest_signrawtransaction.py',
     # vv Tests less than 30s vv
     'feature_nu6.py',
