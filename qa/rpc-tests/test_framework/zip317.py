@@ -8,16 +8,20 @@
 #
 # Utilities for ZIP 317 conventional fee specification, as defined in https://zips.z.cash/zip-0317.
 #
+# The fee itself is now computed by pyzcash. This module keeps the names the
+# tests already import, so the fifty-odd call sites do not have to change.
+#
 
-from test_framework.mininode import COIN
 from decimal import Decimal
 
-# The fee per logical action, in zatoshis. See https://zips.z.cash/zip-0317#fee-calculation.
-MARGINAL_FEE = 5000
+from pyzcash.consensus import COIN
+from pyzcash.fees import GRACE_ACTIONS, MARGINAL_FEE as _MARGINAL_FEE
+from pyzcash.fees import conventional_fee as _conventional_fee
 
-# The lower bound on the number of logical actions in a tx, for purposes of fee calculation. See
-# https://zips.z.cash/zip-0317#fee-calculation.
-GRACE_ACTIONS = 2
+# The fee per logical action, in zatoshis. See https://zips.z.cash/zip-0317#fee-calculation.
+# pyzcash carries an amount as a Zatoshi; the tests want a plain int, so it is
+# unwrapped here at the boundary.
+MARGINAL_FEE = _MARGINAL_FEE.value
 
 # The minimum ZIP 317 fee.
 MINIMUM_FEE = MARGINAL_FEE * GRACE_ACTIONS
@@ -36,7 +40,7 @@ DEFAULT_BLOCK_UNPAID_ACTION_LIMIT = 0
 ZIP_317_FEE = None
 
 def conventional_fee_zats(logical_actions):
-    return MARGINAL_FEE * max(GRACE_ACTIONS, logical_actions)
+    return _conventional_fee(logical_actions).value
 
 def conventional_fee(logical_actions):
     return Decimal(conventional_fee_zats(logical_actions)) / COIN
