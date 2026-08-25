@@ -1,0 +1,85 @@
+{
+  "generated_at": "2026-06-17T21:10:02.081538+00:00",
+  "total_phases": 2,
+  "total_transactions": 12,
+  "final_chain_height": 349,
+  "phases": [
+    {
+      "phase": 0,
+      "network_upgrade": "Sprout",
+      "zcashd_version": "1.1.1",
+      "activation_height": 0,
+      "transaction_count": 6,
+      "balances_at_end": {
+        "transparent": "791.49998437",
+        "sprout": "198.49970000",
+        "sapling": "0",
+        "orchard": "0"
+      }
+    },
+    {
+      "phase": 1,
+      "network_upgrade": "Overwinter",
+      "zcashd_version": "1.1.1",
+      "activation_height": 200,
+      "transaction_count": 6,
+      "balances_at_end": {
+        "transparent": "1732.10039001",
+        "sprout": "382.89940000",
+        "sapling": "0",
+        "orchard": "0"
+      }
+    }
+  ],
+  "all_addresses": {
+    "transparent": [
+      "tmFb3XP5HGx5jM7QdWw7v528Hj3iZtJc27L",
+      "tmHhos3RyvZgjkeXo5NM3mNumXtxWwUqvNJ",
+      "tmKtLidoPHuNMtviNGwB2oo4WAptwNimaFM",
+      "tmSmfYTiuqGwe5aN4rgjjPojh6UiGmgoQ1A"
+    ],
+    "sprout": [
+      "ztUV41F21LtvyaLz7Pw53opneBd2VDfqQxY7NA4cDxKfDvpUxnqgW4By6DrgeZ5uuy9vJsvBYoBgbFf97cFq3wY5rEJmzXS",
+      "ztYiqKJ5jjTxb47PQeKFRaARi5rMDbgSkQxuHYo6syHbr7tdxr46o1tsHLUMxomsuHxxzdm1vuDAYrgX1v8qP4CgMzdUoBU",
+      "ztfBYwaXS4ykS6LHkAkT4RaVKgYqsCxSUCdyeTsmsiKnSkPHAFpStrk79NYHsU7Nzvn4Uf2WQsFfL7CduP8hZsCFuK5gXEj",
+      "ztnohRqCYM7orwugV6nzWp7s6C6Ue58QZTvnMWfHybsML8JpVyvdjJJ8SpjRTE1pyNKHBMuz8cY174BvEZzXXhpUw9koed8"
+    ],
+    "sapling": [],
+    "orchard": []
+  },
+  "all_viewing_keys": {
+    "sprout": [
+      {
+        "address": "ztnohRqCYM7orwugV6nzWp7s6C6Ue58QZTvnMWfHybsML8JpVyvdjJJ8SpjRTE1pyNKHBMuz8cY174BvEZzXXhpUw9koed8",
+        "viewing_key": "ZiVtnAB1699RNEtcQp2KgbQj3Z9SkKHwaSZ7MaQ4nuT9PHEG5sXMvH8D7HKomiocw3kTYiHjwcE78wJC7A1vjeCWgW899kbYz"
+      },
+      {
+        "address": "ztfBYwaXS4ykS6LHkAkT4RaVKgYqsCxSUCdyeTsmsiKnSkPHAFpStrk79NYHsU7Nzvn4Uf2WQsFfL7CduP8hZsCFuK5gXEj",
+        "viewing_key": "ZiVteY2WqU39EBTkqRHPe3xLWBNwCgX5QUTr4mh21PMFqiLtSzdocC8eC4VnE6KgDxLhh25wkSWXYnYmqnNPEZDxCBn5cK22J"
+      },
+      {
+        "address": "ztYiqKJ5jjTxb47PQeKFRaARi5rMDbgSkQxuHYo6syHbr7tdxr46o1tsHLUMxomsuHxxzdm1vuDAYrgX1v8qP4CgMzdUoBU",
+        "viewing_key": "ZiVtY5JtZ2LoiPcicWwsCrKV67mLWBsU8Uk4PhL6viMWoXkGtdxsUVdDpirWYLtM7qqzXcRo97hNA1xkhtkaQBm6PsT7HaGF4"
+      },
+      {
+        "address": "ztUV41F21LtvyaLz7Pw53opneBd2VDfqQxY7NA4cDxKfDvpUxnqgW4By6DrgeZ5uuy9vJsvBYoBgbFf97cFq3wY5rEJmzXS",
+        "viewing_key": "ZiVtTqXaVxcR9N1Er7ecpfwikUhSGs967sQbxuQiCDhVqb84PZPwr7huYRG12TLdr64Kfuu1qU48SGzCW4d9AiGE9mZjHcarq"
+      }
+    ],
+    "sapling": [],
+    "orchard": []
+  },
+  "final_balances": {
+    "transparent": "1732.10039001",
+    "sprout": "382.89940000",
+    "sapling": "0",
+    "orchard": "0"
+  },
+  "final_note_counts": {
+    "sprout": 0,
+    "sapling": 0,
+    "orchard": 0
+  },
+  "final_utxo_count": 207,
+  "final_coinbase_utxo_count": 200
+}

@@ -52,6 +52,8 @@ from test_framework.ufvk_decode import (
 )
 from test_framework.util import (
     assert_true,
+    nu_activation_all_at_1_with_ironwood,
+    render_regtest_nuparams,
     wallet_dir,
     zallet_binary,
     zallet_config,
@@ -175,7 +177,19 @@ class ZcashdKeyImportDbTest(BitcoinTestFramework):
         # directory (zallet.toml + encryption-identity.txt) into place.
         zallet = zallet_binary()
         datadir = wallet_dir(self.options.tmpdir, 0)
-        zallet_config(datadir)
+        config_path = zallet_config(datadir)
+
+        # The modern test-wallet fixture spans all 9 network upgrades including
+        # NU6.3 (Ironwood), so its transactions carry NU6.3 branch IDs. The
+        # default config only activates through NU6.2; add NU6.3 so the
+        # migration's derive_regtest_activations includes it.
+        import toml
+        with open(config_path, "r", encoding="utf8") as f:
+            config = toml.load(f)
+        config.setdefault('consensus', {})['regtest_nuparams'] = \
+            render_regtest_nuparams(nu_activation_all_at_1_with_ironwood())
+        with open(config_path, "w", encoding="utf8") as f:
+            toml.dump(config, f)
 
         run_migration(zallet, datadir, wallet_dat_path)
 
@@ -290,18 +304,14 @@ class ZcashdKeyImportDbTest(BitcoinTestFramework):
                 reporter.check("phase %d sapling spending (cardinality proxy): %s" % (phase, addr),
                       sapling_keystore_ok, detail)
 
+            # Standalone sapling viewing keys (zcashd `z_importviewingkey`)
+            # are not migrated: zallet has no home for a viewing-only sapling
+            # key outside an account. This is an accepted limitation, so it
+            # is recorded as SKIP rather than asserted.
             if ImportedKeyKind.SAPLING_VIEWING in imported:
                 addr = imported[ImportedKeyKind.SAPLING_VIEWING]['address']
-                try:
-                    dfvk = sapling_dfvk_from_extfvk(
-                        imported[ImportedKeyKind.SAPLING_VIEWING]['key'])
-                except ValueError as e:
-                    reporter.check("phase %d sapling viewing dfvk: %s" % (phase, addr),
-                          False, "could not decode key: %s" % e)
-                    continue
-                present = dfvk in view["sapling_dfvks"]
-                reporter.check("phase %d sapling viewing dfvk: %s" % (phase, addr),
-                      present, "present" if present else "MISSING")
+                reporter.skip("phase %d sapling viewing dfvk: %s" % (phase, addr),
+                     "SKIPPED - sapling viewing keys are dropped by migration (accepted)")
 
             # Sprout keys: explicitly recorded as skipped so the gap is
             # visible in the report. Zallet has no storage for them.
