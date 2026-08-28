@@ -1924,13 +1924,22 @@ def wait_for_total_balance(wallet: RpcProxy, field: TotalBalanceField,
     lag `wallet_tip` (or a just-scanned transaction) by a block, so a single
     read right after a `generate`/scan can miss the newest coinbase or note.
     This rides out that lag; see zcash/wallet#316.
+
+    Logs each balance change with elapsed time so convergence patterns are
+    visible in CI output.
     """
-    deadline = time.time() + timeout
+    start = time.time()
+    deadline = start + timeout
     last = None
+    prev_logged = None
     while True:
         try:
             last = Decimal(
                 wallet.z_gettotalbalance(minconf, include_watchonly)[field])
+            if last != prev_logged:
+                print(f"  wait_for_total_balance: {field}={last} "
+                      f"at {int(time.time() - start)}s", flush=True)
+                prev_logged = last
             if predicate(last):
                 return last
         except Exception:
@@ -2029,17 +2038,28 @@ def account_spendable_zat(wallet: RpcProxy, account_uuid: str, pool: Pool | str,
 
 
 def wait_for_wallet_sync(node, wallet, timeout: int = 60) -> None:
-    """Block until `wallet` reports `node`'s current tip as its wallet tip."""
+    """Block until the wallet has fully scanned up to `node`'s current tip.
+
+    Checks `getwalletstatus.fully_synced_height` (the height the wallet has
+    actually scanned to), not just `wallet_tip` (which can advance before the
+    scan catches up). This prevents balance assertions from reading stale
+    state during the gap between tip commit and scan completion.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         target = node.getblockcount()
         status = wallet.getwalletstatus()
-        if status.get('wallet_tip', {}).get('height') == target:
-            # Give the transparent balance accounting a beat to catch up.
-            time.sleep(2)
+        wallet_tip = status.get('wallet_tip', {}).get('height')
+        synced_height = status.get('fully_synced_height')
+        if (
+            wallet_tip == target
+            and synced_height is not None
+            and synced_height >= target
+        ):
             return
         time.sleep(0.5)
-    raise AssertionError("wallet did not sync to node tip within %ss" % timeout)
+    raise AssertionError(
+        "wallet did not fully sync to height %d within %ss" % (target, timeout))
 
 
 def wait_for_account_spendable(wallet: RpcProxy, account_uuid: str, pool: Pool,
