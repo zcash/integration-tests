@@ -7,6 +7,7 @@
 #from decimal import Decimal
 
 from decimal import Decimal
+import time
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
@@ -19,16 +20,6 @@ from test_framework.util import (
 
 # Coinbase outputs require 100 confirmations before zallet counts them.
 COINBASE_MATURITY = 100
-
-# zallet's transparent-balance summary uses an internal scan tip that can lag a
-# few blocks behind the wallet's reported `wallet_tip`. Allow that slack when
-# asserting how many of the mined coinbases the wallet has surfaced.
-_SCAN_LAG_TOLERANCE = 5
-
-
-def _wallet_transparent_zec(wallet):
-    return Decimal(
-        wallet.z_gettotalbalance(1, True)[TotalBalanceField.TRANSPARENT])
 
 
 # Test that we can create a wallet and use an address from it to mine blocks.
@@ -58,43 +49,51 @@ class WalletTest (BitcoinTestFramework):
         node_balance = node.getaddressbalance(transparent_address)
         assert_equal(node_balance['balance'], tip * 625000000)
 
-        # Wallet sees the mature coinbases. The exact count of "mature
-        # coinbases visible to z_gettotalbalance" depends on zallet's internal
-        # scan tip (which can lag a few blocks behind `wallet_tip`); pin a
-        # range around the expected count rather than the exact value.
-        wallet_zec = _wallet_transparent_zec(wallet)
-        coinbase_count = int(wallet_zec / Decimal('6.25'))
-        assert_true(
-            tip - _SCAN_LAG_TOLERANCE <= coinbase_count <= tip,
+        # Wallet sees the mature coinbases. z_gettotalbalance's transparent
+        # summary uses an internal scan tip that lags one block behind the
+        # wallet tip, so the most recent coinbase is not yet reflected. Poll
+        # until the balance stabilizes at (tip - 1) coinbases.
+        COINBASE_REWARD_ZEC = Decimal('6.25')
+        expected_zec = (tip - 1) * COINBASE_REWARD_ZEC
+        wallet_zec = wait_for_total_balance(
+            wallet, TotalBalanceField.TRANSPARENT, lambda v: v >= expected_zec,
+            timeout=600)
+        coinbase_count = int(wallet_zec / COINBASE_REWARD_ZEC)
+        assert_equal(
+            coinbase_count, tip - 1,
             "wallet transparent balance %s ZEC implies %d coinbases; "
-            "expected between %d and %d at tip %d"
-            % (wallet_zec, coinbase_count,
-               tip - _SCAN_LAG_TOLERANCE, tip, tip))
+            "expected %d at tip %d (summary lags by 1)"
+            % (wallet_zec, coinbase_count, tip - 1, tip))
 
         # Mining another block should grow the wallet's visible balance by at
         # least one mature coinbase reward (older immature outputs catch up).
         prev_zec = wallet_zec
         node.generate(1)
         wait_for_wallet_sync(node, wallet)
-        # wait_for_wallet_sync only guarantees wallet_tip has advanced;
-        # z_gettotalbalance's transparent summary uses an internal scan tip that
-        # can lag it by a block, so poll until the fresh coinbase surfaces
-        # rather than reading the balance once.
+        # z_gettotalbalance's transparent summary can lag the scan by a block,
+        # so poll until the fresh coinbase surfaces.
         new_zec = wait_for_total_balance(
-            wallet, TotalBalanceField.TRANSPARENT, lambda v: v > prev_zec)
+            wallet, TotalBalanceField.TRANSPARENT, lambda v: v > prev_zec,
+            timeout=600)
         assert_true(
             new_zec > prev_zec,
             "wallet transparent balance should grow after mining "
             "(was %s, now %s)" % (prev_zec, new_zec))
 
-        # The wallet tracked the coinbase txs. The freshest tip may not have
-        # been surfaced yet through `z_listtransactions`, so allow a small lag.
-        tx_count = len(wallet.z_listtransactions())
+        # The wallet tracked the coinbase txs. z_listtransactions lags by one
+        # block like z_gettotalbalance, so expect (tip - 1) entries.
         tip = node.getblockcount()
-        assert_true(
-            tip - _SCAN_LAG_TOLERANCE <= tx_count <= tip,
-            "z_listtransactions returned %d entries at tip %d "
-            "(allowed lag %d)" % (tx_count, tip, _SCAN_LAG_TOLERANCE))
+        deadline = time.time() + 600
+        tx_count = 0
+        while time.time() < deadline:
+            tx_count = len(wallet.z_listtransactions())
+            if tx_count >= tip - 1:
+                break
+            time.sleep(1)
+        assert_equal(
+            tx_count, tip - 1,
+            "z_listtransactions returned %d entries at tip %d (expected %d, "
+            "summary lags by 1)" % (tx_count, tip, tip - 1))
 
         """
         walletinfo = self.wallets[0].getwalletinfo()
