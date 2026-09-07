@@ -1211,7 +1211,8 @@ def prepare_wallets_for_mining(num_wallets, dirname, binary=None, zallet_args=No
         miner_addresses.append(miner_address)
     return miner_addresses
 
-def start_wallets(num_wallets, dirname, extra_args=None, rpchost=None, binary=None, zallet_args=None):
+def start_wallets(num_wallets, dirname, extra_args=None, rpchost=None, binary=None,
+                  zallet_args=None, zinder_endpoint=None):
     """
     Start multiple wallets, return RPC connections to them
     """
@@ -1221,13 +1222,17 @@ def start_wallets(num_wallets, dirname, extra_args=None, rpchost=None, binary=No
     rpcs = []
     try:
         for i in range(num_wallets):
-            rpcs.append(start_wallet(i, dirname, extra_args[i], rpchost, binary=binary[i], zallet_args=zallet_args[i]))
+            rpcs.append(start_wallet(
+                i, dirname, extra_args[i], rpchost, binary=binary[i],
+                zallet_args=zallet_args[i], zinder_endpoint=zinder_endpoint))
     except: # If one wallet failed to start, stop the others
         stop_wallets(rpcs)
         raise
     return rpcs
 
-def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binary=None, stderr=None, zallet_args=None):
+def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None,
+                 binary=None, stderr=None, zallet_args=None,
+                 zinder_endpoint=None):
     """
     Start a Zallet wallet and return RPC connection to it
     """
@@ -1244,7 +1249,8 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
 
     update_zallet_conf(datadir, validator_port, zallet_port, zallet_args,
                        indexer_port=indexer_rpc_port(i),
-                       zebra_state_dir=node_dir(dirname, i))
+                       zebra_state_dir=node_dir(dirname, i),
+                       zinder_endpoint=zinder_endpoint)
 
     # We prepare the wallet if it is new
     if prepare:
@@ -1274,14 +1280,15 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
     return proxy
 
 # The zallet backend the launcher execs (top-level `backend` key in
-# zallet.toml). CI sets this to run the same RPC suite against both the `zaino`
-# and `zebra` backends; it defaults to `zaino` to match the checked-in default
-# config and local runs.
+# zallet.toml). CI sets this to run the same RPC suite against the `zaino` and
+# `zebra` backends; focused scenarios can select `zinder`. It defaults to
+# `zaino` to match the checked-in default config and local runs.
 def zallet_backend():
     return os.getenv("ZALLET_BACKEND", "zaino")
 
 def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
-                       indexer_port=None, zebra_state_dir=None):
+                       indexer_port=None, zebra_state_dir=None,
+                       zinder_endpoint=None):
     config_path = zallet_config(datadir)
 
     with open(config_path, "r", encoding="utf8") as f:
@@ -1307,6 +1314,16 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
     else:
         # Never leave a stale zebra section behind when reusing a config file.
         config_file['indexer'].pop('read_state_service', None)
+
+    if backend == "zinder":
+        assert zinder_endpoint is not None, \
+            "the zinder backend requires zinder_endpoint"
+        config_file['zinder'] = {
+            'wallet_query_endpoint': zinder_endpoint,
+        }
+    else:
+        # Never leave a stale Zinder section behind when reusing a config file.
+        config_file.pop('zinder', None)
 
     extra_args = extra_args or ZalletArgs()
 
