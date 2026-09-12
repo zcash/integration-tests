@@ -1,0 +1,69 @@
+name: pyzcash
+
+# The pyzcash library is a standalone package with its own toolchain, so it is
+# gated by its own workflow rather than the integration-test pipeline. Every
+# check runs through a Makefile target, so a local `make check` and CI are the
+# same thing.
+
+on:
+  pull_request:
+    paths:
+      - 'pyzcash/**'
+      - '.github/workflows/pyzcash.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'pyzcash/**'
+      - '.github/workflows/pyzcash.yml'
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: pyzcash
+
+jobs:
+  check:
+    name: Check (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The library supports 3.12 and up, so it is tested against the floor
+        # and against the latest stable release.
+        python-version: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: make setup
+
+      - name: Check formatting
+        run: make check-format
+
+      - name: Lint
+        run: make lint
+
+      - name: Type check
+        run: make typecheck
+
+      - name: Test
+        run: make test
+
+      - name: Build the sdist and wheel
+        run: make build
