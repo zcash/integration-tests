@@ -143,6 +143,13 @@ PRs MUST NOT introduce new `pyflakes` warnings. All lint checks in `.github/work
 
 ## Test Style: Name Your Arguments, Comment at the Definition
 
+**Never use magic numbers.** Name every non-obvious numeric or string literal as
+a module-level constant with a comment stating what it is (e.g.
+`MARGINAL_FEE_ZAT = 5000`, `DENOM_CAP_ZEC = 10_000`, `IRONWOOD_HEIGHT = 210`),
+and reuse the framework's own constants (`COIN`, ...) rather than re-deriving
+their values. This holds in fixtures and assertions, not just production code.
+Relatedly:
+
 **Do not pass a bare literal as a positional RPC argument, and do not annotate
 one with a comment at the call site.** The RPC surface is positional and wide,
 so a call like
