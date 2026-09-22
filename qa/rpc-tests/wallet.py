@@ -6,6 +6,7 @@
 
 #from decimal import Decimal
 
+import time
 from decimal import Decimal
 
 from test_framework.test_framework import BitcoinTestFramework
@@ -25,10 +26,34 @@ COINBASE_MATURITY = 100
 # asserting how many of the mined coinbases the wallet has surfaced.
 _SCAN_LAG_TOLERANCE = 5
 
+# Upper bound on how long the wallet may take to surface the coinbases after
+# `wait_for_wallet_sync` returns. The barriers below return as soon as the
+# observed value enters the accepted window, so this only bounds the failure
+# case.
+_SURFACE_TIMEOUT = 120
 
-def _wallet_transparent_zec(wallet):
-    return Decimal(
-        wallet.z_gettotalbalance(1, True)[TotalBalanceField.TRANSPARENT])
+# Block subsidy on regtest, in ZEC.
+_COINBASE_REWARD = Decimal('6.25')
+
+
+def _wait_for_at_least(fetch, minimum, timeout=_SURFACE_TIMEOUT):
+    """
+    Poll `fetch()` until it returns a value of at least `minimum`, then
+    return that value. On timeout, return the last value read so the caller's
+    assertion reports what was observed.
+    """
+    deadline = time.time() + timeout
+    last = None
+    while True:
+        try:
+            last = fetch()
+            if last >= minimum:
+                return last
+        except Exception:
+            pass
+        if time.time() >= deadline:
+            return last
+        time.sleep(1)
 
 
 # Test that we can create a wallet and use an address from it to mine blocks.
@@ -58,12 +83,20 @@ class WalletTest (BitcoinTestFramework):
         node_balance = node.getaddressbalance(transparent_address)
         assert_equal(node_balance['balance'], tip * 625000000)
 
-        # Wallet sees the mature coinbases. The exact count of "mature
-        # coinbases visible to z_gettotalbalance" depends on zallet's internal
-        # scan tip (which can lag a few blocks behind `wallet_tip`); pin a
-        # range around the expected count rather than the exact value.
-        wallet_zec = _wallet_transparent_zec(wallet)
-        coinbase_count = int(wallet_zec / Decimal('6.25'))
+        # Wallet sees the mature coinbases. `wait_for_wallet_sync` only
+        # establishes that `wallet_tip` reached the node tip; the transparent
+        # summary is filled in by zallet's transaction-enhancement task, which
+        # is still draining at that point. When the indexer reports the tip in
+        # one large jump (the zaino backend does), most of the coinbase
+        # enhancements are queued after the tip is reached, so a single read
+        # here samples a value mid-drain. Poll until the balance enters the
+        # accepted window instead; the window itself still allows the scan tip
+        # to lag `wallet_tip` by a few blocks.
+        wallet_zec = wait_for_total_balance(
+            wallet, TotalBalanceField.TRANSPARENT,
+            lambda v: v >= (tip - _SCAN_LAG_TOLERANCE) * _COINBASE_REWARD,
+            timeout=_SURFACE_TIMEOUT)
+        coinbase_count = int(wallet_zec / _COINBASE_REWARD)
         assert_true(
             tip - _SCAN_LAG_TOLERANCE <= coinbase_count <= tip,
             "wallet transparent balance %s ZEC implies %d coinbases; "
@@ -88,9 +121,12 @@ class WalletTest (BitcoinTestFramework):
             "(was %s, now %s)" % (prev_zec, new_zec))
 
         # The wallet tracked the coinbase txs. The freshest tip may not have
-        # been surfaced yet through `z_listtransactions`, so allow a small lag.
-        tx_count = len(wallet.z_listtransactions())
+        # been surfaced yet through `z_listtransactions`, so allow a small lag,
+        # and poll up to that window for the same reason as the balance above.
         tip = node.getblockcount()
+        tx_count = _wait_for_at_least(
+            lambda: len(wallet.z_listtransactions()),
+            tip - _SCAN_LAG_TOLERANCE)
         assert_true(
             tip - _SCAN_LAG_TOLERANCE <= tx_count <= tip,
             "z_listtransactions returned %d entries at tip %d "
