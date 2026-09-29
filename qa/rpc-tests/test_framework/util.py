@@ -1909,6 +1909,32 @@ def wait_for_tx_scanned(wallet: RpcProxy, txid: str, timeout: int = 120) -> dict
             timeout, txid, last_err))
 
 
+def wait_for_transaction_count(wallet: RpcProxy, expected_count: int,
+                              timeout: int = 60) -> int:
+    """
+    Block until `z_listtransactions` reports at least `expected_count` entries,
+    then return the count, leaving the caller to assert the exact value. On
+    timeout, return the last count read so that assertion can report it.
+
+    The listing converges after the wallet reaches the chain tip, for the same
+    reason a balance does (zcash/wallet#316). The count only grows, so it stops
+    as soon as the target is reached or passed: an overrun fails immediately
+    rather than after the whole timeout.
+    """
+    deadline = time.time() + timeout
+    last = -1
+    while True:
+        try:
+            last = len(wallet.z_listtransactions())
+            if last >= expected_count:
+                return last
+        except Exception:
+            pass
+        if time.time() >= deadline:
+            return last
+        time.sleep(1)
+
+
 def wait_for_total_balance(wallet: RpcProxy, field: TotalBalanceField,
                            predicate: Callable[[Decimal], bool],
                            minconf: int = 1, include_watchonly: bool = True,
@@ -1920,10 +1946,11 @@ def wait_for_total_balance(wallet: RpcProxy, field: TotalBalanceField,
     return that value. On timeout, return the last value read so the caller's
     assertion can report it.
 
-    `z_gettotalbalance`'s summary is computed from an internal scan tip that can
-    lag `wallet_tip` (or a just-scanned transaction) by a block, so a single
-    read right after a `generate`/scan can miss the newest coinbase or note.
-    This rides out that lag; see zcash/wallet#316.
+    `z_gettotalbalance`'s summary converges asynchronously after the wallet
+    reaches the chain tip, and while it is converging it can be most of the
+    chain behind. No `getwalletstatus` field reports when it is complete, so a
+    single read right after a `generate`/scan can miss almost every coinbase or
+    note. This rides out that lag; see zcash/wallet#316.
     """
     deadline = time.time() + timeout
     last = None

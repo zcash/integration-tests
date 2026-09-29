@@ -12,23 +12,26 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     TotalBalanceField,
     assert_equal,
-    assert_true,
     wait_for_total_balance,
+    wait_for_transaction_count,
     wait_for_wallet_sync,
 )
 
 # Coinbase outputs require 100 confirmations before zallet counts them.
 COINBASE_MATURITY = 100
 
-# zallet's transparent-balance summary uses an internal scan tip that can lag a
-# few blocks behind the wallet's reported `wallet_tip`. Allow that slack when
-# asserting how many of the mined coinbases the wallet has surfaced.
-_SCAN_LAG_TOLERANCE = 5
+# The regtest block subsidy, which is constant over the range this test mines.
+COINBASE_REWARD_ZEC = Decimal('6.25')
+COINBASE_REWARD_ZAT = 625000000
 
 
-def _wallet_transparent_zec(wallet):
-    return Decimal(
-        wallet.z_gettotalbalance(1, True)[TotalBalanceField.TRANSPARENT])
+def _wait_for_transparent_zec(wallet, expected):
+    """
+    Block until the wallet's transparent balance is exactly `expected`, and
+    return what it last read so a failed assertion can report it.
+    """
+    return wait_for_total_balance(
+        wallet, TotalBalanceField.TRANSPARENT, lambda v: v == expected)
 
 
 # Test that we can create a wallet and use an address from it to mine blocks.
@@ -56,45 +59,22 @@ class WalletTest (BitcoinTestFramework):
 
         # Node sees every coinbase reward at the miner address.
         node_balance = node.getaddressbalance(transparent_address)
-        assert_equal(node_balance['balance'], tip * 625000000)
+        assert_equal(node_balance['balance'], tip * COINBASE_REWARD_ZAT)
 
-        # Wallet sees the mature coinbases. The exact count of "mature
-        # coinbases visible to z_gettotalbalance" depends on zallet's internal
-        # scan tip (which can lag a few blocks behind `wallet_tip`); pin a
-        # range around the expected count rather than the exact value.
-        wallet_zec = _wallet_transparent_zec(wallet)
-        coinbase_count = int(wallet_zec / Decimal('6.25'))
-        assert_true(
-            tip - _SCAN_LAG_TOLERANCE <= coinbase_count <= tip,
-            "wallet transparent balance %s ZEC implies %d coinbases; "
-            "expected between %d and %d at tip %d"
-            % (wallet_zec, coinbase_count,
-               tip - _SCAN_LAG_TOLERANCE, tip, tip))
+        # Wallet surfaces every coinbase the node does, but does so for some
+        # time after reaching the tip, so wait for the whole amount.
+        assert_equal(_wait_for_transparent_zec(wallet, tip * COINBASE_REWARD_ZEC),
+                     tip * COINBASE_REWARD_ZEC)
 
-        # Mining another block should grow the wallet's visible balance by at
-        # least one mature coinbase reward (older immature outputs catch up).
-        prev_zec = wallet_zec
+        # Mining one more block adds exactly one more coinbase.
         node.generate(1)
         wait_for_wallet_sync(node, wallet)
-        # wait_for_wallet_sync only guarantees wallet_tip has advanced;
-        # z_gettotalbalance's transparent summary uses an internal scan tip that
-        # can lag it by a block, so poll until the fresh coinbase surfaces
-        # rather than reading the balance once.
-        new_zec = wait_for_total_balance(
-            wallet, TotalBalanceField.TRANSPARENT, lambda v: v > prev_zec)
-        assert_true(
-            new_zec > prev_zec,
-            "wallet transparent balance should grow after mining "
-            "(was %s, now %s)" % (prev_zec, new_zec))
-
-        # The wallet tracked the coinbase txs. The freshest tip may not have
-        # been surfaced yet through `z_listtransactions`, so allow a small lag.
-        tx_count = len(wallet.z_listtransactions())
         tip = node.getblockcount()
-        assert_true(
-            tip - _SCAN_LAG_TOLERANCE <= tx_count <= tip,
-            "z_listtransactions returned %d entries at tip %d "
-            "(allowed lag %d)" % (tx_count, tip, _SCAN_LAG_TOLERANCE))
+        assert_equal(_wait_for_transparent_zec(wallet, tip * COINBASE_REWARD_ZEC),
+                     tip * COINBASE_REWARD_ZEC)
+
+        # The wallet tracked every coinbase tx.
+        assert_equal(wait_for_transaction_count(wallet, tip), tip)
 
         """
         walletinfo = self.wallets[0].getwalletinfo()
