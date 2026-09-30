@@ -137,6 +137,9 @@ jobs:
       rpc_test_names: ${{ steps.set-matrices.outputs.rpc_test_names }}
       rpc_test_shards: ${{ steps.set-rpc-tests.outputs.rpc_test_shards }}
       rpc_test_shards_matrix: ${{ steps.set-rpc-tests.outputs.rpc_test_shards_matrix }}
+      zebra_sha: ${{ steps.source-refs.outputs.zebra_sha }}
+      zaino_sha: ${{ steps.source-refs.outputs.zaino_sha }}
+      zallet_sha: ${{ steps.source-refs.outputs.zallet_sha }}
 
     steps:
       - name: Select the test branch
@@ -155,6 +158,19 @@ jobs:
           # Empty on direct repo PRs, which selects the default.
           ref: ${{ steps.test-branch.outputs.test_sha }}
           persist-credentials: false
+
+      - name: Check source selection
+        run: python3 .github/scripts/test_resolve_source_refs.py
+
+      - name: Resolve the writer and companion sources once
+        id: source-refs
+        env:
+          INTEROP_ACTION: ${{ github.event.action }}
+          REQUEST_SHA: ${{ github.event.client_payload.sha }}
+          ZEBRA_REF: ${{ github.event.client_payload.zebra_sha }}
+          ZAINO_REF: ${{ github.event.client_payload.zaino_sha }}
+          ZALLET_REF: ${{ github.event.client_payload.zallet_sha }}
+        run: python3 .github/scripts/resolve_source_refs.py >> "$GITHUB_OUTPUT"
 
       # Source the Python version for the test jobs from the uv lockfile, so it
       # has a single point of definition and follows the project's pin. We take
@@ -339,8 +355,8 @@ jobs:
     with:
       build_matrix: ${{ needs.setup.outputs.test_build_matrix }}
       repository: ZcashFoundation/zebra
-      default_ref: refs/heads/main
-      interop_action: zebra-interop-request
+      source_sha: ${{ needs.setup.outputs.zebra_sha }}
+      zebra_sha: ${{ needs.setup.outputs.zebra_sha }}
       path: zebra
       bin: zebrad
       job_name_prefix: Build zebrad on
@@ -363,8 +379,8 @@ jobs:
     with:
       build_matrix: ${{ needs.setup.outputs.extra_build_matrix }}
       repository: ZcashFoundation/zebra
-      default_ref: refs/heads/main
-      interop_action: zebra-interop-request
+      source_sha: ${{ needs.setup.outputs.zebra_sha }}
+      zebra_sha: ${{ needs.setup.outputs.zebra_sha }}
       path: zebra
       bin: zebrad
       job_name_prefix: Build zebrad on
@@ -384,8 +400,8 @@ jobs:
     with:
       build_matrix: ${{ needs.setup.outputs.test_build_matrix }}
       repository: zingolabs/zaino
-      default_ref: refs/heads/dev
-      interop_action: zaino-interop-request
+      source_sha: ${{ needs.setup.outputs.zaino_sha }}
+      zebra_sha: ${{ needs.setup.outputs.zebra_sha }}
       path: zaino
       bin: zainod
       job_name_prefix: Build zainod on
@@ -404,8 +420,8 @@ jobs:
     with:
       build_matrix: ${{ needs.setup.outputs.extra_build_matrix }}
       repository: zingolabs/zaino
-      default_ref: refs/heads/dev
-      interop_action: zaino-interop-request
+      source_sha: ${{ needs.setup.outputs.zaino_sha }}
+      zebra_sha: ${{ needs.setup.outputs.zebra_sha }}
       path: zaino
       bin: zainod
       job_name_prefix: Build zainod on
@@ -424,8 +440,8 @@ jobs:
     with:
       build_matrix: ${{ needs.setup.outputs.test_build_matrix }}
       repository: zcash/zallet
-      default_ref: refs/heads/main
-      interop_action: zallet-interop-request
+      source_sha: ${{ needs.setup.outputs.zallet_sha }}
+      zebra_sha: ${{ needs.setup.outputs.zebra_sha }}
       path: zallet
       bin: zallet
       job_name_prefix: Build zallet on
@@ -445,8 +461,8 @@ jobs:
     with:
       build_matrix: ${{ needs.setup.outputs.extra_build_matrix }}
       repository: zcash/zallet
-      default_ref: refs/heads/main
-      interop_action: zallet-interop-request
+      source_sha: ${{ needs.setup.outputs.zallet_sha }}
+      zebra_sha: ${{ needs.setup.outputs.zebra_sha }}
       path: zallet
       bin: zallet
       job_name_prefix: Build zallet on

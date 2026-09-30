@@ -70,7 +70,8 @@ This uses the dispatch app's credentials to generate a token scoped to
 
 The `client_payload` must include:
 
-- **`sha`**: The commit SHA to build and test from the requesting repository.
+- **`sha`**: The full, 40-hex-digit commit SHA to build and test from the requesting
+  repository. This remains authoritative for that repository's binary.
 
 It may also include these optional fields:
 
@@ -83,6 +84,54 @@ It may also include these optional fields:
   itself. When provided, the test suite is checked out at this ref instead of
   `main`. This is useful for testing integration-tests changes alongside project
   changes.
+- **`zebra_sha`**, **`zaino_sha`**, **`zallet_sha`**: Companion source overrides in
+  `ZcashFoundation/zebra`, `zingolabs/zaino`, and `zcash/zallet`, respectively.
+  Each accepts a full commit SHA or a named branch/tag. Use `refs/heads/...` or
+  `refs/tags/...` if a branch and tag share a name. Abbreviated commit SHAs and
+  revision expressions are not supported. The field for the requesting project
+  is ignored: for example, a `zebra-interop-request` always builds `sha`, even
+  when `zebra_sha` is also supplied.
+
+#### Pairing companion sources
+
+For each project, setup selects the requester's `sha` first, otherwise its
+companion override, otherwise the existing default (`main` for Zebra and Zallet,
+`dev` for Zaino). Setup resolves the selected named refs once to full SHAs and
+logs the resulting cohort. All required and extra build platforms consume those
+same immutable source revisions, even if a branch moves during the run.
+
+For example, after publishing compatible reader commits, dispatch a Zebra
+writer together with those companions (the environment variables must contain
+the actual published revisions):
+
+```sh
+gh api repos/zcash/integration-tests/dispatches \
+  --field event_type=zebra-interop-request \
+  --field "client_payload[sha]=$ZEBRA_SHA" \
+  --field "client_payload[zaino_sha]=$ZAINO_SHA" \
+  --field "client_payload[zallet_sha]=$ZALLET_SHA"
+```
+
+These overrides select source, not dependency rewrites. Every build uses
+`cargo build --locked`, including the Zallet launcher and both backend
+workspaces. Companion commits must already contain coherent manifests and
+committed lockfiles for the tested writer. CI does not patch Cargo dependencies,
+replace SDK pins, or regenerate locks.
+
+In particular, pairing a v29 Zebra writer requires readers built with its
+compatible Zebra state implementation; merely rebuilding an unchanged v28
+reader cannot make it read v29. Zallet also needs a coherent SDK cohort across
+all three workspaces and a compatible **embedded** Zaino revision in its
+backend manifests and lockfile. `zaino_sha` selects the standalone `zainod`,
+not that embedded dependency. A compatible published source graph is a
+prerequisite, not something this workflow creates.
+
+Final-binary cache keys include the selected source SHA, the exact tested Zebra
+SHA, and a hash of the build workflows/scripts and recipe inputs (including the
+platform and feature arguments). Cargo cache keys include the same identities.
+Final binaries only restore on an exact match; changing writers cannot restore
+another writer's cached reader binary. Cache separation records provenance, not
+database compatibility: the paired startup and RPC tests must still pass.
 
 [platform-support]: https://zcash.github.io/integration-tests/user/platform-support.html
 
@@ -94,19 +143,13 @@ In the integration-tests repository CI, three things are configured:
    includes the event type (`zebra-interop-request`, `zallet-interop-request`,
    and `zaino-interop-request` are currently supported).
 
-2. **Build job**: A build job checks out the requesting repository at the
-   dispatched commit SHA:
-   ```yaml
-   - name: Use specified commit
-     if: github.event.action == '<project>-interop-request'
-     env:
-       SHA: ${{ github.event.client_payload.sha }}
-     run: echo "PROJECT_REF=${SHA}" >> $GITHUB_ENV
-
-   - name: Use current main
-     if: github.event.action != '<project>-interop-request'
-     run: echo "PROJECT_REF=refs/heads/main" >> $GITHUB_ENV
-   ```
+2. **Source selection and build jobs**: `ci.yml` setup uses
+   `.github/scripts/resolve_source_refs.py` to select and resolve all three
+   sources, taking dispatch fields through environment variables. Each of the
+   six reusable `build-binary.yml` calls receives its immutable `source_sha`
+   and the cohort's `zebra_sha`; build jobs do not resolve moving refs again.
+   The resolver's offline regression can be run with
+   `python3 .github/scripts/test_resolve_source_refs.py`.
 
 3. **Status reporting**: Four composite actions in `.github/actions/` handle
    communication back to the requesting repository:

@@ -8,14 +8,12 @@ name: Build binary
 # they actually consume, instead of waiting for every platform to finish
 # building.
 #
-# The built binary is cached keyed by the upstream source commit (see issue
-# #156). The tested projects (zebrad, zainod, zallet) move much less often than
-# this repository, so most CI runs rebuild an identical upstream commit. We
-# resolve the upstream ref to a concrete commit SHA, restore a cache keyed by
-# it, and skip the whole build (and the source checkout) on a hit, only
-# rebuilding when the upstream commit actually changed. A post-build step prunes
-# the per-binary, per-platform caches to the most recent 5 versions, which is
-# why this workflow needs `actions: write`.
+# Cache final binaries by their immutable source, the tested Zebra writer, and
+# the build recipe. Setup resolves all three projects once, so required and
+# extra platforms cannot select different moving branch heads. An exact cache
+# hit skips the build and source checkout. A post-build step prunes the
+# per-binary, per-platform caches to the most recent 5 versions, which is why
+# this workflow needs `actions: write`.
 
 on:
   workflow_call:
@@ -28,12 +26,12 @@ on:
         description: The owner/name of the source repository to build.
         required: true
         type: string
-      default_ref:
-        description: The git ref to build when not handling an interop request.
+      source_sha:
+        description: The full source commit SHA resolved by setup.
         required: true
         type: string
-      interop_action:
-        description: The repository_dispatch action that pins this binary's commit.
+      zebra_sha:
+        description: The full commit SHA of the Zebra writer tested with this binary.
         required: true
         type: string
       path:
@@ -109,58 +107,44 @@ jobs:
           requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
           job-name: "${{ inputs.job_name_prefix }} ${{ matrix.platform }}${{ matrix.required_suffix }}"
 
-      - name: Use specified commit
-        if: github.event.action == inputs.interop_action
-        shell: sh
-        env:
-          SHA: ${{ github.event.client_payload.sha }}
-        run: echo "TARGET_REF=${SHA}" >> $GITHUB_ENV
-
-      - name: Use current default branch
-        if: github.event.action != inputs.interop_action
-        env:
-          DEFAULT_REF: ${{ inputs.default_ref }}
-        run: echo "TARGET_REF=${DEFAULT_REF}" >> $GITHUB_ENV
-
-      # Resolve TARGET_REF to a concrete commit SHA. An interop request already
-      # pins a SHA; the default-branch case is a symbolic ref (refs/heads/...),
-      # which we resolve with `git ls-remote` against the source repository. The
-      # SHA is the cache key below, so the build is reused across integration-
-      # tests commits as long as the upstream commit is unchanged.
-      - name: Resolve upstream commit SHA
-        id: resolve-sha
+      - name: Identify the immutable build recipe
+        id: recipe
         shell: bash
         env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          ZEBRA_SHA: ${{ inputs.zebra_sha }}
           REPOSITORY: ${{ inputs.repository }}
+          SOURCE_PATH: ${{ inputs.path }}
+          BIN: ${{ inputs.bin }}
+          IS_ZALLET: ${{ inputs.is_zallet }}
+          EXTRA_BUILD_ARGS: ${{ inputs.extra_build_args }}
+          PLATFORM: ${{ toJSON(matrix) }}
+          RECIPE_FILES: ${{ hashFiles('integration-tests/.github/workflows/ci.yml', 'integration-tests/.github/workflows/build-binary.yml', 'integration-tests/.github/scripts/resolve_source_refs.py', 'integration-tests/.github/scripts/build-zallet.sh', 'integration-tests/.github/scripts/stage-zallet-db-dump.sh') }}
         run: |
-          case "${TARGET_REF}" in
-            refs/*)
-              sha=$(git ls-remote "https://github.com/${REPOSITORY}.git" \
-                "${TARGET_REF}" | cut -f1)
-              ;;
-            *)
-              sha="${TARGET_REF}"
-              ;;
-          esac
-          if [ -z "${sha}" ]; then
-            echo "Could not resolve ${REPOSITORY} ref ${TARGET_REF}" >&2
-            exit 1
-          fi
-          echo "Resolved ${REPOSITORY} ${TARGET_REF} to ${sha}"
-          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import hashlib
+          import os
+          import re
 
-      # Restore the cached binary for this exact upstream commit. The key mixes
-      # in a hash of the build inputs (this workflow and the zallet build
-      # scripts) so that changing how we build invalidates stale binaries even
-      # when the upstream commit is unchanged. Only one of the two steps runs,
-      # per is_zallet; the combined result is read from `binary-cache.hit`.
+          for name in ("SOURCE_SHA", "ZEBRA_SHA"):
+              if not re.fullmatch(r"[0-9a-f]{40}", os.environ[name]):
+                  raise ValueError(f"{name} must be a resolved full commit SHA")
+          fields = ("REPOSITORY", "SOURCE_PATH", "BIN", "IS_ZALLET",
+                    "EXTRA_BUILD_ARGS", "PLATFORM", "RECIPE_FILES")
+          recipe = "\0".join(os.environ[name] for name in fields)
+          print(f"hash={hashlib.sha256(recipe.encode()).hexdigest()}")
+          PY
+
+      # Exact matches only: never reuse a final executable from another source,
+      # writer, or build recipe. The source SHA also pins its manifests and locks.
+      # Only one restore step runs; `binary-cache.hit` combines their results.
       - name: Restore cached ${{ inputs.bin }} binary (single workspace)
         id: binary-cache-single
         if: ${{ !inputs.is_zallet }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ format('./{0}/target/{1}/release/{2}{3}', inputs.path, matrix.rust_target, inputs.bin, matrix.file_ext) }}
-          key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ steps.resolve-sha.outputs.sha }}-${{ hashFiles('integration-tests/.github/workflows/build-binary.yml') }}
+          key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ inputs.source_sha }}-zebra-${{ inputs.zebra_sha }}-${{ steps.recipe.outputs.hash }}
 
       - name: Restore cached zallet binaries
         id: binary-cache-zallet
@@ -170,7 +154,7 @@ jobs:
           # The launcher, the zaino backend binary, and the vendored db_dump all
           # land in ./zallet/dist; cache the directory as a unit.
           path: ./zallet/dist
-          key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ steps.resolve-sha.outputs.sha }}-${{ hashFiles('integration-tests/.github/workflows/build-binary.yml', 'integration-tests/.github/scripts/build-zallet.sh', 'integration-tests/.github/scripts/stage-zallet-db-dump.sh') }}
+          key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ inputs.source_sha }}-zebra-${{ inputs.zebra_sha }}-${{ steps.recipe.outputs.hash }}
 
       - name: Determine binary cache hit
         id: binary-cache
@@ -191,11 +175,8 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ inputs.repository }}
-          # Check out the SHA resolved above, not the symbolic TARGET_REF: the
-          # cache key is that SHA, so building anything else (e.g. if the branch
-          # head moves between resolution and checkout) would store a binary
-          # under a key that misrepresents its contents.
-          ref: ${{ steps.resolve-sha.outputs.sha }}
+          # Build exactly the source whose manifests and locks identify the cache.
+          ref: ${{ inputs.source_sha }}
           path: ${{ inputs.path }}
           persist-credentials: false
 
@@ -232,14 +213,14 @@ jobs:
         if: ${{ !inputs.is_zallet && steps.binary-cache.outputs.hit != 'true' }}
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
-          key: ${{ matrix.name }}
+          key: ${{ matrix.name }}-${{ inputs.source_sha }}-zebra-${{ inputs.zebra_sha }}-${{ steps.recipe.outputs.hash }}
           workspaces: "./${{ inputs.path }}"
 
       - name: Cache cargo build (zallet launcher + backends)
         if: ${{ inputs.is_zallet && steps.binary-cache.outputs.hit != 'true' }}
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
-          key: ${{ matrix.name }}
+          key: ${{ matrix.name }}-${{ inputs.source_sha }}-zebra-${{ inputs.zebra_sha }}-${{ steps.recipe.outputs.hash }}
           # zallet is three workspaces: the root (the `zallet` launcher),
           # backends/zaino (`zallet-zaino`), and backends/zebra
           # (`zallet-zebra`), each with its own target directory. Cache all.
@@ -260,7 +241,7 @@ jobs:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: "aarch64-linux-gnu-gcc"
           BIN: ${{ inputs.bin }}
           EXTRA_BUILD_ARGS: ${{ inputs.extra_build_args }}
-        run: cargo build --release --target ${{ matrix.rust_target }} --bin "${BIN}" ${EXTRA_BUILD_ARGS}
+        run: cargo build --locked --release --target ${{ matrix.rust_target }} --bin "${BIN}" ${EXTRA_BUILD_ARGS}
         working-directory: ./${{ inputs.path }}
 
       # Build the `zallet` launcher plus the `zallet-zaino` and `zallet-zebra`

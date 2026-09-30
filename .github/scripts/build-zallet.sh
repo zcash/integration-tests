@@ -34,11 +34,11 @@ dist=dist
 mkdir -p "$dist"
 
 # Launcher (root workspace) + both backend binaries (each its own workspace).
-cargo build --release --target "$target" --bin zallet
-cargo build --release --target "$target" \
+cargo build --locked --release --target "$target" --bin zallet
+cargo build --locked --release --target "$target" \
     --manifest-path backends/zaino/Cargo.toml \
     $zcashd_import --bin zallet-zaino
-cargo build --release --target "$target" \
+cargo build --locked --release --target "$target" \
     --manifest-path backends/zebra/Cargo.toml \
     $zcashd_import --bin zallet-zebra
 
