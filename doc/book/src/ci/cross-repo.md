@@ -81,9 +81,10 @@ It may also include these optional fields:
   [here](platform-support). Unrecognized platform names are reported as error
   statuses on the requesting PR. When omitted, all platforms run.
 - **`test_sha`**: A commit SHA or ref in the `zcash/integration-tests` repository
-  itself. When provided, the test suite is checked out at this ref instead of
-  `main`. This is useful for testing integration-tests changes alongside project
-  changes.
+  itself. Setup checks it out once and passes the resolved commit to all build
+  and test jobs. Tests, source resolution, build scripts, and composite actions
+  therefore use the same revision, even if the supplied branch moves. This does
+  not replace the workflow definitions that GitHub executes.
 - **`zebra_sha`**, **`zaino_sha`**, **`zallet_sha`**: Companion source overrides in
   `ZcashFoundation/zebra`, `zingolabs/zaino`, and `zcash/zallet`, respectively.
   Each accepts a full commit SHA or a named branch/tag. Use `refs/heads/...` or
@@ -95,10 +96,16 @@ It may also include these optional fields:
 #### Pairing companion sources
 
 For each project, setup selects the requester's `sha` first, otherwise its
-companion override, otherwise the existing default (`main` for Zebra and Zallet,
-`dev` for Zaino). Setup resolves the selected named refs once to full SHAs and
-logs the resulting cohort. All required and extra build platforms consume those
-same immutable source revisions, even if a branch moves during the run.
+companion override, otherwise the compatible cohort pinned in
+`.github/scripts/resolve_source_refs.py`. The initial pre-v29 cohort comes from
+[the successful September 30 backend matrix](https://github.com/zcash/integration-tests/actions/runs/36772958143).
+Advance these defaults together only after the replacement cohort passes the
+backend matrix; do not change them back to moving branches.
+
+Setup resolves selected named refs once to full SHAs and logs the resulting
+cohort. All required and extra build platforms consume those same immutable
+source revisions. A dispatch still tests the requester's actual commit, not
+the pinned fallback for that project.
 
 For example, after publishing compatible reader commits, dispatch a Zebra
 writer together with those companions (the environment variables must contain
@@ -126,12 +133,28 @@ backend manifests and lockfile. `zaino_sha` selects the standalone `zainod`,
 not that embedded dependency. A compatible published source graph is a
 prerequisite, not something this workflow creates.
 
-Final-binary cache keys include the selected source SHA, the exact tested Zebra
-SHA, and a hash of the build workflows/scripts and recipe inputs (including the
-platform and feature arguments). Cargo cache keys include the same identities.
-Final binaries only restore on an exact match; changing writers cannot restore
-another writer's cached reader binary. Cache separation records provenance, not
-database compatibility: the paired startup and RPC tests must still pass.
+The pre-v29 defaults restore ordinary integration-tests runs; they do not make
+a NU7 Zebra dispatch compatible with the old readers. Such dispatches must
+supply compatible reader revisions. Reader upgrades and a passing v29 cohort
+remain tracked by [#206](https://github.com/zcash/integration-tests/issues/206).
+
+Final-binary cache keys include only the binary's own source SHA, platform,
+and build recipe. The recipe hashes the executing `build-binary.yml` workflow,
+the selected Zallet build scripts when applicable, and actual build arguments
+and platform properties. It excludes source-selection code, `ci.yml`, shard
+counts, test runners, and required/optional job labels. Changing only the Zebra
+writer does not rebuild unchanged Zaino or Zallet binaries.
+
+Build scripts are checked out at setup's resolved integration-tests commit.
+A separate sparse checkout at `github.workflow_sha` supplies the executing
+workflow for recipe hashing, so a `test_sha` override cannot make the recipe
+hash describe a workflow that GitHub did not execute.
+
+Cargo caches use stable per-platform, per-binary keys. The cache action tracks
+toolchain and dependency inputs and can partially restore across source and
+lockfile changes; Cargo determines what must rebuild. Final binaries still
+require an exact cache match. Neither cache key establishes database
+compatibility: paired startup and RPC tests must pass.
 
 [platform-support]: https://zcash.github.io/integration-tests/user/platform-support.html
 
@@ -147,7 +170,7 @@ In the integration-tests repository CI, three things are configured:
    `.github/scripts/resolve_source_refs.py` to select and resolve all three
    sources, taking dispatch fields through environment variables. Each of the
    six reusable `build-binary.yml` calls receives its immutable `source_sha`
-   and the cohort's `zebra_sha`; build jobs do not resolve moving refs again.
+   and setup's resolved `test_sha`; build jobs do not resolve moving refs again.
    The resolver's offline regression can be run with
    `python3 .github/scripts/test_resolve_source_refs.py`.
 

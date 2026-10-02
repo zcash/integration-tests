@@ -8,8 +8,8 @@ name: Build binary
 # they actually consume, instead of waiting for every platform to finish
 # building.
 #
-# Cache final binaries by their immutable source, the tested Zebra writer, and
-# the build recipe. Setup resolves all three projects once, so required and
+# Cache final binaries by their immutable source, platform, and build recipe.
+# Setup resolves all three projects once, so required and
 # extra platforms cannot select different moving branch heads. An exact cache
 # hit skips the build and source checkout. A post-build step prunes the
 # per-binary, per-platform caches to the most recent 5 versions, which is why
@@ -30,8 +30,8 @@ on:
         description: The full source commit SHA resolved by setup.
         required: true
         type: string
-      zebra_sha:
-        description: The full commit SHA of the Zebra writer tested with this binary.
+      test_sha:
+        description: The full integration-tests commit SHA checked out by setup.
         required: true
         type: string
       path:
@@ -91,6 +91,7 @@ jobs:
       - name: Check out integration-tests to access actions
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ inputs.test_sha }}
           path: integration-tests
           persist-credentials: false
 
@@ -107,36 +108,55 @@ jobs:
           requesting-repository: ${{ steps.repo-ids.outputs.requesting-repository }}
           job-name: "${{ inputs.job_name_prefix }} ${{ matrix.platform }}${{ matrix.required_suffix }}"
 
+      # Local reusable workflows run from the caller's workflow revision, even
+      # when test_sha selects different scripts. Hash the workflow we execute.
+      - name: Check out the executing build workflow
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: build-workflow
+          sparse-checkout: .github/workflows/build-binary.yml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Identify the immutable build recipe
         id: recipe
         shell: bash
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
-          ZEBRA_SHA: ${{ inputs.zebra_sha }}
+          TEST_SHA: ${{ inputs.test_sha }}
           REPOSITORY: ${{ inputs.repository }}
           SOURCE_PATH: ${{ inputs.path }}
           BIN: ${{ inputs.bin }}
           IS_ZALLET: ${{ inputs.is_zallet }}
           EXTRA_BUILD_ARGS: ${{ inputs.extra_build_args }}
           PLATFORM: ${{ toJSON(matrix) }}
-          RECIPE_FILES: ${{ hashFiles('integration-tests/.github/workflows/ci.yml', 'integration-tests/.github/workflows/build-binary.yml', 'integration-tests/.github/scripts/resolve_source_refs.py', 'integration-tests/.github/scripts/build-zallet.sh', 'integration-tests/.github/scripts/stage-zallet-db-dump.sh') }}
+          WORKFLOW_FILE: ${{ hashFiles('build-workflow/.github/workflows/build-binary.yml') }}
+          BUILD_SCRIPTS: ${{ inputs.is_zallet && hashFiles('integration-tests/.github/scripts/build-zallet.sh', 'integration-tests/.github/scripts/stage-zallet-db-dump.sh') || '' }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import hashlib
+          import json
           import os
           import re
 
-          for name in ("SOURCE_SHA", "ZEBRA_SHA"):
+          for name in ("SOURCE_SHA", "TEST_SHA"):
               if not re.fullmatch(r"[0-9a-f]{40}", os.environ[name]):
                   raise ValueError(f"{name} must be a resolved full commit SHA")
           fields = ("REPOSITORY", "SOURCE_PATH", "BIN", "IS_ZALLET",
-                    "EXTRA_BUILD_ARGS", "PLATFORM", "RECIPE_FILES")
-          recipe = "\0".join(os.environ[name] for name in fields)
+                    "EXTRA_BUILD_ARGS", "WORKFLOW_FILE", "BUILD_SCRIPTS")
+          platform = json.loads(os.environ["PLATFORM"])
+          build_platform = {key: platform.get(key, "") for key in (
+              "name", "build_os", "container", "host", "rust_target",
+              "file_ext", "brew_deps", "cross_deps",
+          )}
+          recipe = "\0".join([*(os.environ[name] for name in fields),
+                              json.dumps(build_platform, sort_keys=True)])
           print(f"hash={hashlib.sha256(recipe.encode()).hexdigest()}")
           PY
 
-      # Exact matches only: never reuse a final executable from another source,
-      # writer, or build recipe. The source SHA also pins its manifests and locks.
+      # Exact matches only: never reuse a final executable from another source
+      # or build recipe. The source SHA also pins its manifests and locks.
       # Only one restore step runs; `binary-cache.hit` combines their results.
       - name: Restore cached ${{ inputs.bin }} binary (single workspace)
         id: binary-cache-single
@@ -144,7 +164,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ format('./{0}/target/{1}/release/{2}{3}', inputs.path, matrix.rust_target, inputs.bin, matrix.file_ext) }}
-          key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ inputs.source_sha }}-zebra-${{ inputs.zebra_sha }}-${{ steps.recipe.outputs.hash }}
+          key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ inputs.source_sha }}-${{ steps.recipe.outputs.hash }}
 
       - name: Restore cached zallet binaries
         id: binary-cache-zallet
@@ -154,7 +174,7 @@ jobs:
           # The launcher, the zaino backend binary, and the vendored db_dump all
           # land in ./zallet/dist; cache the directory as a unit.
           path: ./zallet/dist
-          key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ inputs.source_sha }}-zebra-${{ inputs.zebra_sha }}-${{ steps.recipe.outputs.hash }}
+          key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ inputs.source_sha }}-${{ steps.recipe.outputs.hash }}
 
       - name: Determine binary cache hit
         id: binary-cache
@@ -213,14 +233,14 @@ jobs:
         if: ${{ !inputs.is_zallet && steps.binary-cache.outputs.hit != 'true' }}
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
-          key: ${{ matrix.name }}-${{ inputs.source_sha }}-zebra-${{ inputs.zebra_sha }}-${{ steps.recipe.outputs.hash }}
+          key: ${{ matrix.name }}-${{ inputs.bin }}
           workspaces: "./${{ inputs.path }}"
 
       - name: Cache cargo build (zallet launcher + backends)
         if: ${{ inputs.is_zallet && steps.binary-cache.outputs.hit != 'true' }}
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
-          key: ${{ matrix.name }}-${{ inputs.source_sha }}-zebra-${{ inputs.zebra_sha }}-${{ steps.recipe.outputs.hash }}
+          key: ${{ matrix.name }}-${{ inputs.bin }}
           # zallet is three workspaces: the root (the `zallet` launcher),
           # backends/zaino (`zallet-zaino`), and backends/zebra
           # (`zallet-zebra`), each with its own target directory. Cache all.

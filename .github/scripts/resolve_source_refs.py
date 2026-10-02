@@ -6,11 +6,12 @@ import re
 import subprocess
 import sys
 
-
+# Compatible pre-v29 cohort from https://github.com/zcash/integration-tests/actions/runs/36772958143.
+# Advance these pins together after the backend matrix passes with the replacement cohort.
 SOURCES = {
-    "zebra": ("ZcashFoundation/zebra", "refs/heads/main"),
-    "zaino": ("zingolabs/zaino", "refs/heads/dev"),
-    "zallet": ("zcash/zallet", "refs/heads/main"),
+    "zebra": ("ZcashFoundation/zebra", "21943d798525058438a534b44bd0bc954e9443f7"),
+    "zaino": ("zingolabs/zaino", "797bc2f4c76b54903ed31a08fa63b5256303105e"),
+    "zallet": ("zcash/zallet", "f9dcd4d31439feb813c95ac2516814421f5b04df"),
 }
 
 
@@ -32,18 +33,31 @@ def resolve_ref(remote, ref):
         return full_sha(ref)
 
     # Only literal git refs are accepted, not ls-remote patterns or revision syntax.
-    candidates = [ref] if ref.startswith("refs/") else [f"refs/heads/{ref}", f"refs/tags/{ref}"]
+    candidates = (
+        [ref] if ref.startswith("refs/") else [f"refs/heads/{ref}", f"refs/tags/{ref}"]
+    )
     for candidate in candidates:
         subprocess.run(["git", "check-ref-format", candidate], check=True, timeout=10)
     result = subprocess.run(
-        ["git", "ls-remote", "--exit-code", remote,
-         *candidates, *(f"{candidate}^{{}}" for candidate in candidates)],
-        check=True, capture_output=True, text=True, timeout=60,
+        [
+            "git",
+            "ls-remote",
+            "--exit-code",
+            remote,
+            *candidates,
+            *(f"{candidate}^{{}}" for candidate in candidates),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     advertised = dict(line.split("\t", 1)[::-1] for line in result.stdout.splitlines())
     matches = [candidate for candidate in candidates if candidate in advertised]
     if len(matches) != 1:
-        raise ValueError(f"Expected one ref for {ref!r}; use refs/heads/ or refs/tags/ to disambiguate")
+        raise ValueError(
+            f"Expected one ref for {ref!r}; use refs/heads/ or refs/tags/ to disambiguate"
+        )
     candidate = matches[0]
     # An annotated tag names a tag object; builds need its peeled commit instead.
     return full_sha(advertised.get(f"{candidate}^{{}}", advertised[candidate]))
@@ -53,8 +67,11 @@ def main():
     resolved = {}
     for project, (repository, default_ref) in SOURCES.items():
         ref = select_ref(
-            project, default_ref, os.environ.get("INTEROP_ACTION", ""),
-            os.environ.get("REQUEST_SHA", ""), os.environ.get(f"{project.upper()}_REF", ""),
+            project,
+            default_ref,
+            os.environ.get("INTEROP_ACTION", ""),
+            os.environ.get("REQUEST_SHA", ""),
+            os.environ.get(f"{project.upper()}_REF", ""),
         )
         sha = resolve_ref(f"https://github.com/{repository}.git", ref)
         print(f"Resolved {repository} {ref!r} to {sha}", file=sys.stderr)
