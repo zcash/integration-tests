@@ -589,7 +589,7 @@ def initialize_chain(test_dir, num_nodes, cachedir, cache_behavior='current'):
         wallets = []
         for i in range(MAX_NODES):
             try:
-                wallets.append(get_rpc_auth_proxy(rpc_url_wallet(i), i))
+                wallets.append(get_rpc_auth_proxy(rpc_url_wallet(i), i, timeout=25))
             except:
                 sys.stderr.write("Error connecting to "+rpc_url_wallet(i)+"\n")
                 sys.exit(1)
@@ -1267,7 +1267,10 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
     wait_for_wallet_start(zallet_processes[i], url, i)
     if os.getenv("PYTHON_DEBUG", ""):
         print("start_wallet: RPC successfully started for wallet {} with pid {}".format(i, zallet_processes[i].pid))
-    proxy = get_rpc_auth_proxy(url, i, timeout=timewait)
+    # Short default timeout: a wallet busy with its initial sync can accept a
+    # request and not answer for a long time; callers poll, so fail fast and
+    # let the poll loop retry on a fresh connection.
+    proxy = get_rpc_auth_proxy(url, i, timeout=timewait if timewait is not None else 25)
     if COVERAGE_DIR:
         coverage.write_all_rpc_commands(COVERAGE_DIR, proxy)
 
@@ -1370,7 +1373,11 @@ def wait_for_wallet_start(process, url, i):
             rpc.getwalletinfo()
             break # break out of loop on success
         except IOError as e:
-            if e.errno != errno.ECONNREFUSED: # Port not yet open?
+            # ECONNREFUSED: port not yet open. ECONNRESET/None (for example
+            # RemoteDisconnected or a timeout): the wallet is up but too busy
+            # with its initial sync to answer within the HTTP timeout on slow
+            # machines; keep polling until PROC_START_TIMEOUT decides.
+            if e.errno not in (errno.ECONNREFUSED, errno.ECONNRESET, None):
                 raise # unknown IO error
         except JSONRPCException as e: # Initialization phase
             if e.error['code'] != -28: # RPC in warmup?

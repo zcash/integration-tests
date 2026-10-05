@@ -277,6 +277,7 @@ NEW_SCRIPTS= [
     'wallet_ironwood_invariants.py',
     # vv Tests less than 5m vv
     'wallet.py',
+    'wallet_ironwood_memo.py',
     'wallet_ironwood_persistence.py',
     'wallet_ironwood_views.py',
     'wallet_ironwood_conservation.py',
