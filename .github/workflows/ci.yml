@@ -558,6 +558,7 @@ jobs:
 
     steps:
       - name: Set up Python
+        id: setup-python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ needs.setup.outputs.python_version }}
@@ -567,7 +568,7 @@ jobs:
         with:
           enableCrossOsArchive: true
           path: venv
-          key: test-rpc-venv-${{ matrix.name }}-py${{ needs.setup.outputs.python_version }}
+          key: test-rpc-venv-${{ matrix.name }}-py${{ steps.setup-python.outputs.python-version }}
 
       - name: Get Python dependencies for RPC tests
         run: |
@@ -634,6 +635,7 @@ jobs:
           job-name: "RPC tests ${{ matrix.platform }} ${{ matrix.backend }} ${{ matrix.shard }}${{ matrix.required_suffix }}"
 
       - name: Set up Python
+        id: setup-python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ needs.setup.outputs.python_version }}
@@ -643,7 +645,7 @@ jobs:
         with:
           enableCrossOsArchive: true
           path: venv
-          key: test-rpc-venv-${{ matrix.name }}-py${{ needs.setup.outputs.python_version }}
+          key: test-rpc-venv-${{ matrix.name }}-py${{ steps.setup-python.outputs.python-version }}
 
       - name: Get Python dependencies for RPC tests if not cached
         run: |
