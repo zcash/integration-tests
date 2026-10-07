@@ -1274,11 +1274,10 @@ def start_wallet(i, dirname, extra_args=None, rpchost=None, timewait=None, binar
     return proxy
 
 # The zallet backend the launcher execs (top-level `backend` key in
-# zallet.toml). CI sets this to run the same RPC suite against both the `zaino`
-# and `zebra` backends; it defaults to `zaino` to match the checked-in default
-# config and local runs.
+# zallet.toml). CI sets this per matrix leg; it defaults to `zebra` to match the
+# checked-in default config and local runs.
 def zallet_backend():
-    return os.getenv("ZALLET_BACKEND", "zaino")
+    return os.getenv("ZALLET_BACKEND", "zebra")
 
 def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
                        indexer_port=None, zebra_state_dir=None):

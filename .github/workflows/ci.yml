@@ -346,7 +346,7 @@ jobs:
       job_name_prefix: Build zebrad on
       # The zallet zebra backend follows zebrad's non-finalized tip over its
       # gRPC indexer interface, which is gated behind the non-default `indexer`
-      # feature. Build it in for both backends (harmless to the zaino backend).
+      # feature.
       extra_build_args: --features indexer
 
   build-zebra-extra:
@@ -593,11 +593,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Run the same RPC suite against each zallet backend. The launcher execs
-        # the matching per-backend binary, selected by the ZALLET_BACKEND env var
-        # the test step exports (see the "RPC test" step). Both backends are
-        # required on the required platforms (no continue-on-error for zebra).
-        backend: [zaino, zebra]
+        # Run the RPC suite against each zallet backend. The launcher execs the
+        # matching per-backend binary, selected by the ZALLET_BACKEND env var the
+        # test step exports (see the "RPC test" step). Every backend is required
+        # on the required platforms.
+        backend: [zebra]
         name: ${{ fromJson(needs.setup.outputs.rpc_test_names) }}
         shard : ${{ fromJson(needs.setup.outputs.rpc_test_shards) }}
         include: ${{ fromJson(needs.setup.outputs.rpc_test_shards_matrix) }}

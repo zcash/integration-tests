@@ -29,10 +29,10 @@ By default, binaries must exist in the `../src ` folder. All tests require the `
 binary; most tests require the `zallet` binary; some tests require the `zainod` binary.
 
 `zallet` is a launcher that execs a per-backend binary. These tests run in
-regtest and select the Zaino backend (via `backend = "zaino"` in the default
-`defaults/zallet/zallet.toml`), so the `zallet-zaino` binary must sit next to the
+regtest and select the zebra backend (via `backend = "zebra"` in the default
+`defaults/zallet/zallet.toml`), so the `zallet-zebra` binary must sit next to the
 `zallet` launcher in `../src ` (the launcher looks for the backend binary beside
-itself).
+itself). The zebra backend needs a `zebrad` built with the `indexer` feature.
 
 Alternatively, you can set the binary paths with:
 ```
@@ -40,7 +40,7 @@ export ZEBRAD=/path/to/zebrad
 export ZAINOD=/path/to/zainod
 export ZALLET=/path/to/zallet
 ```
-`ZALLET` must point at the launcher; keep `zallet-zaino` in the same directory.
+`ZALLET` must point at the launcher; keep `zallet-zebra` in the same directory.
 
 Running tests locally
 =====================
