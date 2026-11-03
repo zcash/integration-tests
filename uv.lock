@@ -3,15 +3,6 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
-name = "base58"
-version = "2.1.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7f/45/8ae61209bb9015f516102fa559a2914178da1d5868428bd86a1b4421141d/base58-2.1.1.tar.gz", hash = "sha256:c5d0cb3f5b6e81e8e35da5754388ddcc6d0d14b6c6a132cb93d69ed580a7278c", size = 6528, upload-time = "2021-10-30T22:12:17.858Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/45/ec96b29162a402fc4c1c5512d114d7b3787b9d1c2ec241d9568b4816ee23/base58-2.1.1-py3-none-any.whl", hash = "sha256:11a36f4d3ce51dfc1043f3218591ac4eb1ceb172919cebe05b52a5bcc8d245c2", size = 5621, upload-time = "2021-10-30T22:12:16.658Z" },
-]
-
-[[package]]
 name = "cffi"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -69,12 +60,6 @@ wheels = [
 ]
 
 [[package]]
-name = "embit"
-version = "0.8.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/83/88/b054b00ade6d2a41749e15976cdcec4b7ec4656ac1cb917ce3de395528d1/embit-0.8.0.tar.gz", hash = "sha256:8bf4b10073c67400370ce523fb16f035fe759f6fdd987c579bdcc268d75ed770", size = 763120, upload-time = "2024-05-30T10:56:48.944Z" }
-
-[[package]]
 name = "pycparser"
 version = "3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -82,6 +67,21 @@ sdist = { url = "https://files.pythonhosted.org/packages/1b/7d/92392ff7815c21062
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl", hash = "sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992", size = 48172, upload-time = "2026-01-21T14:26:50.693Z" },
 ]
+
+[[package]]
+name = "pyzcash"
+version = "0.0.1"
+source = { directory = "pyzcash" }
+
+[package.metadata]
+requires-dist = [
+    { name = "base58", marker = "extra == 'dev'", specifier = ">=2.1" },
+    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.1" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "pyzmq"
@@ -140,16 +140,14 @@ name = "zcash-integration-tests"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "base58" },
-    { name = "embit" },
+    { name = "pyzcash" },
     { name = "pyzmq" },
     { name = "toml" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "base58" },
-    { name = "embit", specifier = ">=0.8.0" },
+    { name = "pyzcash", directory = "pyzcash" },
     { name = "pyzmq" },
     { name = "toml" },
 ]

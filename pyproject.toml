@@ -3,8 +3,19 @@ name = "zcash-integration-tests"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "base58",
-    "embit>=0.8.0",
+    # The Zcash protocol primitives the test framework used to carry itself:
+    # transaction parsing, scripts, addresses, the ZIP 244 digests, the ZIP 317
+    # fee. It lives in this repository, under pyzcash/.
+    #
+    # It also replaces two third-party dependencies. `base58` was used by one
+    # test, and `embit` was pulled in only for four Bech32 primitives, because
+    # embit's own decoder rejects strings over 90 characters and ZIP 316
+    # unified addresses are longer than that. pyzcash implements both, so
+    # neither is needed now.
+    "pyzcash",
     "pyzmq",
     "toml",
 ]
+
+[tool.uv.sources]
+pyzcash = { path = "pyzcash" }

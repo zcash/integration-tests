@@ -28,7 +28,7 @@ from test_framework.util import (
     NU6_BRANCH_ID,
 )
 
-from base58 import b58decode_check
+from pyzcash.encoding import b58check_decode as b58decode_check
 
 def redeem_script(addr):
     raw_addr = b58decode_check(addr)
