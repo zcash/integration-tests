@@ -286,6 +286,7 @@ NEW_SCRIPTS= [
     'wallet_changeaddresses.py',
     'wallet_legacy_pool_spend.py',
     # vv Tests less than 60s vv
+    'wallet_pool_deadlock.py',
     'addnode.py',
     'wallet_z_shieldcoinbase.py',
     'wallet_z_shieldcoinbase_multi_taddr.py',

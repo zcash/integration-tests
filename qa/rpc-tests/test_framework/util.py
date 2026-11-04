@@ -1312,7 +1312,9 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
     # Params that update_zallet_conf knows how to apply. Any param set on
     # `extra_args` that is not authorized here is rejected rather than silently
     # ignored.
-    AUTHORIZED_PARAMS = {"activation_heights", "legacy_pool_seed_fingerprint"}
+    AUTHORIZED_PARAMS = {
+        "activation_heights", "legacy_pool_seed_fingerprint", "max_connections",
+    }
     defaults = vars(ZalletArgs())
     provided = {k for k, v in vars(extra_args).items() if v != defaults.get(k)}
     assert provided <= AUTHORIZED_PARAMS, \
@@ -1328,6 +1330,10 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
     if extra_args.legacy_pool_seed_fingerprint:
         config_file.setdefault('features', {})['legacy_pool_seed_fingerprint'] = \
             extra_args.legacy_pool_seed_fingerprint
+
+    if extra_args.max_connections is not None:
+        config_file.setdefault('database', {})['max_connections'] = \
+            extra_args.max_connections
 
     with open(config_path, "w", encoding="utf8") as f:
         toml.dump(config_file, f)

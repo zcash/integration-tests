@@ -99,6 +99,12 @@ class ZalletArgs:
     # restarts it with this set.
     legacy_pool_seed_fingerprint: str | None = None
 
+    # Overrides zallet's wallet-database connection pool size (`database.max_connections`).
+    # Zallet normally sizes the pool from the CPU count with a floor, which hides a
+    # pool-exhaustion deadlock on a many-core CI host; a test that needs to reproduce one
+    # sets this to a small value. None leaves zallet's automatic sizing in place.
+    max_connections: int | None = None
+
     def __add__(self, other):
         if other is None:
             return self
@@ -108,6 +114,8 @@ class ZalletArgs:
             self.activation_heights = other.activation_heights
         if other.legacy_pool_seed_fingerprint != defaults.legacy_pool_seed_fingerprint:
             self.legacy_pool_seed_fingerprint = other.legacy_pool_seed_fingerprint
+        if other.max_connections != defaults.max_connections:
+            self.max_connections = other.max_connections
         return self
 
 
