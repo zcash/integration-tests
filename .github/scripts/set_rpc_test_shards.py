@@ -36,12 +36,19 @@ def assign_shards(is_interop_request: bool) -> list[Shard]:
     # While we are getting the existing tests to pass, skip tests that are not
     # expected to pass; this makes it easier to distinguish expected failures
     # from unexpected ones.
-    if is_interop_request:
+    if is_interop_request or not old_tests:
         old_shards = 0
+    elif not new_tests:
+        old_shards = SHARDS
     else:
-        old_shards = (len(old_tests) * SHARDS) // (
+        # Split the shards in proportion to the test counts, but give each
+        # non-empty group at least one shard. Without the clamp, a group much
+        # smaller than the other rounds down to zero shards and its tests are
+        # silently dropped (one old test against 30 new ones gives 10 // 31).
+        proportional = (len(old_tests) * SHARDS) // (
             len(old_tests) + len(new_tests)
         )
+        old_shards = min(SHARDS - 1, max(1, proportional))
 
     new_shards = SHARDS - old_shards
 
