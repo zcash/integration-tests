@@ -8,3 +8,27 @@ dependencies = [
     "pyzmq",
     "toml",
 ]
+
+# Ruff and mypy currently cover only the CI helper scripts in
+# `.github/scripts`; the `qa/` test suite predates them and is linted with
+# pyflakes. The versions are pinned in `.github/workflows/lints.yml`.
+[tool.ruff]
+line-length = 80
+target-version = "py312"
+include = [".github/scripts/**/*.py"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "N", "W", "UP", "B", "C4", "SIM",
+    "S", "PTH", "PIE", "RET", "ARG", "ERA", "RUF",
+    "PLC", "PLE", "PLW",
+]
+
+[tool.ruff.lint.per-file-ignores]
+".github/scripts/test_*.py" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+files = [".github/scripts"]
+strict = true
+warn_unreachable = true
