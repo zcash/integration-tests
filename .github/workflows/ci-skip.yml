@@ -10,8 +10,8 @@ on:
   # - never running commands with the fork's code checked out (we only require
   #   its commits to be present in the repository).
   pull_request_target:
-    # Any update here needs to be done for the `no-ci-required` step (see below),
-    # and mirrored into `ci.yml`.
+    # Any update here needs to be done for `NO_CI_PATHS` in
+    # `.github/scripts/check_no_ci_required.py`, and mirrored into `ci.yml`.
     paths:
       # Workflows that have no effect on the CI workflow.
       - '.github/dependabot.yml'
@@ -48,46 +48,12 @@ jobs:
 
       - name: Check whether the changes are only to the set of filtered paths
         id: no-ci-required
+        # The script comes from the base branch checkout, never from the PR.
         run: |
-          cat <<EOF > ./subclass.py
-          import os
-          import re
-          import shlex
-          import sys
-
-          paths = [
-              r'^\.github/dependabot\.yml$',
-              r'^\.github/workflows/audits\.yml$',
-              r'^\.github/workflows/book\.yml$',
-              r'^\.github/workflows/ci-skip\.yml$',
-              r'^\.github/workflows/lints\.yml$',
-              r'^\.github/workflows/release-docker-hub\.yml$',
-              r'^contrib/debian/copyright$',
-              r'^doc/.*',
-              r'.*\.md$',
-              r'^COPYING$',
-              r'^INSTALL$',
-          ]
-          paths_regex = '(?:%s)' % '|'.join(paths)
-
-          lex = shlex.shlex(posix = True)
-          lex.whitespace = '\n\r'
-          lex.whitespace_split = True
-          lex.commenters = ''
-          changed_files = list(lex)
-          if len(changed_files) == 0:
-              sys.exit(1)
-
-          verified = True
-          for f in changed_files:
-              if not re.match(paths_regex, f):
-                  verified = False
-
-          print('result=verified' if verified else 'result=skipped')
-          EOF
-
-          git diff --name-only ${{ github.sha }}...$HEAD_SHA -- | python3 ./subclass.py >> $GITHUB_OUTPUT
+          git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- \
+            | python3 ./.github/scripts/check_no_ci_required.py >> "$GITHUB_OUTPUT"
         env:
+          BASE_SHA: ${{ github.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
       - name: Submit required-passed status
