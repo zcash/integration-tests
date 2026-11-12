@@ -83,6 +83,12 @@ It may also include these optional fields:
   itself. When provided, the test suite is checked out at this ref instead of
   `main`. This is useful for testing integration-tests changes alongside project
   changes.
+- **`source_ref`**: A stable identifier for the source of the request (e.g.
+  `pr-42` for a pull request, or a branch name such as `main`). It is used only
+  as the [concurrency](https://docs.github.com/actions/using-jobs/using-concurrency)
+  group key, so that a rapid follow-up push for the same source PR cancels the
+  superseded interop run. When omitted, the run groups by `sha` instead, which
+  is unique per push and so never cancels a prior run.
 
 [platform-support]: https://zcash.github.io/integration-tests/user/platform-support.html
 

@@ -37,6 +37,19 @@ on:
 permissions:
   contents: read
 
+# Cancel a superseded run when a newer one arrives for the same source.
+#
+# Interop requests are grouped by their dispatch action plus a stable per-source
+# key: `source_ref` (the requesting PR number or branch). A rapid follow-up push
+# to the same source PR therefore cancels the prior interop run. A requesting
+# repository that does not yet send `source_ref` falls back to the (per-push
+# unique) head sha and retains its previous no-cancel behavior. Non-dispatch
+# runs group by ref; this repository's own `push` events (i.e. to `main`) are
+# never cancelled, so every landed commit here is fully tested.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'repository_dispatch' && format('{0}-{1}', github.event.action, github.event.client_payload.source_ref || github.event.client_payload.sha) || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
 jobs:
   setup:
     name: Define CI matrix
