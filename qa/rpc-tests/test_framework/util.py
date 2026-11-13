@@ -1365,11 +1365,21 @@ def wait_for_wallet_start(process, url, i):
         if time.time() > deadline:
             raise Exception('%s wallet %d failed to become ready within %d seconds' % (zallet_binary(), i, PROC_START_TIMEOUT))
         try:
-            rpc = get_rpc_auth_proxy(url, i)
+            # Short probe timeout so a wallet that accepts the connection but is
+            # too busy with its initial sync to answer can't block past the
+            # PROC_START_TIMEOUT deadline (the default HTTP_TIMEOUT is 600s, ~5x
+            # the deadline, which is only checked between attempts); the loop
+            # retries on a fresh connection.
+            rpc = get_rpc_auth_proxy(
+                url, i, timeout=max(1, min(25, int(deadline - time.time()))))
             rpc.getwalletinfo()
             break # break out of loop on success
         except IOError as e:
-            if e.errno != errno.ECONNREFUSED: # Port not yet open?
+            # ECONNREFUSED: port not yet open. ECONNRESET/None (for example
+            # RemoteDisconnected or a timeout): the wallet is up but too busy
+            # with its initial sync to answer within the HTTP timeout on slow
+            # machines; keep polling until PROC_START_TIMEOUT decides.
+            if e.errno not in (errno.ECONNREFUSED, errno.ECONNRESET, None):
                 raise # unknown IO error
         except JSONRPCException as e: # Initialization phase
             if e.error['code'] != -28: # RPC in warmup?
