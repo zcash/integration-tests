@@ -116,7 +116,17 @@ class AuthServiceProxy():
             # This can be simplified now that we depend on Python 3 (previously, we could not
             # refer to BrokenPipeError or ConnectionResetError which did not exist on Python 2)
             if ((isinstance(e, BadStatusLine) and e.line == "''")
-                or e.__class__.__name__ in ('BrokenPipeError', 'ConnectionResetError')):
+                or e.__class__.__name__ in ('BrokenPipeError', 'ConnectionResetError',
+                                            # RemoteDisconnected subclasses both
+                                            # BadStatusLine (with line == '', not
+                                            # "''") and ConnectionResetError, but
+                                            # matches neither check above by name.
+                                            # The stale-connection states below are
+                                            # left behind when a request times out
+                                            # mid-flight; a fresh connection is the
+                                            # right response to all of them.
+                                            'RemoteDisconnected', 'CannotSendRequest',
+                                            'ResponseNotReady')):
                 self.__conn.close()
                 self.__conn.request(method, path, postdata, headers)
                 return self._get_response()
