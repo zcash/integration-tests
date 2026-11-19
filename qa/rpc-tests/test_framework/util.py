@@ -1312,7 +1312,10 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
     # Params that update_zallet_conf knows how to apply. Any param set on
     # `extra_args` that is not authorized here is rejected rather than silently
     # ignored.
-    AUTHORIZED_PARAMS = {"activation_heights", "legacy_pool_seed_fingerprint"}
+    AUTHORIZED_PARAMS = {
+        "activation_heights", "legacy_pool_seed_fingerprint",
+        "issue_past_transparent_gap_limit",
+    }
     defaults = vars(ZalletArgs())
     provided = {k for k, v in vars(extra_args).items() if v != defaults.get(k)}
     assert provided <= AUTHORIZED_PARAMS, \
@@ -1328,6 +1331,10 @@ def update_zallet_conf(datadir, validator_port, zallet_port, extra_args=None,
     if extra_args.legacy_pool_seed_fingerprint:
         config_file.setdefault('features', {})['legacy_pool_seed_fingerprint'] = \
             extra_args.legacy_pool_seed_fingerprint
+
+    if extra_args.issue_past_transparent_gap_limit is not None:
+        config_file['rpc']['issue_past_transparent_gap_limit'] = \
+            extra_args.issue_past_transparent_gap_limit
 
     with open(config_path, "w", encoding="utf8") as f:
         toml.dump(config_file, f)
@@ -1537,6 +1544,12 @@ INTERNAL_FEE = None
 # funds with at least this many confirmations. One is the usual choice: it takes
 # confirmed funds only, without waiting beyond a single block.
 MIN_CONFIRMATIONS = 1
+
+# The transparent gap limit for addresses handed out to others (the external
+# scope): by default zallet does not issue a transparent receiver more than this
+# many indices past the last one that received funds. Mirrors
+# `GapLimits::default().external()` in zcash_keys.
+TRANSPARENT_GAP_LIMIT = 10
 
 # The `fromaddress` of z_sendmany that selects the legacy `zcashd` pool of funds:
 # spend non-coinbase UTXOs from any transparent address in it, rather than from
