@@ -99,6 +99,13 @@ class ZalletArgs:
     # restarts it with this set.
     legacy_pool_seed_fingerprint: str | None = None
 
+    # Sets zallet's `rpc.issue_past_transparent_gap_limit`. When True,
+    # `z_getaddressforaccount` keeps handing out addresses with a transparent
+    # receiver after the transparent gap limit is reached, continuing at the next
+    # index that has not been issued, instead of failing until an issued address
+    # is funded. None leaves zallet's default (off) in place.
+    issue_past_transparent_gap_limit: bool | None = None
+
     def __add__(self, other):
         if other is None:
             return self
@@ -108,6 +115,8 @@ class ZalletArgs:
             self.activation_heights = other.activation_heights
         if other.legacy_pool_seed_fingerprint != defaults.legacy_pool_seed_fingerprint:
             self.legacy_pool_seed_fingerprint = other.legacy_pool_seed_fingerprint
+        if other.issue_past_transparent_gap_limit != defaults.issue_past_transparent_gap_limit:
+            self.issue_past_transparent_gap_limit = other.issue_past_transparent_gap_limit
         return self
 
 
