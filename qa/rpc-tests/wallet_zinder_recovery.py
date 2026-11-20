@@ -13,6 +13,9 @@ the mempool, mining, restart, and shallow-reorg lifecycle.
 
 from __future__ import annotations
 
+if not __debug__:
+    raise SystemExit("Optimized Python is not supported for native scenario checks")
+
 import hashlib
 import json
 import math
@@ -264,10 +267,17 @@ class ManagedChildren:
         self.children: dict[str, subprocess.Popen] = {}
         self.files: dict[str, tuple[object, object]] = {}
         self.paths: dict[str, tuple[Path, Path]] = {}
+        self.generations: dict[str, int] = {}
 
     def start(self, name: str, command: list[str], environment: dict[str, str]) -> subprocess.Popen:
-        stdout_path = self.root / "logs" / (name + ".stdout.log")
-        stderr_path = self.root / "logs" / (name + ".stderr.log")
+        previous = self.children.get(name)
+        if previous is not None and previous.poll() is None:
+            raise RuntimeError(f"{name} is already running")
+        generation = self.generations.get(name, 0)
+        self.generations[name] = generation + 1
+        log_name = name if generation == 0 else f"{name}-{generation}"
+        stdout_path = self.root / "logs" / (log_name + ".stdout.log")
+        stderr_path = self.root / "logs" / (log_name + ".stderr.log")
         stdout_path.parent.mkdir(parents=True, exist_ok=True)
         stdout = stdout_path.open("xb")
         try:
@@ -1868,6 +1878,14 @@ class WalletZinderRecoverySmoke(BitcoinTestFramework):
             raise RuntimeError("Zebra did not perform the single-block epoch rotation")
         self._wait_zinder_tip(rotated_tip)
         publication_after = self._wait_pair_publication(publication_before)
+        # v0.21 retains superseded epochs; restart this scenario's query to
+        # invalidate the paused request's in-memory pin deterministically.
+        self.children.stop("zinder-query")
+        self.children.start(
+            "zinder-query",
+            [str(self.artifacts["zinder_query"]), "--config", str(self.runtime.configs["query"])],
+            clean_zinder_environment(),
+        )
         time.sleep(INGEST_CONTROL_ADMISSION_SETTLE_SECONDS)
         self._wait_ready(
             "query",

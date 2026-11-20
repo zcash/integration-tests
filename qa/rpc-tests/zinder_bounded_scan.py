@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+if not __debug__:
+    raise SystemExit("Optimized Python is not supported for native scenario checks")
+
 import errno
 import hashlib
 import json
