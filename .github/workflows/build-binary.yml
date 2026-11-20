@@ -1,7 +1,7 @@
 name: Build binary
 
 # Reusable workflow that builds a single binary (zebrad, zainod, or the zallet
-# launcher plus its zaino and zebra backends) for a given set of platforms. It is called
+# launcher plus its zebra backend) for a given set of platforms. It is called
 # twice per binary from `ci.yml`: once for the platforms the tests run on, and
 # once for the build-only platforms (macOS, Windows, cross-compiled targets).
 # Splitting the matrix this way lets the test jobs depend only on the builds
@@ -167,8 +167,8 @@ jobs:
         if: ${{ inputs.is_zallet }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # The launcher, the zaino backend binary, and the vendored db_dump all
-          # land in ./zallet/dist; cache the directory as a unit.
+          # The launcher, the backend binary, and the vendored db_dump all land
+          # in ./zallet/dist; cache the directory as a unit.
           path: ./zallet/dist
           key: binary-${{ inputs.bin }}-${{ matrix.name }}-${{ steps.resolve-sha.outputs.sha }}-${{ hashFiles('integration-tests/.github/workflows/build-binary.yml', 'integration-tests/.github/scripts/build-zallet.sh', 'integration-tests/.github/scripts/stage-zallet-db-dump.sh') }}
 
@@ -240,12 +240,11 @@ jobs:
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
           key: ${{ matrix.name }}
-          # zallet is three workspaces: the root (the `zallet` launcher),
-          # backends/zaino (`zallet-zaino`), and backends/zebra
-          # (`zallet-zebra`), each with its own target directory. Cache all.
+          # zallet is two workspaces: the root (the `zallet` launcher) and
+          # backends/zebra (`zallet-zebra`), each with its own target
+          # directory. Cache both.
           workspaces: |
             zallet
-            zallet/backends/zaino
             zallet/backends/zebra
 
       - name: Install Rust target
@@ -263,8 +262,8 @@ jobs:
         run: cargo build --release --target ${{ matrix.rust_target }} --bin "${BIN}" ${EXTRA_BUILD_ARGS}
         working-directory: ./${{ inputs.path }}
 
-      # Build the `zallet` launcher plus the `zallet-zaino` and `zallet-zebra`
-      # backend binaries the regtest suite exercises. See
+      # Build the `zallet` launcher plus the `zallet-zebra` backend binary the
+      # regtest suite exercises. See
       # .github/scripts/build-zallet.sh. zcashd-import is disabled on mingw32:
       # its pqcrypto-mlkem dep fails to cross-compile to windows-gnu, and the
       # tests needing it are Linux-only.
@@ -294,10 +293,9 @@ jobs:
           path: |
               ${{ format('./{0}/target/{1}/release/{2}{3}', inputs.path, matrix.rust_target, inputs.bin, matrix.file_ext) }}
 
-      # Upload the launcher, both backend binaries, and the vendored db_dump.
-      # They land flat in ./src on the test runners; the launcher finds the
-      # sibling zallet-zaino / zallet-zebra next to itself, selected by the
-      # config `backend` key.
+      # Upload the launcher, the backend binary, and the vendored db_dump. They
+      # land flat in ./src on the test runners; the launcher finds the sibling
+      # zallet-zebra next to itself, selected by the config `backend` key.
       - name: Upload zallet
         if: ${{ inputs.is_zallet }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -305,7 +303,6 @@ jobs:
           name: zallet-${{ matrix.name }}
           path: |
               ${{ format('./zallet/dist/zallet{0}', matrix.file_ext) }}
-              ${{ format('./zallet/dist/zallet-zaino{0}', matrix.file_ext) }}
               ${{ format('./zallet/dist/zallet-zebra{0}', matrix.file_ext) }}
               ./zallet/dist/db_dump
           if-no-files-found: warn

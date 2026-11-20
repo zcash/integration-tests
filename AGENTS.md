@@ -102,15 +102,15 @@ Tested ecosystem projects:
 - [`zebrad`](https://github.com/ZcashFoundation/zebra) -- Zcash consensus node
 - [`zainod`](https://github.com/zingolabs/zaino) -- Zcash indexer
 - [`zallet`](https://github.com/zcash/zallet) -- Zcash wallet. Structured as a
-  `zallet` launcher plus per-backend binaries (`zallet-zebra`, `zallet-zaino`),
-  each built in its own cargo workspace; CI runs the RPC suite against both
-  backends (see `ZALLET_BACKEND` below).
+  `zallet` launcher plus per-backend binaries (currently `zallet-zebra`), each
+  built in its own cargo workspace; CI runs the RPC suite against each backend
+  (see `ZALLET_BACKEND` below).
 
 ## Build, Test, and Development Commands
 
 ### Prerequisites
 
-Build `zebrad`, `zainod`, and `zallet` binaries and place them in a `./src/` directory under the repository root. `zallet` is a thin launcher that execs a per-backend binary, so also build the backend binaries (`zallet-zaino` and, to exercise the zebra backend, `zallet-zebra`) and place them in `./src/` next to the launcher (the launcher looks for the backend binary beside itself). The launcher selects the backend from the top-level `backend` key in `qa/defaults/zallet/zallet.toml` (default `zaino`); the test framework overrides it from the `ZALLET_BACKEND` environment variable (`zaino` or `zebra`), and CI runs the suite against both. The zebra backend also reads the co-located zebrad's state database directly and follows its gRPC indexer, so it requires a `zebrad` built with the (non-default) `indexer` feature.
+Build `zebrad`, `zainod`, and `zallet` binaries and place them in a `./src/` directory under the repository root. `zallet` is a thin launcher that execs a per-backend binary, so also build the backend binary (`zallet-zebra`) and place it in `./src/` next to the launcher (the launcher looks for the backend binary beside itself). The launcher selects the backend from the top-level `backend` key in `qa/defaults/zallet/zallet.toml` (default `zebra`); the test framework overrides it from the `ZALLET_BACKEND` environment variable. The zebra backend reads the co-located zebrad's state database directly and follows its gRPC indexer, so it requires a `zebrad` built with the (non-default) `indexer` feature.
 
 ### Running the test suite
 

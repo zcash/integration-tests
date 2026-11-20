@@ -19,7 +19,7 @@ We do not publish package releases or Git tags for this project. Each version en
 
 - Reactivated `wallet_changeaddresses.py` and `regtest_signrawtransaction.py`, migrated from the `zcashd` RPCs to the Z3 stack. Both were disabled pending an account/UA migration and both depend on transparent spending, which Zallet's `z_sendmany` now supports. Two zcashd behaviours no longer hold and are pinned as such: a send from an ordinary account must name its transparent source explicitly (`ANY_TADDR` selects the legacy `zcashd` pool specifically, not any transparent address in the wallet), and the change of a transparent-to-shielded send is shielded rather than returned to the transparent pool.
 
-- Support Zallet's launcher-plus-backend structure: `zallet` is a launcher that execs a per-backend binary. CI builds the launcher plus the `zallet-zaino` backend binary and ships both to the test runners, and the default `zallet.toml` selects the Zaino backend via its top-level `backend` key. The build falls back to the single-binary layout when the checked-out wallet has no `backends/` directory.
+- Support Zallet's launcher-plus-backend structure: `zallet` is a launcher that execs a per-backend binary. CI builds the launcher plus the `zallet-zebra` backend binary and ships both to the test runners, and the default `zallet.toml` selects the zebra backend via its top-level `backend` key. Zallet no longer ships a Zaino backend, so the RPC suite no longer runs a `zaino` matrix leg. The build falls back to the single-binary layout when the checked-out wallet has no `backends/` directory.
 
 ### Fixed
 

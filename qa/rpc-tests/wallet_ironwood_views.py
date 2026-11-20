@@ -87,7 +87,7 @@ class WalletIronwoodViewsTest(IronwoodTestFramework):
         assert_equal(out['account_uuid'], acct)
         assert_true('action' in out,
                     "Ironwood output must be indexed by action, got {}".format(out))
-        # Shielded to the account's own external receiver: received, not change.
+        # Shielded to the account's own external receiver, not an internal-scope one.
         assert_true(not out['walletInternal'],
                     "shield output should be external-scope, got {}".format(out))
         # No Orchard outputs once NU6.3 is active.
@@ -152,8 +152,9 @@ class WalletIronwoodViewsTest(IronwoodTestFramework):
                        if o['pool'] == Pool.IRONWOOD]
         assert_equal(len(shield_iron), 1)
         assert_equal(shield_iron[0]['value'], ironwood_zat)
-        assert_true(not shield_iron[0]['is_change'],
-                    "shield output should not be flagged as change")
+        # The same account funded and received the shield, so its output is change.
+        assert_true(shield_iron[0]['is_change'],
+                    "shield output should be flagged as change")
 
         # The spend produces an Ironwood payment (memo, not change) and Ironwood
         # change; both are surfaced under the ironwood pool.
