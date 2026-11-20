@@ -28,6 +28,16 @@ SHIELDING_INPUT_LIMIT = 1
 SHIELDING_CONFIRMATIONS = 10
 # Verbose transaction reads return canonical identity and mined height.
 VERBOSE_TRANSACTION = 1
+def loopback_http(value):
+    endpoint = urlsplit(value)
+    if (endpoint.scheme != 'http' or endpoint.hostname != '127.0.0.1'
+            or endpoint.port is None or endpoint.username is not None
+            or endpoint.password is not None or endpoint.path not in ('', '/')
+            or endpoint.query or endpoint.fragment):
+        raise argparse.ArgumentTypeError('Only dedicated loopback HTTP endpoints are supported')
+    return value
+
+
 p = argparse.ArgumentParser()
 p.add_argument('--zallet-root', type=pathlib.Path, required=True)
 p.add_argument('--backend-binary', type=pathlib.Path)
@@ -35,12 +45,10 @@ p.add_argument('--template-dir', type=pathlib.Path, default=pathlib.Path(__file_
 p.add_argument('step')
 p.add_argument('--scratch', type=pathlib.Path, required=True)
 p.add_argument('--report', type=pathlib.Path, required=True)
-p.add_argument('--endpoint', default='http://127.0.0.1:32302')
-p.add_argument('--node', default='http://127.0.0.1:32332')
+p.add_argument('--endpoint', type=loopback_http, default='http://127.0.0.1:32302')
+p.add_argument('--node', type=loopback_http, default='http://127.0.0.1:32332')
 a = p.parse_args()
 ROOT = a.zallet_root.resolve()
-if not (a.endpoint.startswith('http://127.0.0.1:') and a.node.startswith('http://127.0.0.1:')):
-    raise SystemExit('Only dedicated loopback HTTP endpoints are supported')
 a.scratch.mkdir(parents=True, exist_ok=True)
 os.chmod(a.scratch, 0o700)
 statepath = a.scratch / 'state.json'
