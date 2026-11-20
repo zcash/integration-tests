@@ -75,3 +75,16 @@ Supply the printed executable as `ZIT_ZALLET_ZINDER_TEST` to
 `zinder_bounded_scan.py`, with its matching `_SHA256`. Zallet's
 `bounded-scan-certification` feature enables only the scan seam and controlled
 range barrier; no network tests run inside Zallet's unit suite.
+
+For a bounded scan near the tip of an existing disposable chain, set
+`ZIT_ZINDER_ENDPOINT`, `ZIT_ZALLET_CONFIG`, `ZIT_CERTIFICATION_DATADIR`,
+`ZIT_CERTIFICATION_RESULT`, the backend executable `ZIT_ZALLET`, and the half-open range variables
+`ZIT_REQUESTED_START_HEIGHT` and `ZIT_REQUESTED_END_HEIGHT_EXCLUSIVE`.
+The range must contain two to twenty blocks and end immediately after the
+visible tip. Before the first scan, invoke the printed driver with
+`--exact chain::tests::initialize_bounded_scan_wallet --ignored`.
+This Regtest-only initializer requires a nonexistent database and creates a
+public deterministic account whose birthday matches the requested start,
+using the endpoint's actual predecessor tree state. It initializes Zallet's database
+through the CLI and does not scan blocks.
+The existing full-chain scenarios initialize their own wallets through the CLI.

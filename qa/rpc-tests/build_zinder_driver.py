@@ -22,7 +22,8 @@ manifest = {
     'dev-dependencies': {
         'zallet-zinder': {'path': str(root / 'backends/zinder'), 'features': ['bounded-scan-certification']},
         'zallet-core': {'path': str(root / 'zallet-core'), 'features': ['bounded-scan-certification']},
-        'zinder-client': '=0.21.0', 'serde_json': '1', 'toml': '0.8', 'tempfile': '3',
+        'zinder-client': '=0.21.0', 'rand': '0.10', 'secrecy': '0.8',
+        'zcash_client_backend': '0.25', 'zcash_client_sqlite': '0.23', 'zcash_protocol': '0.11', 'serde_json': '1', 'toml': '0.8', 'tempfile': '3',
         'tokio': {'version': '1', 'features': ['macros', 'rt-multi-thread']},
     },
 }

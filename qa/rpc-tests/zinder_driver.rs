@@ -467,6 +467,109 @@ mod chain {
         }
 
         #[tokio::test(flavor = "multi_thread")]
+        #[ignore = "creates a disposable Regtest account for externally orchestrated scenarios"]
+        async fn initialize_bounded_scan_wallet() -> CertificationTestResult {
+            use rand::{rand_core::UnwrapErr, rngs::SysRng};
+            use secrecy::SecretVec;
+            use zallet_core::{
+                components::chain::{Chain, ChainView},
+                network::Network,
+            };
+            use zcash_client_backend::data_api::{AccountBirthday, WalletWrite};
+            use zcash_client_sqlite::{WalletDb, util::SystemClock, wallet::init::WalletMigrator};
+            use zcash_protocol::consensus::BlockHeight;
+
+            // Public deterministic material, exclusively for this disposable fixture.
+            const FIXTURE_SEED: [u8; 32] = [0; 32];
+            let environment = read_certification_environment()?;
+            let params = environment.zallet_config.consensus.network();
+            if !matches!(params, Network::RegTest(_)) {
+                return Err(
+                    certification_failure("fixture initialization requires Regtest").into(),
+                );
+            }
+            let config = BoundedScanCertificationConfig::new(
+                &environment.certification_datadir,
+                environment.zallet_config.clone(),
+                environment.requested_block_range.clone(),
+            )?;
+            let path = config.wallet_database_path();
+            if path.try_exists()? {
+                return Err(certification_failure(
+                    "fixture initialization requires a new database",
+                )
+                .into());
+            }
+            fs::create_dir_all(&environment.certification_datadir)?;
+            let mut fixture_config_value: toml::Value =
+                fs::read_to_string(required_absolute_environment_path(ZALLET_CONFIG_ENV)?)?
+                    .parse()?;
+            let table = fixture_config_value
+                .as_table_mut()
+                .ok_or_else(|| certification_failure("fixture config must be a TOML table"))?;
+            for (section, key, value) in [
+                (
+                    "keystore",
+                    "encryption_identity",
+                    environment
+                        .certification_datadir
+                        .join("encryption-identity.txt")
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+                ("database", "wallet", "wallet.db".into()),
+            ] {
+                table
+                    .entry(section)
+                    .or_insert_with(|| toml::Value::Table(Default::default()))
+                    .as_table_mut()
+                    .ok_or_else(|| {
+                        certification_failure(format!("{section} must be a TOML table"))
+                    })?
+                    .insert(key.into(), toml::Value::String(value));
+            }
+            let fixture_config = environment.certification_datadir.join("fixture.toml");
+            fs::write(&fixture_config, toml::to_string(&fixture_config_value)?)?;
+            let command = required_absolute_environment_path("ZIT_ZALLET")?;
+            for operation in ["generate-encryption-identity", "init-wallet-encryption"] {
+                let result = std::process::Command::new(&command)
+                    .arg(format!(
+                        "--datadir={}",
+                        environment.certification_datadir.display()
+                    ))
+                    .arg(format!("--config={}", fixture_config.display()))
+                    .arg(operation)
+                    .stdin(std::process::Stdio::null())
+                    .output()?;
+                if !result.status.success() {
+                    return Err(certification_failure(format!(
+                        "fixture {operation} failed: {}",
+                        result.status
+                    ))
+                    .into());
+                }
+            }
+            let chain = ZinderChain::connect(environment.zinder_endpoint, params).await?;
+            let view = chain.snapshot().await?;
+            let predecessor = environment.requested_block_range.start - 1;
+            let state = view
+                .tree_state_as_of(BlockHeight::from_u32(predecessor))
+                .await?
+                .ok_or_else(|| {
+                    certification_failure("fixture predecessor tree state is unavailable")
+                })?;
+            let mut wallet = WalletDb::for_path(path, params, SystemClock, UnwrapErr(SysRng))?;
+            WalletMigrator::new().init_or_migrate(&mut wallet)?;
+            wallet.create_account(
+                "Disposable bounded-scan fixture",
+                &SecretVec::new(FIXTURE_SEED.to_vec()),
+                &AccountBirthday::from_parts(state, None),
+                None,
+            )?;
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
         #[ignore = "requires an externally orchestrated Zinder certification runtime"]
         async fn expired_epoch_reacquires_complete_bounded_scan() -> CertificationTestResult {
             let certification_environment = read_certification_environment()?;
