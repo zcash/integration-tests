@@ -15,6 +15,7 @@ import socket
 import subprocess
 import time
 import urllib.request
+from urllib.parse import urlsplit
 import toml
 
 from test_framework.util import COINBASE_MATURITY, INTERNAL_FEE, MIN_CONFIRMATIONS, PrivacyPolicy
@@ -183,6 +184,40 @@ def initialize():
     return status
 
 
+def connection_snapshot():
+    """Observe only sockets owned by this wallet, excluding its incoming RPC."""
+    process = pathlib.Path('/proc') / str(state['pid'])
+    owned = set()
+    for descriptor in (process / 'fd').iterdir():
+        try:
+            link = os.readlink(descriptor)
+        except FileNotFoundError:
+            continue
+        if link.startswith('socket:['):
+            owned.add(link.removeprefix('socket:[').removesuffix(']'))
+    expected = urlsplit(a.endpoint)
+    rpc_port = urlsplit(state['rpc']).port
+    observations = []
+    for filename, family in [('tcp', socket.AF_INET), ('tcp6', socket.AF_INET6)]:
+        for line in (process / 'net' / filename).read_text().splitlines()[1:]:
+            fields = line.split()
+            if fields[9] not in owned or fields[3] != '01':
+                continue
+            local_port = int(fields[1].split(':')[1], 16)
+            if local_port == rpc_port:
+                continue
+            address, port = fields[2].split(':')
+            raw = bytes.fromhex(address)
+            raw = raw[::-1] if family == socket.AF_INET else b''.join(raw[i:i + 4][::-1] for i in range(0, len(raw), 4))
+            peer = socket.inet_ntop(family, raw)
+            if peer.startswith('::ffff:'):
+                peer = peer.removeprefix('::ffff:')
+            observations.append({'peer': peer, 'port': int(port, 16)})
+    return {'target_connected': any(item == {'peer': expected.hostname, 'port': expected.port} for item in observations),
+            'unexpected_connections': sum(item != {'peer': expected.hostname, 'port': expected.port} for item in observations),
+            'observed_connections': observations}
+
+
 result = {'schema_version': 2, 'endpoint': a.endpoint, 'fallback_used': False,
           'step': a.step, 'status': 'completed', 'assertions_enabled': True,
           'assertion_mode': 'always-on',
@@ -344,6 +379,15 @@ except Exception as error:
     a.report.with_name('failure.json').write_text(json.dumps({
         'step': a.step, 'failure_type': type(error).__name__,
         'check': str(error) if controlled else 'RPC or process operation failed'}, indent=2))
+if result['status'] == 'completed' and a.step not in {'bootstrap', 'cleanup'}:
+    snapshot = wait(lambda: value if (value := connection_snapshot())['target_connected'] else None)
+    require(snapshot['unexpected_connections'] == 0, 'unexpected wallet socket connection')
+    a.report.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(snapshot, sort_keys=True).encode()
+    a.report.with_name('connection-snapshot.json').write_bytes(encoded)
+    result['endpoint_evidence'] = {'scope': 'configured', 'target_connected': snapshot['target_connected'],
+                                   'unexpected_connections': snapshot['unexpected_connections'],
+                                   'trace_fingerprint_sha256': hashlib.sha256(encoded).hexdigest()}
 if result['status'] == 'completed':
     result['assertions'] = {a.step: True}
 a.report.parent.mkdir(parents=True, exist_ok=True)

@@ -18,7 +18,9 @@ is pending, and actually scan the native mempool snapshot again. It then checks
 canonical mining, scan-back, persisted balance and transaction state after
 another process restart, and a fresh block after resuming. Transaction
 fingerprints link the independent observations. Endpoint attribution is
-configured-only; no socket trace or public-network qualification is claimed.
+configured-only, with snapshots filtered to sockets owned by the target wallet.
+These snapshots are not a continuous process trace; no full trace or public-network
+qualification is claimed. This opt-in replay requires Linux `/proc`.
 
 ## Replay
 
