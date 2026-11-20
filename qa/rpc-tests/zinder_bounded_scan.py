@@ -862,13 +862,17 @@ class ZinderRuntimeProcesses:
         self.shutdown_requested: set[str] = set()
         self.retained_logs: set[tuple[str, str]] = set()
         self.recorded_services: set[str] = set()
+        self.generations: dict[str, int] = {}
 
     def start(self, service_name: str) -> subprocess.Popen[bytes]:
+        generation = self.generations.get(service_name, -1) + 1
+        self.generations[service_name] = generation
+        log_name = service_name if generation == 0 else f"{service_name}-{generation}"
         stdout_path = self.temporary_log_root / (
-            f"{self.composition.retention}-{service_name}.stdout.log"
+            f"{self.composition.retention}-{log_name}.stdout.log"
         )
         stderr_path = self.temporary_log_root / (
-            f"{self.composition.retention}-{service_name}.stderr.log"
+            f"{self.composition.retention}-{log_name}.stderr.log"
         )
         stdout_path.parent.mkdir(parents=True, exist_ok=True)
         stdout_file = stdout_path.open("xb")
@@ -897,6 +901,31 @@ class ZinderRuntimeProcesses:
         self.log_paths[service_name] = (stdout_path, stderr_path)
         self.start_order.append(service_name)
         return child
+
+    def restart_query(self) -> subprocess.Popen[bytes]:
+        child = self.children["query"]
+        if child.poll() is not None:
+            raise RuntimeError("query exited before controlled epoch expiry")
+        child.terminate()
+        try:
+            child.wait(timeout=PROCESS_TERMINATE_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait(timeout=PROCESS_KILL_TIMEOUT_SECONDS)
+        if child.returncode != 0:
+            raise RuntimeError(f"query restart shutdown exited with {child.returncode}")
+        for stream in self.log_files["query"]:
+            stream.close()
+        for source in self.log_paths["query"]:
+            atomic_copy_file(source, self.evidence_directory / "services"
+                             / self.composition.retention / source.name)
+        self.process_records.append({
+            "kind": "zinder_runtime", "composition": self.composition.retention,
+            "service": "query", "generation": self.generations["query"],
+            "pid": child.pid, "exit_code": child.returncode,
+        })
+        self.start_order.remove("query")
+        return self.start("query")
 
     def child(self, service_name: str) -> subprocess.Popen[bytes]:
         return self.children[service_name]
@@ -994,6 +1023,7 @@ class ZinderRuntimeProcesses:
                         "kind": "zinder_runtime",
                         "composition": self.composition.retention,
                         "service": service_name,
+                        "generation": self.generations[service_name],
                         "pid": child.pid,
                         "exit_code": child.returncode,
                     }
@@ -2352,6 +2382,19 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
                 "after": publication_after,
             },
         )
+        # v0.21 retains replaced pairs for a minute, beyond the client barrier.
+        # Restart only the scenario's query to force loss of the paused pin.
+        restarted_query = self.active_runtime.restart_query()
+        atomic_write_json(
+            scenario_root / "query-after-restart-health.json",
+            wait_for_health(query_ops_endpoint, "zinder-query", restarted_query,
+                            rotation_deadline),
+        )
+        atomic_write_json(
+            scenario_root / "query-after-restart-readiness.json",
+            wait_for_readiness(query_ops_endpoint, "zinder-query", restarted_query,
+                               ROTATED_SOURCE_HEIGHT, rotation_deadline),
+        )
         require_rotation_barrier_budget(
             rotation_deadline,
             "releasing the blocked range request",
@@ -3096,10 +3139,11 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
                     )
 
         expected_zinder_processes = {
-            (retention, service_name)
+            (retention, service_name, 0)
             for retention in ("transactions", "all")
             for service_name in ("ingest", "projector", "query")
         }
+        expected_zinder_processes.add(("all", "query", 1))
         observed_zinder_processes = []
         observed_certification_processes = []
         observed_zebra_processes = 0
@@ -3130,6 +3174,7 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
                     (
                         process_record.get("composition"),
                         process_record.get("service"),
+                        process_record.get("generation", 0),
                     )
                 )
             elif process_kind == "zallet_certification":
@@ -3168,9 +3213,9 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
                 "completed Zallet certification process inventory is not "
                 f"exact-once: {observed_certification_processes!r}"
             )
-        if observed_zebra_processes != 1 or len(self.process_records) != 11:
+        if observed_zebra_processes != 1 or len(self.process_records) != 12:
             raise RuntimeError(
-                "completed process inventory must contain six Zinder, four "
+                "completed process inventory must contain seven Zinder, four "
                 "Zallet, and one Zebra process"
             )
         if (
@@ -3399,6 +3444,10 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
                 rotation_root / "metrics-before.txt",
                 rotation_root / "metrics-after.txt",
                 rotation_root / "publisher-publications.json",
+                rotation_root / "query-after-restart-health.json",
+                rotation_root / "query-after-restart-readiness.json",
+                Path("services/all/all-query.stdout.log"),
+                Path("services/all/all-query.stderr.log"),
                 rotation_root / "barrier/range-request-paused.json",
                 rotation_root / "barrier/continue-range-request",
                 rotation_root / "barrier/range-request-attempt-1.json",
