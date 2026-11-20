@@ -62,16 +62,12 @@ PAIR_PUBLICATION_METRIC = (
     "zinder_wallet_serving_pair_publisher_publications_total"
 )
 
-INTEGRATION_TESTS_BASE_REVISION = (
-    "054f21c33ed7c935248999c54b084451c314b5d5"
-)
-ZALLET_REVISION = "d03e30139d03f58b2dc8995f1742450438b07d53"
-ZALLET_PAGINATOR_REVISION = "91694aef05c29f32b8cb7a1f486135e168e868fe"
-ZALLET_CORE_CERTIFICATION_REVISION = (
-    "61d2f86f179ced6b840e4bc0e839d6f8e04c5541"
-)
-ZINDER_RUNTIME_REVISION = "0b14b8846311794549b292af32cc1308a709b69c"
-ZINDER_CLIENT_REVISION = "479805765d4c277115e534bf26f0a3ed6144bb73"
+# Runtime artifacts remain pinned to the reviewed public release. Zallet source
+# is supplied with the artifacts so rebases and CI merge revisions remain usable.
+INTEGRATION_TESTS_BASE_REVISION = None
+ZALLET_REVISION = os.environ.get("ZIT_ZALLET_REVISION")
+ZINDER_RUNTIME_REVISION = "830b426060169f5b2e94d84ff0f134bc1ad96004"
+ZINDER_CLIENT_REVISION = "0.21.0"
 ZEBRA_REVISION = "7121c82ba6795a151523d5b308a19743f4a1ade7"
 
 EXECUTABLE_ENVIRONMENTS = {
@@ -81,14 +77,6 @@ EXECUTABLE_ENVIRONMENTS = {
     "zinder_query": "ZIT_ZINDER_QUERY",
     "zallet_zinder_test": "ZIT_ZALLET_ZINDER_TEST",
     "zallet_wallet_command": "ZIT_ZALLET",
-}
-EXPECTED_EXECUTABLE_SHA256 = {
-    "zebrad": "4764c702e5b2dee3b8e6a67e5a76d333232a8da41b6c90b1b9cd106159ae97a9",
-    "zinder_ingest": "e203210fa37c8ec54dcdb25783594c03302c053d0ef5a3e5c67f4aac0c754220",
-    "zinder_projector": "92012f15f9a76311dba1ca55aed87d314927cb4b0194deb57abc3b4c4c074df1",
-    "zinder_query": "de97270ab48f694f72bd4ab4fd4bc0418fb8e0b5691e03710aa60f2b2446efff",
-    "zallet_zinder_test": "45f2469f61763d479cb2b9c95ce53e1585d1c508e8601f483d8f22aca77110e1",
-    "zallet_wallet_command": "cff0a80f951044825d58ac1440d96cce960e046661ade6d6b20eb481ab10c17a",
 }
 EVIDENCE_DIRECTORY_ENVIRONMENT = "ZIT_ZINDER_EVIDENCE_DIR"
 
@@ -284,19 +272,13 @@ def require_frozen_executables() -> tuple[
     executable_hashes = {
         role: sha256_file(path) for role, path in executables.items()
     }
-    hash_mismatches = {
-        role: {
-            "expected": EXPECTED_EXECUTABLE_SHA256[role],
-            "actual": executable_hash,
-        }
-        for role, executable_hash in executable_hashes.items()
-        if executable_hash != EXPECTED_EXECUTABLE_SHA256[role]
-    }
-    if hash_mismatches:
-        raise RuntimeError(
-            "certification executable hashes differ from the frozen "
-            f"Gate A artifacts: {hash_mismatches!r}"
-        )
+    for role, actual in executable_hashes.items():
+        variable = EXECUTABLE_ENVIRONMENTS[role] + "_SHA256"
+        expected = os.environ.get(variable)
+        if expected != actual:
+            raise RuntimeError(f"{variable} must equal the staged artifact's SHA-256")
+    if ZALLET_REVISION is None or re.fullmatch(r"[0-9a-f]{40}", ZALLET_REVISION) is None:
+        raise RuntimeError("ZIT_ZALLET_REVISION must identify the staged Zallet source")
     return executables, executable_hashes
 
 
@@ -425,60 +407,6 @@ def require_clean_harness_source() -> tuple[str, Path]:
             f"{revision!r}"
         )
 
-    ancestry_result = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repository_root),
-            "merge-base",
-            "--is-ancestor",
-            INTEGRATION_TESTS_BASE_REVISION,
-            "HEAD",
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        text=True,
-    )
-    ancestry_stderr = ancestry_result.stderr.strip()
-    if ancestry_result.returncode != 0 or ancestry_stderr:
-        raise RuntimeError(
-            "integration-tests HEAD does not descend from the frozen base: "
-            f"exit={ancestry_result.returncode}, "
-            f"stderr={ancestry_stderr!r}"
-        )
-
-    source_diff_result = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repository_root),
-            "diff",
-            "--name-status",
-            "--no-renames",
-            (
-                f"{INTEGRATION_TESTS_BASE_REVISION}"
-                "..HEAD"
-            ),
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        text=True,
-    )
-    source_diff_stderr = source_diff_result.stderr.strip()
-    if source_diff_result.returncode != 0 or source_diff_stderr:
-        raise RuntimeError(
-            "could not verify the integration-tests source diff: "
-            f"exit={source_diff_result.returncode}, "
-            f"stderr={source_diff_stderr!r}"
-        )
-    expected_diff_line = f"A\t{expected_source_path.as_posix()}"
-    if source_diff_result.stdout.splitlines() != [expected_diff_line]:
-        raise RuntimeError(
-            "integration-tests source diff must add only the bounded-scan "
-            f"harness; observed={source_diff_result.stdout!r}"
-        )
     return revision, source_path
 
 
@@ -3536,10 +3464,6 @@ class ZinderBoundedScanTest(BitcoinTestFramework):
                     INTEGRATION_TESTS_BASE_REVISION
                 ),
                 "zallet": ZALLET_REVISION,
-                "zallet_paginator": ZALLET_PAGINATOR_REVISION,
-                "zallet_core_certification": (
-                    ZALLET_CORE_CERTIFICATION_REVISION
-                ),
                 "zinder_runtime": ZINDER_RUNTIME_REVISION,
                 "zinder_client": ZINDER_CLIENT_REVISION,
                 "zebra": ZEBRA_REVISION,

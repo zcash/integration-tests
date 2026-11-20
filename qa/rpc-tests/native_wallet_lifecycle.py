@@ -16,6 +16,17 @@ import subprocess
 import time
 import urllib.request
 import toml
+
+from test_framework.util import COINBASE_MATURITY, INTERNAL_FEE, MIN_CONFIRMATIONS, PrivacyPolicy
+
+# A private payment small enough to leave the recovered funding spendable.
+PAYMENT_ZEC = 0.01
+# One coinbase per shielding operation keeps proving work bounded.
+SHIELDING_INPUT_LIMIT = 1
+# Confirm the shielded source before recovery and spending.
+SHIELDING_CONFIRMATIONS = 10
+# Verbose transaction reads return canonical identity and mined height.
+VERBOSE_TRANSACTION = 1
 p = argparse.ArgumentParser()
 p.add_argument('--zallet-root', type=pathlib.Path, required=True)
 p.add_argument('--backend-binary', type=pathlib.Path)
@@ -37,15 +48,21 @@ state = json.loads(statepath.read_text()) if statepath.exists() else {}
 def save():
     statepath.write_text(json.dumps(state, indent=2))
 
-def rpc(method, params=(), node=False):
-    url = a.node if node else state['rpc']
+class RpcError(RuntimeError):
+    def __init__(self, error):
+        super().__init__(error.get('message', 'RPC error'))
+        self.code = error.get('code')
+
+
+def rpc(method, params=(), node=False, endpoint=None):
+    url = endpoint or (a.node if node else state['rpc'])
     req = urllib.request.Request(url, json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': list(params)}).encode(), {'Content-Type': 'application/json'})
     if not node:
         req.add_header('Authorization', 'Basic ' + base64.b64encode(b'zebra:zebra').decode())
     with urllib.request.urlopen(req, timeout=30) as r:
         v = json.load(r)
     if v.get('error'):
-        raise RuntimeError(str(v['error']))
+        raise RpcError(v['error'])
     return v['result']
 
 def wait(fn, seconds=120):
@@ -56,7 +73,9 @@ def wait(fn, seconds=120):
             v = fn()
             if v:
                 return v
-        except Exception as e:
+        except (OSError, RpcError) as e:
+            if isinstance(e, RpcError) and e.code != -10:
+                raise
             err = e
         time.sleep(0.5)
     raise RuntimeError('wait expired: ' + str(err))
@@ -86,10 +105,10 @@ def start():
     wait(ready)
     return wait(synced)
 
-def op(opid):
+def op(opid, endpoint=None):
 
     def done():
-        v = rpc('z_getoperationstatus', [[opid]])
+        v = rpc('z_getoperationstatus', [[opid]], endpoint=endpoint)
         if not v or v[0]['status'] in ('queued', 'executing'):
             return None
         if v[0]['status'] != 'success':
@@ -167,8 +186,7 @@ def initialize():
 result = {'schema_version': 2, 'endpoint': a.endpoint, 'fallback_used': False,
           'step': a.step, 'status': 'completed', 'assertions_enabled': True,
           'assertion_mode': 'always-on',
-          'endpoint_evidence': {'scope': 'configured', 'target_connected': True,
-                                'unexpected_connections': 0}}
+          'endpoint_attribution': 'configured'}
 try:
     if a.step == 'bootstrap':
         require(not state, 'bootstrap requires fresh scratch')
@@ -178,13 +196,13 @@ try:
             shutil.copy2(source, a.scratch / 'bin' / name)
         result['wallet_status'] = initialize()
         mine(1)
-        mine(101)
-        shielding = rpc('z_shieldcoinbase', [state['miner'], state['address'], None, 1, None, 'AllowRevealedSenders'])
+        mine(COINBASE_MATURITY + MIN_CONFIRMATIONS)
+        shielding = rpc('z_shieldcoinbase', [state['miner'], state['address'], INTERNAL_FEE, SHIELDING_INPUT_LIMIT, None, PrivacyPolicy.ALLOW_REVEALED_SENDERS])
         state['shield_txid'] = op(shielding['opid'])
         require(state['shield_txid'] in rpc('getrawmempool', node=True), 'shield transaction missing from node')
         save()
         mine()
-        mine(10)
+        mine(SHIELDING_CONFIRMATIONS)
         source_rows = wait(lambda: [t for t in rpc('z_listtransactions', [state['account']])
                                    if t['txid'] == state['shield_txid'] and t.get('mined_height') is not None])
         state['source'] = {'miner': state['miner'], 'account': state['account'],
@@ -217,7 +235,7 @@ try:
             'restored_activity_fingerprint_sha256': tx_fingerprint(activity[0]['txid']),
             'restored_activity_count': len(activity)}
     elif a.step == 'transparent-discovery':
-        outputs = rpc('z_listunspent', [1])
+        outputs = rpc('z_listunspent', [MIN_CONFIRMATIONS])
         transparent = [output for output in outputs if output.get('pool') == 'transparent'
                        or output.get('address', '').startswith('tm')]
         require(transparent, 'restored wallet has no preexisting transparent outputs')
@@ -229,19 +247,51 @@ try:
                 'restored wallet has no preexisting Ironwood balance')
     elif a.step == 'send':
         destination = rpc('z_getaddressforaccount', [state['account'], ['orchard'], None])['address']
-        opid = rpc('z_sendmany', [state['address'], [{'address': destination, 'amount': 0.01}],
-                               1, None, 'FullPrivacy'])
-        state['txid'] = op(opid)
-        save()
+        producer_dir = a.scratch / 'producer'
+        producer_config = toml.load(producer_dir / 'zallet.toml')
+        endpoint = 'http://' + producer_config['rpc']['bind'][0]
+        log = open(a.scratch / 'producer.log', 'ab')
+        producer = subprocess.Popen([
+            str(a.scratch / 'bin/zallet'), '--datadir=' + str(producer_dir),
+            '--config=' + str(producer_dir / 'zallet.toml'), 'start'],
+            stdout=log, stderr=log, start_new_session=True)
+        try:
+            wait(lambda: rpc('getwalletinfo', endpoint=endpoint))
+            wait(lambda: rpc('getwalletstatus', endpoint=endpoint).get('fully_synced_height')
+                 == rpc('getblockcount', node=True))
+            address = rpc('z_getaddressforaccount', [state['source']['account'], ['orchard'], None], endpoint=endpoint)['address']
+            opid = rpc('z_sendmany', [address, [{'address': destination, 'amount': PAYMENT_ZEC}],
+                                   MIN_CONFIRMATIONS, INTERNAL_FEE, PrivacyPolicy.FULL_PRIVACY], endpoint=endpoint)
+            state['txid'] = op(opid, endpoint=endpoint)
+            save()
+        finally:
+            if producer.poll() is None:
+                try:
+                    rpc('stop', endpoint=endpoint)
+                    producer.wait(timeout=30)
+                except (OSError, RpcError, subprocess.TimeoutExpired):
+                    producer.terminate()
+                    producer.wait(timeout=30)
+            log.close()
         result['transaction'] = {'fingerprint_sha256': tx_fingerprint(state['txid']), 'observation': 'submitted'}
     elif a.step == 'pending':
         require(state['txid'] in rpc('getrawmempool', node=True), 'submitted transaction missing from node mempool')
         rows = wait(lambda: [t for t in rpc('z_listtransactions', [state['account']])
                             if t['txid'] == state['txid'] and t.get('mined_height') is None])
+        old_pid = state['pid']
+        stop()
+        log = a.scratch / 'wallet.log'
+        offset = log.stat().st_size
+        start()
+        wait(lambda: ('Scanning mempool tx ' + state['txid']) in log.read_bytes()[offset:].decode(errors='replace'))
+        rows = wait(lambda: [t for t in rpc('z_listtransactions', [state['account']])
+                            if t['txid'] == state['txid'] and t.get('mined_height') is None])
+        require(state['pid'] != old_pid, 'pending wallet process did not restart')
+        result['incoming_mempool_after_restart'] = True
         result['transaction'] = {'fingerprint_sha256': tx_fingerprint(rows[0]['txid']), 'observation': 'wallet-pending'}
     elif a.step == 'mined':
         mine()
-        transaction = rpc('getrawtransaction', [state['txid'], 1], node=True)
+        transaction = rpc('getrawtransaction', [state['txid'], VERBOSE_TRANSACTION], node=True)
         require(transaction.get('confirmations', 0) > 0, 'transaction is not canonical mined')
         require(transaction['txid'] == state['txid'], 'canonical transaction differs from submitted transaction')
         result['transaction'] = {'fingerprint_sha256': tx_fingerprint(transaction['txid']),
@@ -255,10 +305,15 @@ try:
     elif a.step == 'restart':
         before = wait(synced)['fully_synced_height']
         old_pid = state['pid']
+        state['expected_balance'] = rpc('z_getbalanceforaccount', [state['account']])
+        state['expected_mined_height'] = next(t['mined_height'] for t in rpc('z_listtransactions', [state['account']]) if t['txid'] == state['txid'])
+        save()
         stop()
         previous_exited = exited(old_pid)
         result['wallet_status'] = start()
         require(old_pid != state['pid'], 'wallet process identity did not change')
+        require(rpc('z_getbalanceforaccount', [state['account']]) == state['expected_balance'], 'reopened wallet balance changed')
+        require(any(t['txid'] == state['txid'] and t.get('mined_height') == state['expected_mined_height'] for t in rpc('z_listtransactions', [state['account']])), 'reopened wallet lost mined transaction')
         result['restart_scope'] = 'process-restart'
         result['restart'] = {'before_process_id': old_pid, 'after_process_id': state['pid'],
                              'previous_process_exited': previous_exited, 'before_height': before,
@@ -272,6 +327,10 @@ try:
         result['progress'] = {'before_height': before, 'after_height': after,
                               'new_block_mined_after_restart': True}
         result['balance'] = rpc('z_getbalanceforaccount', [state['account']])
+        expected = {k: v for k, v in state['expected_balance']['pools'].items() if k != 'transparent'}
+        actual = {k: v for k, v in result['balance']['pools'].items() if k != 'transparent'}
+        require(actual == expected, 'resumed shielded balance changed')
+        require(any(t['txid'] == state['txid'] and t.get('mined_height') == state['expected_mined_height'] for t in rpc('z_listtransactions', [state['account']])), 'resumed wallet lost mined transaction')
     elif a.step == 'cleanup':
         if state.get('pid') and not exited(state['pid']):
             stop()

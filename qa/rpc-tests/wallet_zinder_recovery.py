@@ -103,8 +103,8 @@ RANGE_MARKER_FIELDS = {
     "requested_end_height_inclusive",
     "chain_epoch_id",
 }
-ZINDER_REVISION = "9b9e7040453f66e847302f186f95d95b297e6705"
-ZALLET_REVISION = "0f54455721e819378ab34f5c5fab29016c723377"
+ZINDER_REVISION = "830b426060169f5b2e94d84ff0f134bc1ad96004"
+ZALLET_REVISION = os.environ.get("ZIT_ZALLET_REVISION")
 ZEBRA_REVISION = "7121c82ba6795a151523d5b308a19743f4a1ade7"
 EVIDENCE_DIRECTORY_ENVIRONMENT = "ZIT_ZINDER_EVIDENCE_DIR"
 CERTIFICATION_SLICE_ENVIRONMENT = "ZIT_ZALLET_CERTIFICATION_SLICE"
@@ -176,6 +176,8 @@ def required_artifacts() -> tuple[dict[str, Path], dict[str, str]]:
                     name, expected_hash, actual_hash))
         paths[name] = path
         hashes[name] = actual_hash
+    if not ZALLET_REVISION or len(ZALLET_REVISION) != 40 or any(c not in "0123456789abcdef" for c in ZALLET_REVISION):
+        raise RuntimeError("ZIT_ZALLET_REVISION must identify the staged source")
     for variable, expected in (("ZIT_ZINDER_REVISION", ZINDER_REVISION),
                                ("ZIT_ZALLET_REVISION", ZALLET_REVISION),
                                ("ZIT_ZEBRA_REVISION", ZEBRA_REVISION)):

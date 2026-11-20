@@ -1,56 +1,75 @@
-# Native Zinder 0.21.0 lifecycle replay
+# Native Zinder wallet lifecycle
 
-This layered scenario exercises the real Zallet launcher and `zallet-zinder`
-process against an externally provisioned, disposable Regtest stack. It uses
-Zinder's public native WalletQuery interface, never the compatibility service.
-The manifest generator pins Zinder v0.21.0 revision
-`830b426060169f5b2e94d84ff0f134bc1ad96004` and the locally integrated Zallet
-revision `38ef6a9b344063ca17b9989eeab22b68a82b6394`.
+This opt-in Regtest scenario exercises the public Zallet launcher and native
+WalletQuery backend against released Zinder v0.21.0. Run it only on a dedicated,
+disposable chain where mining is authorized. The native endpoint must retain
+full blocks and match this schedule: Overwinter through Canopy at 1, NU5 at 2,
+NU6 at 3, NU6.1 at 4, NU6.2 at 5, NU6.3 at 6, and NU7 at 140.
 
-Build the root `zallet` launcher with the repository toolchain and build
-`backends/zinder` with Rust 1.100. Ordinary deployment uses no additional features.
-The optional `bounded-scan-certification` build enables controlled expiry barriers.
-Pass `--backend-binary /absolute/path/to/zallet-zinder` to the manifest generator
-to pin a separately built ordinary binary without replacing the certification artifact. The backend
-pins released `zinder-client` and test-only `zinder-core` 0.21.0. The endpoint
-must retain full blocks, advertise all 16 required capabilities, and match the
-adapter's upgrade schedule: Overwinter through Canopy at 1, NU5 at 2, NU6 at 3,
-NU6.1 at 4, NU6.2 at 5, NU6.3 at 6, and NU7 at 140.
+Build Zallet's launcher with its pinned toolchain and the independent
+`backends/zinder` workspace with Rust 1.100. Ordinary builds need no optional
+features. `--backend-binary` can select a separately built binary.
 
-Only run against a dedicated chain where mining is authorized. The adapter
-accepts loopback HTTP endpoints, generates disposable wallet material, mines
-coinbases, shields one matured output into Ironwood, and sends a private
-self-transfer. It checks native pending observation, mining, scan-back, a real
-process restart, and the mined transaction after resume. The producer is first funded using a public BIP 39 test mnemonic. The restore
-step imports that recovery material into a new independent database, verifies
-the same public keys and preexisting shielded transaction, and preserves the
-original producer database. Resume mines and scans a fresh block after restart.
-Reports use always-on validation, reject optimized Python, and bind the same
-transaction fingerprint through submission, wallet pending, canonical mining,
-and wallet scan-back. Endpoint attribution is configured-native-only; this
-adapter does not collect socket traces. No external funds, certificates, or production state are used.
+The scenario funds a public test mnemonic, restores it into an independent
+empty database, and checks the recovered full viewing key and known owned
+Ironwood transaction. A separate native producer submits an incoming private
+payment. The restored wallet must observe it before mining, restart while it
+is pending, and actually scan the native mempool snapshot again. It then checks
+canonical mining, scan-back, persisted balance and transaction state after
+another process restart, and a fresh block after resuming. Transaction
+fingerprints link the independent observations. Endpoint attribution is
+configured-only; no socket trace or public-network qualification is claimed.
 
-Generate an input-bound manifest, then run the shared lifecycle runner from
-Zinder's `wallet-lifecycle-test-gate` integration layer:
+## Replay
+
+The lifecycle runner is published in Zinder PR #437 at immutable revision
+`68866b2ed2caaa5d7ac7fb2c371cd3f6787ce34c`. Acquire its source separately from
+the v0.21.0 service binaries:
 
 ```sh
+git clone https://github.com/ZcashFoundation/zinder.git /absolute/path/to/runner
+git -C /absolute/path/to/runner fetch origin refs/pull/437/head
+git -C /absolute/path/to/runner checkout --detach 68866b2ed2caaa5d7ac7fb2c371cd3f6787ce34c
 python3 qa/rpc-tests/native_wallet_lifecycle_manifest.py \
   --zallet-root /absolute/path/to/zallet \
-  --ready-receipt /absolute/path/to/ready-all.json \
-  --output /absolute/path/to/native-manifest.json
-python3 /absolute/path/to/zinder/scripts/run-wallet-lifecycle.py \
-  --manifest /absolute/path/to/native-manifest.json \
+  --runner-root /absolute/path/to/runner \
+  --backend-binary /absolute/path/to/zallet-zinder \
+  --ready-receipt /absolute/path/to/ready.json \
+  --output /absolute/path/to/manifest.json
+python3 /absolute/path/to/runner/scripts/run-wallet-lifecycle.py \
+  --manifest /absolute/path/to/manifest.json \
   --output /absolute/path/to/new-evidence-directory
 ```
 
-The ready receipt names the exact release revision, native endpoint, and mining
-RPC. The manifest hashes both binaries, the Python interpreter, adapter,
-generator, default configuration, test encryption fixture, and receipt. The
-runner retains step assertions and removes its disposable wallet scratch.
+The published runner's `scripts/regtest-fixture.py` provisions isolated
+fixtures; see its testing runbook for the readiness receipt. The receipt must
+identify Zinder v0.21.0 revision `830b426060169f5b2e94d84ff0f134bc1ad96004`,
+the native endpoint, and the mining RPC. The generator records the actual
+Zallet revision; `--expected-zallet-revision` optionally enforces a caller's
+source pin. It hashes both binaries, the interpreter, runner, adapter,
+configuration, and fixture receipt. All validation remains enabled regardless
+of Python assertions; optimized Python is rejected before wallet work. The
+runner removes disposable wallet scratch after cleanup.
 
-This is a current lifecycle replacement layer for the old v0.6 process
-composition in `wallet_zinder_recovery.py`. It does not claim that script's
-reorganization, cross-page history, bounded-scan, or forced-expiry scenarios
-have been refreshed. Forced production expiry, hot account creation, foreign
-Sapling viewing-key import, and existing-key rescan have separate local receipts
-in the consumer qualification evidence. The upstream PR remains read-only.
+## Extended scenarios
+
+`wallet_zinder_recovery.py` retains live account import/rescan, paginated
+recovery, forced expiry, and shallow reorganization coverage. Its staged
+artifacts are supplied through `ZIT_ZALLET_*`, `ZIT_ZINDER_*`, their `_SHA256`
+variables, and `ZIT_ZALLET_REVISION`. These scenarios are separate from the
+ordinary lifecycle replay; their historical receipts do not qualify a new
+source revision.
+
+The bounded-scan network scenarios live in `zinder_driver.rs` in this
+repository. Build its external libtest executable against a Zallet checkout:
+
+```sh
+python3 qa/rpc-tests/build_zinder_driver.py \
+  --zallet-root /absolute/path/to/zallet \
+  --build-dir /absolute/path/to/driver-build
+```
+
+Supply the printed executable as `ZIT_ZALLET_ZINDER_TEST` to
+`zinder_bounded_scan.py`, with its matching `_SHA256`. Zallet's
+`bounded-scan-certification` feature enables only the scan seam and controlled
+range barrier; no network tests run inside Zallet's unit suite.
