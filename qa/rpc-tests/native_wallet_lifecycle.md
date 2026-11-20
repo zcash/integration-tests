@@ -8,7 +8,10 @@ The manifest generator pins Zinder v0.21.0 revision
 revision `38ef6a9b344063ca17b9989eeab22b68a82b6394`.
 
 Build the root `zallet` launcher with the repository toolchain and build
-`backends/zinder` with Rust 1.100 and `bounded-scan-certification`. The backend
+`backends/zinder` with Rust 1.100. Ordinary deployment uses no additional features.
+The optional `bounded-scan-certification` build enables controlled expiry barriers.
+Pass `--backend-binary /absolute/path/to/zallet-zinder` to the manifest generator
+to pin a separately built ordinary binary without replacing the certification artifact. The backend
 pins released `zinder-client` and test-only `zinder-core` 0.21.0. The endpoint
 must retain full blocks, advertise all 16 required capabilities, and match the
 adapter's upgrade schedule: Overwinter through Canopy at 1, NU5 at 2, NU6 at 3,

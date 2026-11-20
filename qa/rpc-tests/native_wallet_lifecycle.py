@@ -18,6 +18,7 @@ import urllib.request
 import toml
 p = argparse.ArgumentParser()
 p.add_argument('--zallet-root', type=pathlib.Path, required=True)
+p.add_argument('--backend-binary', type=pathlib.Path)
 p.add_argument('--template-dir', type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[1] / 'defaults/zallet')
 p.add_argument('step')
 p.add_argument('--scratch', type=pathlib.Path, required=True)
@@ -173,7 +174,7 @@ try:
         require(not state, 'bootstrap requires fresh scratch')
         (a.scratch / 'bin').mkdir()
         for name, source in [('zallet', ROOT / 'target/debug/zallet'),
-                             ('zallet-zinder', ROOT / 'backends/zinder/target/debug/zallet-zinder')]:
+                             ('zallet-zinder', a.backend_binary.resolve() if a.backend_binary else ROOT / 'backends/zinder/target/debug/zallet-zinder')]:
             shutil.copy2(source, a.scratch / 'bin' / name)
         result['wallet_status'] = initialize()
         mine(1)

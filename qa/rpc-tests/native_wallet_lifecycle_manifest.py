@@ -21,6 +21,7 @@ def digest(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--zallet-root', type=Path, required=True)
+    parser.add_argument('--backend-binary', type=Path)
     parser.add_argument('--ready-receipt', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
@@ -35,20 +36,20 @@ def main():
     interpreter = Path(sys.executable).resolve()
     adapter = Path(__file__).with_name('native_wallet_lifecycle.py').resolve()
     templates = adapter.parents[1] / 'defaults/zallet'
-    client = root / 'backends/zinder/target/debug/zallet-zinder'
+    client = args.backend_binary.resolve() if args.backend_binary else root / 'backends/zinder/target/debug/zallet-zinder'
     launcher = root / 'target/debug/zallet'
     inputs = [interpreter, Path('/usr/bin/script').resolve(), adapter, Path(__file__).resolve(), client, launcher,
               receipt, templates / 'zallet.toml', templates / 'encryption-identity.txt']
 
     def command(step):
         return {'command': [str(interpreter), str(adapter), '--zallet-root', str(root),
-                            '--template-dir', str(templates), step, '--scratch', '{scratch}',
+                            '--template-dir', str(templates), '--backend-binary', str(client), step, '--scratch', '{scratch}',
                             '--report', '{report}', '--endpoint', '{endpoint}',
                             '--node', ready['node_rpc']],
                 'expect': {'/assertions/' + step: True}}
 
     case = {'wallet': 'zallet', 'version': '0.1.0-beta.4-38ef6a9-native-0.21.0',
-            'variant': 'native', 'network': 'zcash-regtest', 'implementation': 'app',
+            'variant': 'ordinary' if args.backend_binary else 'certification', 'network': 'zcash-regtest', 'implementation': 'app',
             'interface': 'native-wallet-query', 'endpoint': ready['native_wallet_query'],
             'require_no_fallback': True, 'restart_scope': 'process-restart',
             'client': {'path': str(client), 'sha256': digest(client)},
